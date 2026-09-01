@@ -2,6 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>تقارير مبيعات القرشي</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#0f1115">
@@ -53,6 +54,31 @@
   .num{font-family:Consolas,monospace}
   .missing{color:var(--warn)}
   .total-row td{background:#20263a;font-weight:700}
+
+  @media (max-width: 640px){
+    body{padding:10px}
+    h1{font-size:17px}
+    h2{font-size:14px}
+    .sub{font-size:12px}
+    .card{padding:12px;border-radius:10px}
+    .row{gap:8px}
+    .row > div{width:100%}
+    input[type=file], input[type=month], input[type=text], select{
+      width:100%;
+    }
+    button{width:100%;padding:11px}
+    .flex-between{flex-direction:column;align-items:stretch}
+    .flex-between .row{width:100%}
+    .flex-between .row button{width:auto;flex:1}
+    #monthsPills{gap:6px}
+    .tabs{gap:6px}
+    .tab{flex:1;text-align:center;padding:9px 6px;font-size:12px}
+    table{font-size:11px}
+    th,td{padding:5px 4px}
+    .tbl-wrap{max-height:65vh}
+    #unmatchedList .row{flex-direction:column;align-items:stretch;gap:4px}
+    #unmatchedList .row span{min-width:auto}
+  }
 </style>
 </head>
 <body>
