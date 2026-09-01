@@ -83,7 +83,7 @@
 </head>
 <body>
 
-<h1>تقارير مبيعات القرشي</h1>
+<h1>تقارير مبيعات القرشي <span class="badge" id="appVersionBadge" style="font-size:11px;font-weight:400"></span></h1>
 <div class="sub">ارفع ملف تصدير المحاسبة (xls خام) لكل شهر، والموقع يحسبلك مقارنة المبيعات الشهرية والمقارنة بالقطاع أوتوماتيك.</div>
 <div id="installBanner" class="card" style="display:none;background:var(--panel2);border-color:var(--accent)">
   <div class="flex-between">
@@ -96,6 +96,7 @@
   <div class="flex-between">
     <h2 style="margin:0">1) رفع ملف شهر جديد</h2>
     <span class="badge" id="loadStatus">بيتحمّل البيانات المحفوظة...</span>
+    <button class="ghost" id="updateBtn" title="تحقق من نسخة أحدث">🔄 تحديث</button>
   </div>
   <div class="row" style="margin-top:10px">
     <div>
@@ -191,6 +192,7 @@ const CATEGORY_MAP = {
   "ابواب WPC": "ابواب WPC",
 };
 const CLASS_OPTIONS = ["مبيعات جملة","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
+const APP_VERSION = 'v3';
 const SECTORS = ["قطاعات PVC كومبن","قطاعات كرافت لاين","نيو لاين","اكسسوارات","ابواب WPC"];
 
 let monthsData = {};   // { "2026-08": { customerName: { itemName: {cat, net} } } }
@@ -241,6 +243,7 @@ async function loadStorage(){
     if(io) itemOverride = JSON.parse(io.value);
   }catch(e){}
   $('loadStatus').textContent = 'جاهز';
+  $('appVersionBadge').textContent = APP_VERSION;
   renderMonthPills();
   renderReport();
 }
@@ -725,6 +728,23 @@ loadStorage();
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
 }
+$('updateBtn').addEventListener('click', async ()=>{
+  $('updateBtn').textContent = '⏳ بيدور على تحديث...';
+  try{
+    if('serviceWorker' in navigator){
+      const reg = await navigator.serviceWorker.getRegistration();
+      if(reg){
+        await reg.update();
+        if(reg.waiting){ reg.waiting.postMessage({type:'SKIP_WAITING'}); }
+      }
+      if('caches' in window){
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    }
+  }catch(e){}
+  location.reload(true);
+});
 let deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
