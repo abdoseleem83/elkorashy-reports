@@ -103,11 +103,11 @@
       <input type="file" id="fileInput" accept=".xls,.xlsx">
     </div>
     <div>
-      <label>الشهر ده بتاع إيه؟</label><br>
+      <label>الشهر (لو الملف مفيهوش تاريخ)</label><br>
       <input type="month" id="monthInput">
     </div>
-    <button id="processBtn" disabled>معالجة ورفع الشهر</button>
-    <button id="confirmCommitBtn" style="display:none">تأكيد وحفظ الشهر ✓</button>
+    <button id="processBtn" disabled>معالجة ورفع الملف</button>
+    <button id="confirmCommitBtn" style="display:none">تأكيد وحفظ ✓</button>
   </div>
   <div id="uploadMsg"></div>
 </div>
@@ -197,12 +197,22 @@ let monthsData = {};   // { "2026-08": { customerName: { itemName: {cat, net} } 
 let classification = {}; // { customerName: one of CLASS_OPTIONS }
 let categoryMap = {}; // { rawCategoryName: sectorName }
 let itemOverride = {}; // { itemName: sectorName } — takes priority over categoryMap
-let pendingRawParsed = null; // raw parsed data awaiting sector mapping / classification resolution
-let pendingMonth = null;
+let pendingByMonth = null; // { month: { customer: { item: {cat, net} } } } awaiting classification resolution
+let pendingNewItems = []; // items first seen this upload, for the info message
 
 const $ = (id) => document.getElementById(id);
 
 function normName(n){ return (n||"").toString().trim().replace(/\s+/g,' '); }
+
+// Guess a default sector for a never-seen item, based on keywords in its name.
+function guessSector(itemName){
+  const n = (itemName||'');
+  if(/كرافت/.test(n)) return 'قطاعات كرافت لاين';
+  if(/نيو\s*لاين/.test(n)) return 'نيو لاين';
+  if(/كومبن/.test(n)) return 'قطاعات PVC كومبن';
+  if(/wpc|ابواب/i.test(n)) return 'ابواب WPC';
+  return 'اكسسوارات'; // hinges, handles, tracks, gaskets etc. default here
+}
 
 async function loadStorage(){
   try{
@@ -248,14 +258,58 @@ async function saveClassification(){
   await window.storage.set('classification', JSON.stringify(classification));
 }
 
-// ---- Parse hierarchical xls export ----
-function parseWorkbook(wb){
-  const sheet = wb.Sheets[wb.SheetNames[0]];
+function findHeaderRow(rows){
+  for(let i=0;i<Math.min(rows.length,10);i++){
+    if(rows[i].some(c => normName(c) === 'c_name')) return i;
+  }
+  return -1;
+}
+
+function excelSerialToMonth(serial){
+  if(typeof serial !== 'number' || !serial) return null;
+  try{
+    const d = XLSX.SSF.parse_date_code(serial);
+    if(!d || !d.y) return null;
+    return `${d.y}-${String(d.m).padStart(2,'0')}`;
+  }catch(e){ return null; }
+}
+
+// ---- Flat "Header_Wide" transaction-level format (c_name / Item_Name per row) ----
+function parseFlatWorkbook(wb, sheetName, fallbackMonth){
+  const sheet = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:''});
-  const result = {}; // customer -> itemName -> {cat, net}
-  const unmappedRaw = new Set();
-  let curCustomer = null;
-  let curCategory = null;
+  const headerIdx = findHeaderRow(rows);
+  const header = rows[headerIdx];
+  const col = (name) => header.findIndex(h => normName(h) === name);
+  const cCustomer = col('c_name'), cItem = col('Item_Name'), cVout = col('vout'), cVin = col('vin'), cDate = col('Order_Date');
+  const byMonth = {}; // month -> customer -> item -> {cat, net}
+  const newItems = new Set();
+  for(let i=headerIdx+1;i<rows.length;i++){
+    const r = rows[i];
+    const custCell = normName(r[cCustomer]);
+    const itemCell = normName(r[cItem]);
+    const vout = r[cVout];
+    if(!custCell || !itemCell || typeof vout !== 'number') continue;
+    const vin = r[cVin];
+    const net = (Number(vout)||0) - (Number(vin)||0);
+    const month = excelSerialToMonth(r[cDate]) || fallbackMonth;
+    if(!month) continue;
+    if(!byMonth[month]) byMonth[month] = {};
+    if(!byMonth[month][custCell]) byMonth[month][custCell] = {};
+    if(!byMonth[month][custCell][itemCell]) byMonth[month][custCell][itemCell] = {cat:'-', net:0};
+    byMonth[month][custCell][itemCell].net += net;
+    if(!(itemCell in itemOverride)) newItems.add(itemCell);
+  }
+  return {byMonth, newItems: Array.from(newItems)};
+}
+
+// ---- Older hierarchical "Header" export (customer block > category block > item rows) ----
+function parseHierarchicalWorkbook(wb, sheetName, fallbackMonth){
+  const sheet = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:''});
+  const result = {};
+  const newItems = new Set();
+  let curCustomer = null, curCategory = null;
   for(const r of rows){
     const custCell = normName(r[3]);
     const catCell = normName(r[4]);
@@ -265,53 +319,66 @@ function parseWorkbook(wb){
     const tvin = r[12];
     if(custCell){ curCustomer = custCell; curCategory = null; if(!result[curCustomer]) result[curCustomer]={}; continue; }
     if(catCell && catCell !== 'stvout:' && !/^s|^c|^total/i.test(catCell)){ curCategory = catCell; continue; }
-    // detail row: has groupCode as number and tvout as number
     if(curCustomer && curCategory && typeof groupCode === 'number' && typeof tvout === 'number'){
-      const mapped = categoryMap[curCategory] || categoryMap[curCategory.toLowerCase()];
-      if(!mapped) unmappedRaw.add(curCategory);
       const net = (Number(tvout)||0) - (Number(tvin)||0);
       const key = itemName || curCategory;
       if(!result[curCustomer][key]) result[curCustomer][key] = {cat: curCategory, net: 0};
       result[curCustomer][key].net += net;
+      if(!(key in itemOverride)) newItems.add(key);
     }
   }
-  return {result, unmappedRaw: Array.from(unmappedRaw)};
+  return {byMonth: fallbackMonth ? {[fallbackMonth]: result} : {}, newItems: Array.from(newItems)};
 }
 
 function itemSector(itemName, rawCat){
-  return itemOverride[itemName] || categoryMap[rawCat] || categoryMap[(rawCat||'').toLowerCase()] || rawCat;
+  if(itemOverride[itemName]) return itemOverride[itemName];
+  if(rawCat && rawCat !== '-') return categoryMap[rawCat] || categoryMap[rawCat.toLowerCase()] || rawCat;
+  return guessSector(itemName);
 }
 
 $('fileInput').addEventListener('change', ()=>{
-  $('processBtn').disabled = !($('fileInput').files.length && $('monthInput').value);
-});
-$('monthInput').addEventListener('change', ()=>{
-  $('processBtn').disabled = !($('fileInput').files.length && $('monthInput').value);
+  $('processBtn').disabled = !$('fileInput').files.length;
 });
 
 $('processBtn').addEventListener('click', async ()=>{
   const file = $('fileInput').files[0];
-  const month = $('monthInput').value;
-  if(!file || !month) return;
+  const fallbackMonth = $('monthInput').value || null;
+  if(!file) return;
   $('uploadMsg').innerHTML = '<div class="msg warn">بيتم التحليل...</div>';
   try{
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, {type:'array'});
-    const {result, unmappedRaw} = parseWorkbook(wb);
-    pendingRawParsed = result;
-    pendingMonth = month;
-    if(unmappedRaw.length){
-      unmappedRaw.forEach(r => { if(!categoryMap[r]) categoryMap[r] = SECTORS[0]; });
-      await saveCategoryMap();
-      $('uploadMsg').innerHTML = `<div class="msg warn">لقيت أقسام جديدة مش متطابقة: ${unmappedRaw.join('، ')} — راجعها من زرار "🏷️ القطاعات" فوق قبل ما تكمل (اتحطت مؤقتًا على "${SECTORS[0]}").</div>`;
-      $('sectorsPanel').style.display='block';
-      renderSectorsList();
+    const sheetName = wb.SheetNames[0];
+    const sheetRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:''});
+    const isFlat = findHeaderRow(sheetRows) !== -1;
+    const {byMonth, newItems} = isFlat
+      ? parseFlatWorkbook(wb, sheetName, fallbackMonth)
+      : parseHierarchicalWorkbook(wb, sheetName, fallbackMonth);
+
+    if(!Object.keys(byMonth).length){
+      $('uploadMsg').innerHTML = `<div class="msg err">مقدرتش أوصل لشهر لأي صف — الملف مفيهوش تاريخ صالح ومحددتش شهر يدوي. جرب اختار الشهر يدوي وأعد المحاولة.</div>`;
+      return;
     }
-    const customers = Object.keys(pendingRawParsed);
-    const unmatched = customers.filter(c => !classification[c]);
+
+    pendingByMonth = byMonth;
+    pendingNewItems = newItems;
+    // auto-assign default sector guesses for new items so nothing is left unmapped
+    newItems.forEach(it => { itemOverride[it] = guessSector(it); });
+    if(newItems.length) await saveItemOverride();
+
+    const allCustomers = new Set();
+    Object.values(byMonth).forEach(cm => Object.keys(cm).forEach(c => allCustomers.add(c)));
+    const unmatched = Array.from(allCustomers).filter(c => !classification[c]);
+
+    let msg = `<div class="msg ok">لقيت بيانات لشهور: ${Object.keys(byMonth).sort().join('، ')} (${allCustomers.size} عميل).</div>`;
+    if(newItems.length){
+      msg += `<div class="msg warn">${newItems.length} صنف جديد اتحطوا تلقائي على أقرب قطاع بالتخمين — راجعهم من "📦 الأصناف" لو حابب تظبطهم.</div>`;
+    }
+    $('uploadMsg').innerHTML = msg;
+
     if(unmatched.length){
       showUnmatched(unmatched);
-      $('uploadMsg').innerHTML += `<div class="msg warn">لقيت ${customers.length} عميل، منهم ${unmatched.length} محتاجين تصنيف تحت.</div>`;
+      $('uploadMsg').innerHTML += `<div class="msg warn">${unmatched.length} عميل محتاجين تصنيف تحت.</div>`;
     }
     $('confirmCommitBtn').style.display = 'inline-block';
   }catch(e){
@@ -340,23 +407,34 @@ $('saveClassifBtn').addEventListener('click', async ()=>{
 });
 
 $('confirmCommitBtn').addEventListener('click', async ()=>{
-  if(!pendingRawParsed) return;
-  const customers = Object.keys(pendingRawParsed);
-  const stillUnmatched = customers.filter(c => !classification[c]);
+  if(!pendingByMonth) return;
+  const allCustomers = new Set();
+  Object.values(pendingByMonth).forEach(cm => Object.keys(cm).forEach(c => allCustomers.add(c)));
+  const stillUnmatched = Array.from(allCustomers).filter(c => !classification[c]);
   if(stillUnmatched.length){
     alert('لسه في عملاء محتاجين تصنيف قبل الحفظ.');
     showUnmatched(stillUnmatched);
     return;
   }
   $('confirmCommitBtn').style.display = 'none';
-  await commitMonth();
+  await commitAll();
 });
 
-async function commitMonth(){
-  monthsData[pendingMonth] = pendingRawParsed; // stored as RAW category sums; mapped to sectors at render time
+async function commitAll(){
+  Object.keys(pendingByMonth).forEach(month=>{
+    if(!monthsData[month]) monthsData[month] = {};
+    Object.keys(pendingByMonth[month]).forEach(cust=>{
+      if(!monthsData[month][cust]) monthsData[month][cust] = {};
+      Object.keys(pendingByMonth[month][cust]).forEach(item=>{
+        if(!monthsData[month][cust][item]) monthsData[month][cust][item] = {cat:'-', net:0};
+        monthsData[month][cust][item].net += pendingByMonth[month][cust][item].net;
+        monthsData[month][cust][item].cat = pendingByMonth[month][cust][item].cat;
+      });
+    });
+  });
   await saveMonths();
-  $('uploadMsg').innerHTML = `<div class="msg ok">تم حفظ بيانات شهر ${pendingMonth} (${Object.keys(pendingRawParsed).length} عميل).</div>`;
-  pendingRawParsed = null; pendingMonth = null;
+  $('uploadMsg').innerHTML = `<div class="msg ok">تم الحفظ لشهور: ${Object.keys(pendingByMonth).sort().join('، ')}.</div>`;
+  pendingByMonth = null; pendingNewItems = [];
   $('fileInput').value=''; $('monthInput').value=''; $('processBtn').disabled=true;
   renderMonthPills();
   renderReport();
