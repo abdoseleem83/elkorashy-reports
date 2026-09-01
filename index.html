@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <title>تقارير مبيعات القرشي</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0f1115">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -55,6 +59,12 @@
 
 <h1>تقارير مبيعات القرشي</h1>
 <div class="sub">ارفع ملف تصدير المحاسبة (xls خام) لكل شهر، والموقع يحسبلك مقارنة المبيعات الشهرية والمقارنة بالقطاع أوتوماتيك.</div>
+<div id="installBanner" class="card" style="display:none;background:var(--panel2);border-color:var(--accent)">
+  <div class="flex-between">
+    <span>ثبّت التطبيق على جهازك عشان يفتح زي أي تطبيق عادي (من غير متصفح ظاهر).</span>
+    <button id="installBtn">تثبيت التطبيق</button>
+  </div>
+</div>
 
 <div class="card">
   <div class="flex-between">
@@ -606,6 +616,25 @@ $('exportPdfBtn').addEventListener('click', ()=>{
 });
 
 loadStorage();
+
+// ---- PWA install ----
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+}
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  $('installBanner').style.display = 'block';
+});
+$('installBtn').addEventListener('click', async () => {
+  if(!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  $('installBanner').style.display = 'none';
+});
+window.addEventListener('appinstalled', () => { $('installBanner').style.display = 'none'; });
 </script>
 </body>
 </html>
