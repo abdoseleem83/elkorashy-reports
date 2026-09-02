@@ -264,7 +264,7 @@ const CATEGORY_MAP = {
   "ابواب WPC": "ابواب WPC",
 };
 const CLASS_OPTIONS = ["مبيعات جملة","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
-const APP_VERSION = 'v7';
+const APP_VERSION = 'v8';
 let SECTORS = ["قطاعات PVC كومبن","قطاعات كرافت لاين","نيو لاين","اكسسوارات","ابواب WPC"];
 
 let monthsData = {};   // { "2026-08": { customerName: { itemName: {cat, net} } } }
@@ -289,11 +289,25 @@ function monthLabel(m){
 // Guess a default sector for a never-seen item, based on keywords in its name.
 function guessSector(itemName){
   const n = (itemName||'');
+  if(/wpc|ابواب/i.test(n)) return 'ابواب WPC';
   if(/كرافت/.test(n)) return 'قطاعات كرافت لاين';
   if(/نيو\s*لاين/.test(n)) return 'نيو لاين';
-  if(/كومبن/.test(n)) return 'قطاعات PVC كومبن';
-  if(/wpc|ابواب/i.test(n)) return 'ابواب WPC';
-  return 'اكسسوارات'; // hinges, handles, tracks, gaskets etc. default here
+  if(/كومبن|\bkom\b/i.test(n)) return 'قطاعات PVC كومبن';
+  return 'اكسسوارات'; // hinges, handles, tracks, gaskets, and unbranded hardware default here
+}
+
+// One-time cleanup: earlier versions didn't recognize the "kom" suffix used for قطاعات PVC كومبن
+// items, so they were auto-guessed into اكسسوارات. Re-guess anything still sitting there.
+async function fixMisguessedKomItems(){
+  if(!SECTORS.includes('قطاعات PVC كومبن')) return;
+  let changed = false;
+  Object.keys(itemOverride).forEach(item=>{
+    if(itemOverride[item] === 'اكسسوارات'){
+      const reguess = guessSector(item);
+      if(reguess !== 'اكسسوارات'){ itemOverride[item] = reguess; changed = true; }
+    }
+  });
+  if(changed) await saveItemOverride();
 }
 
 async function loadStorage(){
@@ -329,6 +343,7 @@ async function loadStorage(){
   }catch(e){
     await saveSectors();
   }
+  await fixMisguessedKomItems();
   $('loadStatus').textContent = 'جاهز';
   $('appVersionBadge').textContent = APP_VERSION;
   renderMonthPills();
@@ -637,6 +652,10 @@ function buildTableHtml(tabType, months, rows, sortMode){
     rows.sort((a,b)=> a.label.localeCompare(b.label,'ar'));
   }
   if(tabType === 'monthly'){
+    const colStats = months.map((_,mi)=>{
+      const vals = rows.map(r=>r.months[mi]).filter(v=>v>0);
+      return vals.length ? {max:Math.max(...vals), min:Math.min(...vals)} : {max:null,min:null};
+    });
     let html = `<div class="tbl-wrap"><table><thead><tr>
       <th>م</th><th>بيان</th><th>التصنيف</th><th>الإجمالي</th>
       ${months.map(m=>`<th>${monthLabel(m)}</th>`).join('')}
@@ -645,7 +664,16 @@ function buildTableHtml(tabType, months, rows, sortMode){
     rows.forEach((r,i)=>{
       const rowTotal = r.months.reduce((a,b)=>a+b,0);
       r.months.forEach((v,mi)=>grandTotals[mi]+=v);
-      html += `<tr><td>${i+1}</td><td style="text-align:right">${r.label}</td><td>${r.cls}</td><td class="num">${rowTotal.toLocaleString('ar-EG',{maximumFractionDigits:0})}</td>${r.months.map(v=>`<td class="num">${v?v.toLocaleString('ar-EG',{maximumFractionDigits:0}):'-'}</td>`).join('')}</tr>`;
+      const cells = r.months.map((v,mi)=>{
+        let style = '';
+        const stat = colStats[mi];
+        if(v>0 && stat.max!==null){
+          if(v === stat.max) style = 'background:#c9f0d8';
+          else if(v === stat.min && stat.min !== stat.max) style = 'background:#fbd6d6';
+        }
+        return `<td class="num" style="${style}">${v?v.toLocaleString('ar-EG',{maximumFractionDigits:0}):'-'}</td>`;
+      }).join('');
+      html += `<tr><td>${i+1}</td><td style="text-align:right">${r.label}</td><td>${r.cls}</td><td class="num">${rowTotal.toLocaleString('ar-EG',{maximumFractionDigits:0})}</td>${cells}</tr>`;
     });
     html += `<tr class="total-row"><td colspan="3">الإجمالي</td><td class="num">${grandTotals.reduce((a,b)=>a+b,0).toLocaleString('ar-EG',{maximumFractionDigits:0})}</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('ar-EG',{maximumFractionDigits:0})}</td>`).join('')}</tr>`;
     html += '</tbody></table></div>';
@@ -718,7 +746,80 @@ function renderCharts(){
   drawBarChart('sectorTotalsChart', sectorTotals.map(o=>o.label), sectorTotals.map(o=>o.total), '#0f9d63');
 }
 
-// ---- Export ----
+// ---- Wholesale-only breakout: sectors whose name contains "بلسيه" or "ابواب" ----
+function wholesaleBreakoutSectors(){
+  return SECTORS.filter(s => /بلسيه|ابواب/i.test(s));
+}
+function wholesaleBreakoutTotals(months){
+  const {rows} = computeCustomerRows(false); // individual customers, not merged
+  const wholesale = rows.filter(r => classification[r.label] === 'مبيعات جملة');
+  const breakoutSectors = wholesaleBreakoutSectors();
+  const totals = {};
+  breakoutSectors.forEach(s => { totals[s] = wholesale.reduce((sum,r)=> sum + (r.sectors[s]||0), 0); });
+  return {breakoutSectors, totals};
+}
+
+// ---- Grouped PDF layout: جملة (aggregated) + موزع (individual) in one table with a divider,
+// then مبيعات خاصة separately, then anything else. Wholesale-only sectors get pulled out of the
+// main sector columns and shown in a small breakout box (sector report only).
+function buildGroupedPdfHtml(tabType, months){
+  const {rows} = computeCustomerRows(true); // wholesale merged into one "مبيعات جملة" row
+  const breakout = tabType === 'sector' ? wholesaleBreakoutTotals(months) : null;
+
+  let wholesaleRow = rows.find(r => r.label === 'مبيعات جملة');
+  const distributorRows = rows.filter(r => r.cls === 'موزع');
+  const specialRows = rows.filter(r => r.cls === 'مبيعات خاصة');
+  const otherRows = rows.filter(r => r.label !== 'مبيعات جملة' && !['موزع','مبيعات خاصة'].includes(r.cls));
+
+  // pull wholesale-only sectors out of the جملة row's totals for the sector report
+  if(wholesaleRow && breakout){
+    wholesaleRow = JSON.parse(JSON.stringify(wholesaleRow));
+    breakout.breakoutSectors.forEach(s => { wholesaleRow.sectors[s] = 0; });
+  }
+
+  const group1Rows = [];
+  if(wholesaleRow) group1Rows.push(wholesaleRow);
+  group1Rows.push(...distributorRows);
+
+  let html = '';
+  html += `<h2 style="font-size:15px;margin:22px 0 6px">عملاء الجملة والموزعين</h2>`;
+  html += buildDividedTableHtml(tabType, months, wholesaleRow ? [wholesaleRow] : [], distributorRows, sortModeFor(tabType));
+
+  if(breakout && breakout.breakoutSectors.length){
+    html += `<div class="msg warn" style="margin-top:10px">🧾 بلسيه/أبواب — عملاء الجملة فقط: ${
+      breakout.breakoutSectors.map(s => `${s}: ${breakout.totals[s].toLocaleString('ar-EG',{maximumFractionDigits:0})}`).join(' — ')
+    }</div>`;
+  }
+
+  if(specialRows.length){
+    html += `<h2 style="font-size:15px;margin:22px 0 6px">عملاء مبيعات خاصة</h2>${buildTableHtml(tabType, months, specialRows, sortModeFor(tabType))}`;
+  }
+  if(otherRows.length){
+    html += `<h2 style="font-size:15px;margin:22px 0 6px">تصنيفات أخرى</h2>${buildTableHtml(tabType, months, otherRows, sortModeFor(tabType))}`;
+  }
+  return html;
+}
+function sortModeFor(tabType){ return 'total'; }
+
+// One table with a labeled divider row between two row-groups (used for جملة | موزعين).
+function buildDividedTableHtml(tabType, months, groupA, groupB, sortMode){
+  const allRows = [...groupA, ...groupB];
+  if(!allRows.length) return '<div class="sub">مفيش بيانات</div>';
+  const colCount = tabType === 'monthly' ? (4 + months.length) : (3 + SECTORS.length + 1);
+  const dividerRow = `<tr><td colspan="${colCount}" style="background:#e2e5ee;font-weight:700;text-align:right">— موزعين —</td></tr>`;
+  const partA = groupA.length ? stripOuterTable(buildTableHtml(tabType, months, groupA, sortMode)) : '';
+  const partB = groupB.length ? stripOuterTable(buildTableHtml(tabType, months, groupB, sortMode)) : '';
+  const header = extractTableHeader(buildTableHtml(tabType, months, allRows.slice(0,1), sortMode));
+  return `<div class="tbl-wrap"><table>${header}<tbody>${partA}${groupA.length && groupB.length ? dividerRow : ''}${partB}</tbody></table></div>`;
+}
+function extractTableHeader(tableHtml){
+  const m = tableHtml.match(/<thead>[\s\S]*?<\/thead>/);
+  return m ? m[0] : '';
+}
+function stripOuterTable(tableHtml){
+  const m = tableHtml.match(/<tbody>([\s\S]*?)<\/tbody>/);
+  return m ? m[1] : '';
+}
 $('exportBtn').addEventListener('click', ()=>{
   const months = Object.keys(monthsData).sort();
   if(!months.length){ alert('مفيش بيانات لسه'); return; }
@@ -927,7 +1028,6 @@ async function generatePdf(includeMonthly, includeSector){
   const months = Object.keys(monthsData).sort();
   if(!months.length){ alert('مفيش بيانات لسه'); return; }
   if(!includeMonthly && !includeSector){ alert('اختار تقرير واحد على الأقل'); return; }
-  const {rows} = computeCustomerRows(true); // merge wholesale customers into one row, PDF only
 
   let chartsHtml = '';
   const custImg = document.getElementById('topCustomersChart');
@@ -942,10 +1042,10 @@ async function generatePdf(includeMonthly, includeSector){
 
   let sectionsHtml = '';
   if(includeMonthly){
-    sectionsHtml += `<h2 style="font-size:15px;margin:22px 0 6px">مقارنة المبيعات الشهرية (من الأكبر للأصغر)</h2>${buildTableHtml('monthly', months, rows, 'total')}`;
+    sectionsHtml += `<h1 style="font-size:16px;margin-top:26px">مقارنة المبيعات الشهرية</h1>${buildGroupedPdfHtml('monthly', months)}`;
   }
   if(includeSector){
-    sectionsHtml += `<h2 style="font-size:15px;margin:22px 0 6px">مقارنة المبيعات بالقطاع (من الأكبر للأصغر)</h2>${buildTableHtml('sector', months, rows, 'total')}`;
+    sectionsHtml += `<h1 style="font-size:16px;margin-top:26px">مقارنة المبيعات بالقطاع</h1>${buildGroupedPdfHtml('sector', months)}`;
   }
 
   // Render off-screen (fixed width, light background) then rasterize + build a real downloadable PDF.
