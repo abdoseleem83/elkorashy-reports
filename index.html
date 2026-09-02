@@ -325,7 +325,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v20';
+const APP_VERSION = 'v21';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1088,7 +1088,8 @@ function renderReport(){
 
 // ---- Top-10 charts ----
 const chartInstances = {};
-function truncLabel(l){ return l && l.length > 20 ? l.slice(0,20)+'…' : l; }
+// شارت الشاشة ضيّق، وشارت الـPDF عرضه أكبر فبيستحمل أسماء أطول
+function truncLabel(l, max){ const n = max || 20; return l && l.length > n ? l.slice(0,n)+'…' : l; }
 function drawBarChart(canvasId, labels, data, color){
   const canvas = document.getElementById(canvasId);
   if(!canvas || !window.Chart) return;
@@ -1168,22 +1169,34 @@ function safeSheetName(name, used){
   return out;
 }
 
-// بيرجع صفوف المجموعة زي ما الـPDF بيحسبها بالظبط
+// المصدر الوحيد لحساب صفوف أي مجموعة — الـPDF والإكسل الاتنين بيستخدموه
 function groupRows(g, columns){
+  let rows;
   if(g.kind === 'class'){
     if(g.agg){
       const row = computeAggregatedClassRow(g.key, g.title, columns);
-      return row ? [row] : [];
+      rows = row ? [row] : [];
+    } else {
+      rows = computeCustomerRowsByClassColumns(g.key, columns).rows
+        .filter(r => r.months.some(v => v !== 0));
     }
-    return computeCustomerRowsByClassColumns(g.key, columns).rows
-      .filter(r => r.months.some(v => v !== 0));
+  } else {
+    const sr = computeSpecialSectorRowsColumns(g.key, columns).rows;
+    if(g.agg && sr.length){
+      const totals = columns.map((_,i)=> sr.reduce((s,r)=> s + (r.months[i]||0), 0));
+      rows = [{label:`مبيعات ${g.key}`, cls:`${sr.length} عميل`, months: totals}];
+    } else {
+      rows = sr;
+    }
   }
-  const sr = computeSpecialSectorRowsColumns(g.key, columns).rows;
-  if(g.agg && sr.length){
-    const totals = columns.map((_,i)=> sr.reduce((s,r)=> s + (r.months[i]||0), 0));
-    return [{label:`مبيعات ${g.key}`, cls:`${sr.length} عميل`, months: totals}];
-  }
-  return sr;
+  // تصنيفات بتنضم للمجموعة كصف واحد مجمّع لكل واحد (الجملة جوه الموزعين).
+  // الترتيب بيتعمل بعد كده على الصفوف كلها مع بعض، فبتاخد ترتيبها الطبيعي بينهم.
+  (g.withAggClasses || []).forEach(cls=>{
+    const src = PDF_GROUPS.find(x => x.kind === 'class' && x.agg && x.key === cls);
+    const row = computeAggregatedClassRow(cls, src ? src.title : cls, columns);
+    if(row && row.months.some(v => v !== 0)) rows.push(row);
+  });
+  return rows;
 }
 
 // عنوان التقرير والفترة فوق كل شيت — زي رأس الـPDF
@@ -1441,10 +1454,14 @@ $('itemSectorFilter').addEventListener('change', ()=> renderItemsList());
 // كل مجموعة سطر واحد في لوحة التصدير، والمستخدم بيختار اللي عايزه يظهر.
 // kind: 'class' = عملاء تصنيف معيّن، 'special' = قطاع ليه شيت لوحده.
 // agg: true = صف واحد مجمّع من غير أسماء عملاء.
+// withAggClasses: تصنيفات بتتحسب صف واحد مجمّع وبتتحط جوه المجموعة دي وتتساوى
+// مع صفوفها في الترتيب — الجملة (إسكندرية/طنطا) بتظهر جوه الموزعين كأنها موزع.
+// defaultOff: الخيار موجود بس مش متعلّم افتراضي، عشان الأرقام ما تتكررش.
 const PDF_GROUPS = [
-  {id:'wh-alex',  kind:'class',   key:'مبيعات جملة الاسكندرية', title:'مبيعات جملة الإسكندرية', agg:true},
-  {id:'wh-tanta', kind:'class',   key:'مبيعات جملة طنطا',        title:'مبيعات جملة طنطا',        agg:true},
-  {id:'dist',     kind:'class',   key:'موزع',                    title:'الموزعين',                 agg:false},
+  {id:'dist',     kind:'class',   key:'موزع',                    title:'الموزعين',                 agg:false,
+   withAggClasses:['مبيعات جملة الاسكندرية','مبيعات جملة طنطا']},
+  {id:'wh-alex',  kind:'class',   key:'مبيعات جملة الاسكندرية', title:'مبيعات جملة الإسكندرية', agg:true, defaultOff:true},
+  {id:'wh-tanta', kind:'class',   key:'مبيعات جملة طنطا',        title:'مبيعات جملة طنطا',        agg:true, defaultOff:true},
   {id:'private',  kind:'class',   key:'مبيعات خاصة',             title:'عملاء مبيعات خاصة',        agg:false},
   {id:'doors',    kind:'special', key:'ابواب WPC',               title:'شيت ابواب WPC',            agg:false},
   {id:'shutter',  kind:'special', key:'شتر وبلسيه',              title:'شيت شتر وبلسيه',           agg:true},
@@ -1452,7 +1469,8 @@ const PDF_GROUPS = [
 
 function renderPdfGroupsList(){
   $('pdfGroupsList').innerHTML = PDF_GROUPS.map(g=>`
-    <label class="chk"><input type="checkbox" class="pdfGroupChk" value="${g.id}" checked> ${esc(g.title)}</label>
+    <label class="chk"><input type="checkbox" class="pdfGroupChk" value="${g.id}" ${g.defaultOff ? '' : 'checked'}>
+      ${esc(g.title)}${g.defaultOff ? ' <span class="badge">(داخلة أصلاً في الموزعين)</span>' : ''}</label>
   `).join('');
 }
 
@@ -1513,7 +1531,7 @@ async function chartImage(labels, data, color, width, height){
   try{
     chart = new Chart(canvas, {
       type:'bar',
-      data:{ labels: labels.map(truncLabel), datasets:[{ data, backgroundColor: color, borderRadius:3 }] },
+      data:{ labels: labels.map(l => truncLabel(l, 32)), datasets:[{ data, backgroundColor: color, borderRadius:3 }] },
       options:{
         indexAxis:'y', responsive:false, animation:false, devicePixelRatio:1,
         plugins:{ legend:{display:false} },
@@ -1637,24 +1655,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
     // ---- 1) بناء محتوى التقرير كله كـHTML، كل كتلة .blk نقطة قطع مسموحة ----
     let body = '';
     for(const g of groups){
-      let rows = [];
-      if(g.kind === 'class'){
-        if(g.agg){
-          const row = computeAggregatedClassRow(g.key, g.title, columns);
-          if(row) rows = [row];
-        } else {
-          rows = computeCustomerRowsByClassColumns(g.key, columns).rows
-            .filter(r => r.months.some(v => v !== 0));
-        }
-      } else {
-        const sr = computeSpecialSectorRowsColumns(g.key, columns).rows;
-        if(g.agg && sr.length){
-          const totals = columns.map((_,i)=> sr.reduce((s,r)=> s + (r.months[i]||0), 0));
-          rows = [{label:`مبيعات ${g.key}`, cls:`${sr.length} عميل`, months: totals}];
-        } else {
-          rows = sr;
-        }
-      }
+      const rows = groupRows(g, columns);
       if(!rows.length) continue;
 
       // العنوان ملزوق بأول جدول في نفس الكتلة، عشان ميقعش لوحده في آخر صفحة
