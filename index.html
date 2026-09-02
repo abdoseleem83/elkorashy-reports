@@ -279,7 +279,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v15';
+const APP_VERSION = 'v16';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -326,10 +326,29 @@ function guessSector(itemName){
 }
 
 async function loadStorage(){
+  monthsData = {};
+  let loadedFromIndex = false;
   try{
-    const m = await window.storage.get('monthsData');
-    if(m) monthsData = JSON.parse(m.value);
+    const idx = await window.storage.get('monthsIndex');
+    const months = JSON.parse(idx.value);
+    const results = await Promise.all(months.map(async m=>{
+      try{ const r = await window.storage.get('month:' + m); return [m, JSON.parse(r.value)]; }
+      catch(e){ return null; }
+    }));
+    results.forEach(pair => { if(pair) monthsData[pair[0]] = pair[1]; });
+    loadedFromIndex = true;
   }catch(e){}
+  if(!loadedFromIndex){
+    // ترحيل من الصيغة القديمة (مفتاح monthsData واحد) لو لسه موجودة
+    try{
+      const m = await window.storage.get('monthsData');
+      if(m){
+        monthsData = JSON.parse(m.value);
+        await saveMonths();
+        try{ await window.storage.delete('monthsData'); }catch(e2){}
+      }
+    }catch(e){}
+  }
   try{
     const c = await window.storage.get('classification');
     if(c) classification = JSON.parse(c.value);
@@ -372,8 +391,15 @@ async function loadStorage(){
   renderReport();
 }
 
-async function saveMonths(){
-  await window.storage.set('monthsData', JSON.stringify(monthsData));
+// الشهور بتتحفظ كل واحد في مفتاح لوحده (month:YYYY-MM) مع مفتاح فهرس بأسماء الشهور،
+// بدل مفتاح عملاق واحد كان بيوصل لملايين الحروف ويفشل الطلب كله.
+async function saveMonths(changedMonths){
+  const months = Object.keys(monthsData).sort();
+  const toSave = changedMonths && changedMonths.length ? changedMonths : months;
+  for(const m of toSave){
+    if(monthsData[m]) await window.storage.set('month:' + m, JSON.stringify(monthsData[m]));
+  }
+  await window.storage.set('monthsIndex', JSON.stringify(months));
 }
 async function saveItemOverride(){
   await window.storage.set('itemOverride', JSON.stringify(itemOverride));
@@ -547,10 +573,11 @@ async function commitAll(){
       });
     });
   });
-  const savedMonths = Object.keys(pendingByMonth).sort().map(monthLabel).join('، ');
-  $('uploadMsg').innerHTML = `<div class="msg warn">جاري الحفظ على التخزين المركزي... (ممكن ياخد شوية مع البيانات الكبيرة، متقفلش الصفحة)</div>`;
+  const changed = Object.keys(pendingByMonth);
+  const savedMonths = changed.sort().map(monthLabel).join('، ');
+  $('uploadMsg').innerHTML = `<div class="msg warn">جاري الحفظ على التخزين المركزي... (ممكن ياخد شوية، متقفلش الصفحة)</div>`;
   try{
-    await saveMonths();
+    await saveMonths(changed);
     $('uploadMsg').innerHTML = `<div class="msg ok">تم الحفظ فعليًا لشهور: ${savedMonths} — البيانات دلوقتي متاحة من أي جهاز تاني.</div>`;
   }catch(e){
     $('uploadMsg').innerHTML = `<div class="msg err">الحفظ فشل (${e.message}) — البيانات ظاهرة على الشاشة دلوقتي بس مش متخزنة، ومش هتلاقيها على أجهزة تانية. جرب "تحديث" وارفع تاني.</div>`;
@@ -570,9 +597,10 @@ function renderMonthPills(){
 }
 
 async function deleteMonth(m){
-  if(!confirm(`تمسح بيانات شهر ${m}؟`)) return;
+  if(!confirm(`تمسح بيانات شهر ${monthLabel(m)}؟`)) return;
   delete monthsData[m];
-  await saveMonths();
+  try{ await window.storage.delete('month:' + m); }catch(e){}
+  await saveMonths([]);
   renderMonthPills();
   renderReport();
 }
