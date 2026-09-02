@@ -279,7 +279,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v16';
+const APP_VERSION = 'v17';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -326,6 +326,28 @@ function guessSector(itemName){
 }
 
 async function loadStorage(){
+  // 1) اعرض آخر نسخة محفوظة على الجهاز فورًا عشان الصفحة تفتح من غير انتظار،
+  //    وبعدين هات النسخة المركزية في الخلفية وحدّث لو فيه جديد.
+  let shownFromCache = false;
+  try{
+    const cached = localStorage.getItem('cache:monthsData');
+    if(cached){
+      monthsData = JSON.parse(cached);
+      const cachedCls = localStorage.getItem('cache:classification');
+      if(cachedCls) classification = JSON.parse(cachedCls);
+      const cachedItems = localStorage.getItem('cache:itemOverride');
+      if(cachedItems) itemOverride = JSON.parse(cachedItems);
+      const cachedSectors = localStorage.getItem('cache:sectorsList');
+      if(cachedSectors) SECTORS = JSON.parse(cachedSectors);
+      $('appVersionBadge').textContent = APP_VERSION;
+      $('loadStatus').textContent = 'بيزامن...';
+      renderMonthPills();
+      renderReport();
+      shownFromCache = true;
+    }
+  }catch(e){}
+  if(!shownFromCache) $('loadStatus').textContent = 'بيحمّل البيانات المحفوظة...';
+
   monthsData = {};
   let loadedFromIndex = false;
   try{
@@ -385,10 +407,21 @@ async function loadStorage(){
   });
   if(sectorsChanged) await saveSectors();
 
+  updateLocalCache();
   $('loadStatus').textContent = 'جاهز';
   $('appVersionBadge').textContent = APP_VERSION;
   renderMonthPills();
   renderReport();
+}
+
+// نسخة محلية سريعة عشان الصفحة تفتح فورًا في المرات الجاية — مش بديل للتخزين المركزي.
+function updateLocalCache(){
+  try{
+    localStorage.setItem('cache:monthsData', JSON.stringify(monthsData));
+    localStorage.setItem('cache:classification', JSON.stringify(classification));
+    localStorage.setItem('cache:itemOverride', JSON.stringify(itemOverride));
+    localStorage.setItem('cache:sectorsList', JSON.stringify(SECTORS));
+  }catch(e){}
 }
 
 // الشهور بتتحفظ كل واحد في مفتاح لوحده (month:YYYY-MM) مع مفتاح فهرس بأسماء الشهور،
@@ -578,6 +611,7 @@ async function commitAll(){
   $('uploadMsg').innerHTML = `<div class="msg warn">جاري الحفظ على التخزين المركزي... (ممكن ياخد شوية، متقفلش الصفحة)</div>`;
   try{
     await saveMonths(changed);
+    updateLocalCache();
     $('uploadMsg').innerHTML = `<div class="msg ok">تم الحفظ فعليًا لشهور: ${savedMonths} — البيانات دلوقتي متاحة من أي جهاز تاني.</div>`;
   }catch(e){
     $('uploadMsg').innerHTML = `<div class="msg err">الحفظ فشل (${e.message}) — البيانات ظاهرة على الشاشة دلوقتي بس مش متخزنة، ومش هتلاقيها على أجهزة تانية. جرب "تحديث" وارفع تاني.</div>`;

@@ -54,12 +54,17 @@ function findRows_(sh, key){
 
 function kvGet_(key){
   var sh = getSheet_();
-  var rows = findRows_(sh, key);
-  if(!rows.length) return null;
-  var parts = [];
-  for(var i = 0; i < rows.length; i++){
-    parts.push(sh.getRange(rows[i].row, 3).getValue());
+  if(sh.getLastRow() < 2) return null;
+  // قراءة كل العمودين مرة واحدة أسرع بكتير من getRange لكل صف على حدة
+  var values = sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues();
+  var found = [];
+  for(var i = 0; i < values.length; i++){
+    if(values[i][0] === key) found.push({idx: Number(values[i][1]) || 0, val: values[i][2]});
   }
+  if(!found.length) return null;
+  found.sort(function(a,b){ return a.idx - b.idx; });
+  var parts = [];
+  for(var j = 0; j < found.length; j++) parts.push(found[j].val);
   return parts.join('');
 }
 
@@ -68,18 +73,23 @@ function kvSet_(key, value){
   lock.waitLock(30000);
   try{
     var sh = getSheet_();
-    // امسح الأجزاء القديمة الأول (من تحت لفوق عشان أرقام الصفوف ما تتلخبطش)
-    var old = findRows_(sh, key).map(function(r){ return r.row; }).sort(function(a,b){ return b - a; });
-    for(var i = 0; i < old.length; i++) sh.deleteRow(old[i]);
-
+    // امسح الأجزاء القديمة: نقرأ كل حاجة، نشيل صفوف المفتاح ده، ونعيد الكتابة دفعة واحدة.
+    // ده أسرع بكتير من deleteRow لكل صف لما يكون فيه عشرات الأجزاء.
+    var existing = [];
+    if(sh.getLastRow() >= 2){
+      existing = sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues()
+        .filter(function(r){ return r[0] && r[0] !== key; });
+    }
     var str = String(value);
     var chunks = [];
     for(var p = 0; p < str.length; p += CHUNK_SIZE){
       chunks.push([key, chunks.length, str.substring(p, p + CHUNK_SIZE)]);
     }
     if(!chunks.length) chunks.push([key, 0, '']);
-    // كتابة كل الأجزاء دفعة واحدة أسرع بكتير من appendRow لكل جزء
-    sh.getRange(sh.getLastRow() + 1, 1, chunks.length, 3).setValues(chunks);
+
+    var all = existing.concat(chunks);
+    if(sh.getLastRow() >= 2) sh.getRange(2, 1, sh.getLastRow() - 1, 3).clearContent();
+    if(all.length) sh.getRange(2, 1, all.length, 3).setValues(all);
   } finally {
     lock.releaseLock();
   }
