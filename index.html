@@ -279,7 +279,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v14';
+const APP_VERSION = 'v15';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1101,14 +1101,18 @@ async function generatePdf(includeMonthly, includeSector){
     if(includeSector) sectionsHtml += `<h3 style="font-size:13px;margin:14px 0 6px">مقارنة المبيعات بالقطاع (من الأكبر للأصغر)</h3>${buildTableHtml('sector', columns, rows, 'total')}`;
   });
 
-  // القطاعات الخاصة (ابواب WPC / شتر وبلسيه): صف واحد مجمّع زي جملة الإسكندرية وطنطا
+  // القطاعات الخاصة: الأبواب مفصّلة عميل بعميل زي الموزعين، وشتر وبلسيه صف واحد مجمّع
   if(includeMonthly){
     SPECIAL_SECTORS.forEach(sector=>{
       const {rows} = computeSpecialSectorRowsColumns(sector, columns);
       if(!rows.length) return;
-      const totals = columns.map((_,i)=> rows.reduce((s,r)=> s + (r.months[i]||0), 0));
-      const aggRow = {label:`مبيعات ${sector}`, cls:`${rows.length} عميل`, months: totals};
-      sectionsHtml += `<h2 style="${sectionStyle}">شيت ${sector}</h2>${buildTableHtml('monthly', columns, [aggRow], 'total')}`;
+      if(sector === 'ابواب WPC'){
+        sectionsHtml += `<h2 style="${sectionStyle}">شيت ${sector}</h2>${buildTableHtml('monthly', columns, rows, 'total')}`;
+      } else {
+        const totals = columns.map((_,i)=> rows.reduce((s,r)=> s + (r.months[i]||0), 0));
+        const aggRow = {label:`مبيعات ${sector}`, cls:`${rows.length} عميل`, months: totals};
+        sectionsHtml += `<h2 style="${sectionStyle}">شيت ${sector}</h2>${buildTableHtml('monthly', columns, [aggRow], 'total')}`;
+      }
     });
   }
 
