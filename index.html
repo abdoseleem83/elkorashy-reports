@@ -133,11 +133,26 @@
       <button class="secondary" id="manageCustomersBtn" title="تصنيف العملاء">العملاء</button>
       <button class="secondary" id="manageSectorsBtn" title="مطابقة القطاعات">القطاعات</button>
       <button class="secondary" id="manageItemsBtn" title="الأصناف">الأصناف</button>
+      <button class="secondary" id="archiveBtn" title="أرشفة سنة كاملة">الأرشيف</button>
       <button class="secondary" id="exportBtn">تصدير Excel</button>
       <button class="secondary" id="exportPdfBtn">تصدير PDF</button>
     </div>
   </div>
   <div id="monthsPills" class="row"></div>
+</div>
+
+<div class="card" id="archivePanel" style="display:none">
+  <div class="flex-between">
+    <h2 style="margin:0">الأرشيف</h2>
+    <button class="ghost" id="closeArchiveBtn">إغلاق ✕</button>
+  </div>
+  <p class="sub" style="margin:6px 0 12px">
+    أرشف سنة كاملة عشان تختفي من التقرير الحالي وتفضل محفوظة هنا. تقدر ترجّعها في أي وقت.
+  </p>
+  <h2 style="font-size:14px;margin:0 0 6px">سنين متاحة للأرشفة</h2>
+  <div id="archivableYears" class="row" style="margin-bottom:16px"></div>
+  <h2 style="font-size:14px;margin:0 0 6px">سنين مؤرشفة</h2>
+  <div id="archivedYears" class="row"></div>
 </div>
 
 <div class="card" id="customersPanel" style="display:none">
@@ -279,7 +294,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v17';
+const APP_VERSION = 'v18';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -299,6 +314,7 @@ const FORCED_SECTOR_BY_WAREHOUSE = {
 let monthsData = {};   // { "2026-08": { customerName: { itemName: {cat, net, wh:{warehouseRaw:net}} } } }
 let classification = {}; // { customerName: one of CLASS_OPTIONS }
 let itemOverride = {}; // { itemName: sectorName } — مصدره الأساسي ملف "قطاعات.xls" (ITEM_SECTOR_SEED)
+let archivedYears = []; // سنين مؤرشفة: بياناتها محفوظة بس مستبعدة من التقرير الحالي
 let pendingByMonth = null; // { month: { customer: { item: {cat, net, wh} } } } awaiting classification resolution
 let pendingNewItems = []; // items first seen this upload, for the info message
 
@@ -339,6 +355,8 @@ async function loadStorage(){
       if(cachedItems) itemOverride = JSON.parse(cachedItems);
       const cachedSectors = localStorage.getItem('cache:sectorsList');
       if(cachedSectors) SECTORS = JSON.parse(cachedSectors);
+      const cachedArchive = localStorage.getItem('cache:archivedYears');
+      if(cachedArchive) archivedYears = JSON.parse(cachedArchive);
       $('appVersionBadge').textContent = APP_VERSION;
       $('loadStatus').textContent = 'بيزامن...';
       renderMonthPills();
@@ -407,6 +425,11 @@ async function loadStorage(){
   });
   if(sectorsChanged) await saveSectors();
 
+  try{
+    const ar = await window.storage.get('archivedYears');
+    archivedYears = JSON.parse(ar.value);
+  }catch(e){ archivedYears = []; }
+
   updateLocalCache();
   $('loadStatus').textContent = 'جاهز';
   $('appVersionBadge').textContent = APP_VERSION;
@@ -421,8 +444,68 @@ function updateLocalCache(){
     localStorage.setItem('cache:classification', JSON.stringify(classification));
     localStorage.setItem('cache:itemOverride', JSON.stringify(itemOverride));
     localStorage.setItem('cache:sectorsList', JSON.stringify(SECTORS));
+    localStorage.setItem('cache:archivedYears', JSON.stringify(archivedYears));
   }catch(e){}
 }
+
+// ---- الأرشيف ----
+// السنة المؤرشفة بتختفي من التقرير الحالي، بس بياناتها بتفضل محفوظة زي ما هي
+// (نفس مفاتيح month:YYYY-MM) — الأرشفة بتسجّل السنة في قائمة archivedYears بس.
+async function saveArchivedYears(){
+  await window.storage.set('archivedYears', JSON.stringify(archivedYears));
+}
+function yearOf(m){ return (m||'').split('-')[0]; }
+// الشهور اللي التقارير بتشتغل عليها فعليًا (من غير السنين المؤرشفة)
+function activeMonths(){
+  return Object.keys(monthsData).filter(m => !archivedYears.includes(yearOf(m))).sort();
+}
+function allYears(){
+  return Array.from(new Set(Object.keys(monthsData).map(yearOf))).sort();
+}
+function renderArchivePanel(){
+  const years = allYears();
+  const available = years.filter(y => !archivedYears.includes(y));
+  $('archivableYears').innerHTML = available.map(y=>{
+    const count = Object.keys(monthsData).filter(m=>yearOf(m)===y).length;
+    return `<button class="secondary" data-archive-year="${y}">أرشف ${y} (${count} شهر)</button>`;
+  }).join('') || '<span class="badge">مفيش سنين متاحة للأرشفة</span>';
+
+  $('archivedYears').innerHTML = archivedYears.slice().sort().map(y=>{
+    const count = Object.keys(monthsData).filter(m=>yearOf(m)===y).length;
+    return `<span class="pill done" style="display:inline-flex;align-items:center;gap:8px">
+      ${y} (${count} شهر) <button class="ghost" data-restore-year="${y}" style="padding:2px 8px">رجّعها</button>
+    </span>`;
+  }).join('') || '<span class="badge">مفيش سنين مؤرشفة</span>';
+
+  document.querySelectorAll('[data-archive-year]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const y = btn.getAttribute('data-archive-year');
+      if(!confirm(`تأرشف سنة ${y}؟ هتختفي من التقرير الحالي بس هتفضل محفوظة وتقدر ترجّعها في أي وقت.`)) return;
+      archivedYears.push(y);
+      try{ await saveArchivedYears(); }catch(e){ alert('حفظ الأرشفة فشل: ' + e.message); archivedYears = archivedYears.filter(x=>x!==y); return; }
+      updateLocalCache();
+      renderArchivePanel(); renderMonthPills(); renderReport();
+    });
+  });
+  document.querySelectorAll('[data-restore-year]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const y = btn.getAttribute('data-restore-year');
+      archivedYears = archivedYears.filter(x=>x!==y);
+      try{ await saveArchivedYears(); }catch(e){ alert('الاستعادة فشلت: ' + e.message); archivedYears.push(y); return; }
+      updateLocalCache();
+      renderArchivePanel(); renderMonthPills(); renderReport();
+    });
+  });
+}
+$('archiveBtn').addEventListener('click', ()=>{
+  $('customersPanel').style.display = 'none';
+  $('sectorsPanel').style.display = 'none';
+  $('itemsPanel').style.display = 'none';
+  $('pdfPanel').style.display = 'none';
+  $('archivePanel').style.display = 'block';
+  renderArchivePanel();
+});
+$('closeArchiveBtn').addEventListener('click', ()=> $('archivePanel').style.display='none');
 
 // الشهور بتتحفظ كل واحد في مفتاح لوحده (month:YYYY-MM) مع مفتاح فهرس بأسماء الشهور،
 // بدل مفتاح عملاق واحد كان بيوصل لملايين الحروف ويفشل الطلب كله.
@@ -626,7 +709,12 @@ async function commitAll(){
 function renderMonthPills(){
   const months = Object.keys(monthsData).sort();
   $('monthsPills').innerHTML = months.length
-    ? months.map(m=>`<span class="pill done">${monthLabel(m)} <span class="ghost" style="cursor:pointer" onclick="deleteMonth('${m}')">✕</span></span>`).join('')
+    ? months.map(m=>{
+        const archived = archivedYears.includes(yearOf(m));
+        const cls = archived ? 'pill' : 'pill done';
+        const note = archived ? ' <span class="badge">مؤرشف</span>' : '';
+        return `<span class="${cls}">${monthLabel(m)}${note} <span class="ghost" style="cursor:pointer" onclick="deleteMonth('${m}')">✕</span></span>`;
+      }).join('')
     : '<span class="badge">لسه معندكش شهور محفوظة</span>';
 }
 
@@ -698,7 +786,7 @@ function customerSectorMonthlySeries(c, sector, months){
 }
 // صفوف شيت قطاع خاص: كل عميل ليه مبيعات فيه، شهر بشهر، ما عدا المستبعدين — بغض النظر عن تصنيفه.
 function computeSpecialSectorRows(sector){
-  const months = Object.keys(monthsData).sort();
+  const months = activeMonths();
   const customers = allCustomers().filter(c => classification[c] !== 'مستبعد');
   const rows = customers
     .map(c => ({ label:c, cls: classification[c] || 'غير محدد', months: customerSectorMonthlySeries(c, sector, months) }))
@@ -707,7 +795,7 @@ function computeSpecialSectorRows(sector){
 }
 // صفوف عملاء تصنيف واحد بس (جملة الإسكندرية / جملة طنطا / موزع / مبيعات خاصة)، كل عميل بسطره.
 function computeCustomerRowsByClass(cls){
-  const months = Object.keys(monthsData).sort();
+  const months = activeMonths();
   const customers = allCustomers().filter(c => classification[c] === cls);
   const rows = customers.map(c => ({
     label: c,
@@ -787,7 +875,7 @@ function computeSpecialSectorRowsColumns(sector, columns){
 
 // aggregateWholesale=true بيجمع كل عملاء الجملة (الإسكندرية + طنطا) في صف واحد ملخّص (للرسم البياني بس)
 function computeCustomerRows(aggregateWholesale){
-  const months = Object.keys(monthsData).sort();
+  const months = activeMonths();
   const customers = allCustomers();
   const rows = [];
   const targetList = aggregateWholesale ? customers.filter(c => !WHOLESALE_CLASSES.includes(classification[c])) : customers;
@@ -876,7 +964,7 @@ function buildTableHtml(tabType, months, rows, sortMode){
 }
 
 function renderReport(){
-  const months = Object.keys(monthsData).sort();
+  const months = activeMonths();
   if(!months.length){
     $('reportArea').innerHTML = '<div class="sub">ارفع أول ملف عشان يظهر التقرير.</div>';
     $('chartsArea').style.display = 'none';
@@ -949,7 +1037,7 @@ function sectorAoa(rows, cols){
   return [header, ...body];
 }
 $('exportBtn').addEventListener('click', ()=>{
-  const months = Object.keys(monthsData).sort();
+  const months = activeMonths();
   if(!months.length){ alert('مفيش بيانات لسه'); return; }
   const wbOut = XLSX.utils.book_new();
   const cols = mainSectors();
@@ -1015,6 +1103,7 @@ $('manageCustomersBtn').addEventListener('click', ()=>{
   $('sectorsPanel').style.display = 'none';
   $('itemsPanel').style.display = 'none';
   $('pdfPanel').style.display = 'none';
+  $('archivePanel').style.display = 'none';
   renderCustomersList();
 });
 $('closeCustomersBtn').addEventListener('click', ()=> $('customersPanel').style.display='none');
@@ -1052,6 +1141,7 @@ $('manageSectorsBtn').addEventListener('click', ()=>{
   $('customersPanel').style.display = 'none';
   $('itemsPanel').style.display = 'none';
   $('pdfPanel').style.display = 'none';
+  $('archivePanel').style.display = 'none';
   renderOwnSectorsList();
 });
 $('closeSectorsBtn').addEventListener('click', ()=> $('sectorsPanel').style.display='none');
@@ -1100,6 +1190,7 @@ $('manageItemsBtn').addEventListener('click', ()=>{
   $('customersPanel').style.display = 'none';
   $('sectorsPanel').style.display = 'none';
   $('pdfPanel').style.display = 'none';
+  $('archivePanel').style.display = 'none';
   renderItemsList();
 });
 $('closeItemsBtn').addEventListener('click', ()=> $('itemsPanel').style.display='none');
@@ -1107,7 +1198,7 @@ $('itemSearch').addEventListener('input', (e)=> renderItemsList(e.target.value))
 
 // ---- PDF export (via browser print) ----
 function renderPdfMonthsList(){
-  const months = Object.keys(monthsData).sort();
+  const months = activeMonths();
   $('pdfMonthsList').innerHTML = months.map(m => `
     <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:5px 9px">
       <input type="checkbox" class="pdfMonthChk" value="${m}" checked style="width:14px;height:14px"> ${monthLabel(m)}
@@ -1117,6 +1208,7 @@ $('exportPdfBtn').addEventListener('click', ()=>{
   $('customersPanel').style.display = 'none';
   $('sectorsPanel').style.display = 'none';
   $('itemsPanel').style.display = 'none';
+  $('archivePanel').style.display = 'none';
   $('pdfPanel').style.display = 'block';
   renderPdfMonthsList();
 });
@@ -1127,7 +1219,7 @@ $('pdfMonthsAll').addEventListener('click', ()=>{
 
 
 async function generatePdf(includeMonthly, includeSector){
-  const allMonths = Object.keys(monthsData).sort();
+  const allMonths = activeMonths();
   if(!allMonths.length){ alert('مفيش بيانات لسه'); return; }
   if(!includeMonthly && !includeSector){ alert('اختار تقرير واحد على الأقل'); return; }
 
