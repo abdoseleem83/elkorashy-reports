@@ -201,6 +201,19 @@
       <input type="checkbox" id="pdfSector" checked style="width:16px;height:16px"> مقارنة المبيعات بالقطاع
     </label>
   </div>
+
+  <hr style="border-color:var(--border);margin:14px 0">
+  <div class="flex-between">
+    <h2 style="margin:0;font-size:14px">الشهور المطلوب مقارنتها</h2>
+    <div class="row">
+      <button class="ghost" id="pdfMonthsAll">تحديد الكل</button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
+        <input type="checkbox" id="pdfQuarterMode" style="width:16px;height:16px"> اجمع الشهور في كوارترات (كل 3 شهور مع بعض)
+      </label>
+    </div>
+  </div>
+  <div id="pdfMonthsList" class="row" style="margin-top:8px"></div>
+
   <div class="row" style="margin-top:14px">
     <button id="pdfGenerateBtn">تصدير المختار</button>
     <button class="secondary" id="pdfAllBtn">تصدير الكل</button>
@@ -266,7 +279,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v12';
+const APP_VERSION = 'v13';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -636,6 +649,73 @@ function computeCustomerRowsByClass(cls){
   return {months, rows};
 }
 
+// ---- أعمدة مقارنة قابلة للاختيار (شهور مفردة أو كوارترات مجمّعة) — للـPDF/الإكسل بس ----
+// عمود = {key, label, months:[...]}. لو quarterMode=false كل شهر عمود لوحده، ولو true كل 3 شهور (ربع سنة تقويمي) بيتجمعوا في عمود واحد.
+function buildColumns(selectedMonths, quarterMode){
+  const months = selectedMonths.slice().sort();
+  if(!quarterMode) return months.map(m => ({key:m, label:monthLabel(m), months:[m]}));
+  const byQuarter = {};
+  months.forEach(m=>{
+    const [y,mo] = m.split('-');
+    const q = Math.ceil(parseInt(mo,10)/3);
+    const key = `${y}-Q${q}`;
+    if(!byQuarter[key]) byQuarter[key] = [];
+    byQuarter[key].push(m);
+  });
+  return Object.keys(byQuarter).sort().map(key=>{
+    const [y,qs] = key.split('-Q');
+    return {key, label:`الربع ${qs} ${y}`, months: byQuarter[key].sort()};
+  });
+}
+function customerColumnSeries(c, columns){
+  return columns.map(col => col.months.reduce((s,m)=> s + (monthsData[m] && monthsData[m][c] ? customerTotal(monthsData[m][c]) : 0), 0));
+}
+function customerSectorColumnSeries(c, sector, columns){
+  return columns.map(col => col.months.reduce((s,m)=>{
+    const cd = monthsData[m] && monthsData[m][c];
+    if(!cd) return s;
+    let t = 0;
+    Object.keys(cd).forEach(item=>{
+      itemEffectiveSectors(item, cd[item]).forEach(({sector:sec, amt})=>{ if(sec===sector) t += amt; });
+    });
+    return s + t;
+  }, 0));
+}
+// نفس computeCustomerRowsByClass بس بالأعمدة المختارة (شهور/كوارترات)
+function computeCustomerRowsByClassColumns(cls, columns){
+  const flatMonths = columns.flatMap(c=>c.months);
+  const customers = allCustomers().filter(c => classification[c] === cls);
+  const rows = customers.map(c => ({
+    label: c,
+    cls: classification[c] || 'غير محدد',
+    months: customerColumnSeries(c, columns),
+    sectors: customerSectorTotals(c, flatMonths)
+  }));
+  return {columns, rows};
+}
+// صف واحد مجمّع لكل عملاء تصنيف معيّن (مستخدم لجملة الإسكندرية/طنطا — من غير أسماء عملاء)
+function computeAggregatedClassRow(cls, label, columns){
+  const customers = allCustomers().filter(c => classification[c] === cls);
+  if(!customers.length) return null;
+  const flatMonths = columns.flatMap(c=>c.months);
+  const colTotals = columns.map(()=>0);
+  const sectorsSum = {}; mainSectors().forEach(s=>sectorsSum[s]=0);
+  customers.forEach(c=>{
+    customerColumnSeries(c, columns).forEach((v,i)=> colTotals[i]+=v);
+    const cs = customerSectorTotals(c, flatMonths);
+    mainSectors().forEach(s=> sectorsSum[s]+=(cs[s]||0));
+  });
+  return {label, cls:`${label} (${customers.length} عميل)`, months: colTotals, sectors: sectorsSum};
+}
+// نفس computeSpecialSectorRows بس بالأعمدة المختارة
+function computeSpecialSectorRowsColumns(sector, columns){
+  const customers = allCustomers().filter(c => classification[c] !== 'مستبعد');
+  const rows = customers
+    .map(c => ({ label:c, cls: classification[c] || 'غير محدد', months: customerSectorColumnSeries(c, sector, columns) }))
+    .filter(r => r.months.some(v => v > 0));
+  return {columns, rows};
+}
+
 // aggregateWholesale=true بيجمع كل عملاء الجملة (الإسكندرية + طنطا) في صف واحد ملخّص (للرسم البياني بس)
 function computeCustomerRows(aggregateWholesale){
   const months = Object.keys(monthsData).sort();
@@ -686,7 +766,7 @@ function buildTableHtml(tabType, months, rows, sortMode){
     });
     let html = `<div class="tbl-wrap"><table><thead><tr>
       <th>م</th><th>بيان</th><th>التصنيف</th><th>الإجمالي</th>
-      ${months.map(m=>`<th>${monthLabel(m)}</th>`).join('')}
+      ${months.map(m=> typeof m === 'string' ? `<th>${monthLabel(m)}</th>` : `<th>${m.label}</th>`).join('')}
     </tr></thead><tbody>`;
     let grandTotals = months.map(()=>0);
     rows.forEach((r,i)=>{
@@ -787,7 +867,7 @@ function renderCharts(){
 
 // ---- Export ----
 function monthlyAoa(rows, months){
-  const header = ['م','بيان','التصنيف','الإجمالي', ...months.map(monthLabel)];
+  const header = ['م','بيان','التصنيف','الإجمالي', ...months.map(m=> typeof m === 'string' ? monthLabel(m) : m.label)];
   const body = rows.map((r,i)=>[i+1, r.label, r.cls, r.months.reduce((a,b)=>a+b,0), ...r.months]);
   return [header, ...body];
 }
@@ -805,9 +885,19 @@ $('exportBtn').addEventListener('click', ()=>{
   const wbOut = XLSX.utils.book_new();
   const cols = mainSectors();
 
+  // جملة الإسكندرية/طنطا: صف واحد مجمّع من غير أسماء عملاء
   [
-    {cls:'مبيعات جملة الاسكندرية', name:'جملة-اسكندرية'},
-    {cls:'مبيعات جملة طنطا', name:'جملة-طنطا'},
+    {cls:'مبيعات جملة الاسكندرية', name:'جملة-اسكندرية', title:'مبيعات جملة الإسكندرية'},
+    {cls:'مبيعات جملة طنطا', name:'جملة-طنطا', title:'مبيعات جملة طنطا'},
+  ].forEach(({cls,name,title})=>{
+    const row = computeAggregatedClassRow(cls, title, months.map(m=>({key:m, label:monthLabel(m), months:[m]})));
+    if(!row) return;
+    XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(monthlyAoa([row], months)), `شهري-${name}`);
+    XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(sectorAoa([row], cols)), `قطاع-${name}`);
+  });
+
+  // الموزعين ومبيعات خاصة: عميل بعميل
+  [
     {cls:'موزع', name:'موزعين'},
     {cls:'مبيعات خاصة', name:'خاصة'},
   ].forEach(({cls,name})=>{
@@ -947,18 +1037,35 @@ $('closeItemsBtn').addEventListener('click', ()=> $('itemsPanel').style.display=
 $('itemSearch').addEventListener('input', (e)=> renderItemsList(e.target.value));
 
 // ---- PDF export (via browser print) ----
+function renderPdfMonthsList(){
+  const months = Object.keys(monthsData).sort();
+  $('pdfMonthsList').innerHTML = months.map(m => `
+    <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:5px 9px">
+      <input type="checkbox" class="pdfMonthChk" value="${m}" checked style="width:14px;height:14px"> ${monthLabel(m)}
+    </label>`).join('') || '<span class="badge">مفيش شهور محفوظة</span>';
+}
 $('exportPdfBtn').addEventListener('click', ()=>{
   $('customersPanel').style.display = 'none';
   $('sectorsPanel').style.display = 'none';
   $('itemsPanel').style.display = 'none';
   $('pdfPanel').style.display = 'block';
+  renderPdfMonthsList();
 });
 $('closePdfBtn').addEventListener('click', ()=> $('pdfPanel').style.display='none');
+$('pdfMonthsAll').addEventListener('click', ()=>{
+  document.querySelectorAll('.pdfMonthChk').forEach(el=> el.checked = true);
+});
+
 
 async function generatePdf(includeMonthly, includeSector){
-  const months = Object.keys(monthsData).sort();
-  if(!months.length){ alert('مفيش بيانات لسه'); return; }
+  const allMonths = Object.keys(monthsData).sort();
+  if(!allMonths.length){ alert('مفيش بيانات لسه'); return; }
   if(!includeMonthly && !includeSector){ alert('اختار تقرير واحد على الأقل'); return; }
+
+  const checked = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(el=>el.value);
+  const selectedMonths = checked.length ? checked : allMonths;
+  const quarterMode = $('pdfQuarterMode').checked;
+  const columns = buildColumns(selectedMonths, quarterMode);
 
   let chartsHtml = '';
   const custImg = document.getElementById('topCustomersChart');
@@ -974,24 +1081,35 @@ async function generatePdf(includeMonthly, includeSector){
   const sectionStyle = 'font-size:16px;margin:28px 0 10px;padding-bottom:5px;border-bottom:2px solid #999';
   let sectionsHtml = '';
 
+  // جملة الإسكندرية/طنطا: صف واحد مجمّع من غير أسماء عملاء
   [
-    {cls:'مبيعات جملة الاسكندرية', title:'عملاء جملة الإسكندرية'},
-    {cls:'مبيعات جملة طنطا', title:'عملاء جملة طنطا'},
+    {cls:'مبيعات جملة الاسكندرية', title:'مبيعات جملة الإسكندرية'},
+    {cls:'مبيعات جملة طنطا', title:'مبيعات جملة طنطا'},
+  ].forEach(({cls,title})=>{
+    const row = computeAggregatedClassRow(cls, title, columns);
+    if(!row) return;
+    sectionsHtml += `<h2 style="${sectionStyle}">${title}</h2>`;
+    if(includeMonthly) sectionsHtml += `<h3 style="font-size:13px;margin:14px 0 6px">مقارنة المبيعات (من الأكبر للأصغر)</h3>${buildTableHtml('monthly', columns, [row], 'total')}`;
+    if(includeSector) sectionsHtml += `<h3 style="font-size:13px;margin:14px 0 6px">مقارنة المبيعات بالقطاع</h3>${buildTableHtml('sector', columns, [row], 'total')}`;
+  });
+
+  // الموزعين ومبيعات خاصة: عميل بعميل زي ما هو (مفرّطين)
+  [
     {cls:'موزع', title:'الموزعين'},
     {cls:'مبيعات خاصة', title:'عملاء مبيعات خاصة'},
   ].forEach(({cls,title})=>{
-    const {rows} = computeCustomerRowsByClass(cls);
+    const {rows} = computeCustomerRowsByClassColumns(cls, columns);
     if(!rows.length) return;
     sectionsHtml += `<h2 style="${sectionStyle}">${title}</h2>`;
-    if(includeMonthly) sectionsHtml += `<h3 style="font-size:13px;margin:14px 0 6px">مقارنة المبيعات الشهرية (من الأكبر للأصغر)</h3>${buildTableHtml('monthly', months, rows, 'total')}`;
-    if(includeSector) sectionsHtml += `<h3 style="font-size:13px;margin:14px 0 6px">مقارنة المبيعات بالقطاع (من الأكبر للأصغر)</h3>${buildTableHtml('sector', months, rows, 'total')}`;
+    if(includeMonthly) sectionsHtml += `<h3 style="font-size:13px;margin:14px 0 6px">مقارنة المبيعات (من الأكبر للأصغر)</h3>${buildTableHtml('monthly', columns, rows, 'total')}`;
+    if(includeSector) sectionsHtml += `<h3 style="font-size:13px;margin:14px 0 6px">مقارنة المبيعات بالقطاع (من الأكبر للأصغر)</h3>${buildTableHtml('sector', columns, rows, 'total')}`;
   });
 
   if(includeMonthly){
     SPECIAL_SECTORS.forEach(sector=>{
-      const {rows} = computeSpecialSectorRows(sector);
+      const {rows} = computeSpecialSectorRowsColumns(sector, columns);
       if(!rows.length) return;
-      sectionsHtml += `<h2 style="${sectionStyle}">شيت ${sector}</h2>${buildTableHtml('monthly', months, rows, 'total')}`;
+      sectionsHtml += `<h2 style="${sectionStyle}">شيت ${sector}</h2>${buildTableHtml('monthly', columns, rows, 'total')}`;
     });
   }
 
