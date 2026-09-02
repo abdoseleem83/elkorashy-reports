@@ -228,29 +228,35 @@
 </div>
 
 <script>
-// localStorage-backed shim so the app works as a standalone deployed page
-// (window.storage only exists inside the Claude artifacts sandbox, not on a real site).
-if(!window.storage){
-  window.storage = {
-    async get(key, shared){
-      const v = localStorage.getItem(key);
-      if(v === null) throw new Error('not found');
-      return {key, value: v, shared: !!shared};
-    },
-    async set(key, value, shared){
-      localStorage.setItem(key, value);
-      return {key, value, shared: !!shared};
-    },
-    async delete(key, shared){
-      localStorage.removeItem(key);
-      return {key, deleted: true, shared: !!shared};
-    },
-    async list(prefix, shared){
-      const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix));
-      return {keys, prefix, shared: !!shared};
-    }
-  };
-}
+// تخزين مركزي على Google Sheets عن طريق Apps Script — بديل localStorage عشان الداتا
+// تتفتح من أي جهاز وتفضل متزامنة (بدل ما تبقى محفوظة على متصفح واحد بس).
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz9B3WIqHNQ1wkIDCb3lZklF2RESJW0kIz-WZxmi6W6VP2IuPhr0yVCx-mpJ4HE6oyh/exec';
+window.storage = {
+  async get(key){
+    const res = await fetch(`${APPS_SCRIPT_URL}?action=get&key=${encodeURIComponent(key)}`);
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'not found');
+    return {key, value: data.value, shared:true};
+  },
+  async set(key, value){
+    const res = await fetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'set', key, value})});
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'save failed');
+    return {key, value, shared:true};
+  },
+  async delete(key){
+    const res = await fetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'delete', key})});
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'delete failed');
+    return {key, deleted:true, shared:true};
+  },
+  async list(prefix){
+    const res = await fetch(`${APPS_SCRIPT_URL}?action=list&prefix=${encodeURIComponent(prefix||'')}`);
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'list failed');
+    return {keys: data.keys || [], prefix, shared:true};
+  }
+};
 
 const CATEGORY_MAP = {
   "قطاعات PVC كومبن": "قطاعات PVC كومبن",
@@ -264,7 +270,7 @@ const CATEGORY_MAP = {
   "ابواب WPC": "ابواب WPC",
 };
 const CLASS_OPTIONS = ["مبيعات جملة","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
-const APP_VERSION = 'v8';
+const APP_VERSION = 'v9';
 let SECTORS = ["قطاعات PVC كومبن","قطاعات كرافت لاين","نيو لاين","اكسسوارات","ابواب WPC"];
 
 let monthsData = {};   // { "2026-08": { customerName: { itemName: {cat, net} } } }
