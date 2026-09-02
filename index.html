@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تقارير مبيعات القرشي</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#f3f4f8">
@@ -179,16 +179,7 @@
     <button id="addSectorBtn">إضافة قطاع</button>
   </div>
 
-  <hr style="border-color:var(--border);margin:18px 0">
-
-  <h2 style="margin:0 0 6px">مطابقة أسماء الأقسام في ملف المحاسبة للقطاعات</h2>
-  <div class="sub">أي اسم قسم يظهر في ملف المحاسبة (زي "اكسسوارات pvc" أو "جيفيز") لازم يترجم لواحد من القطاعات فوق. لو ظهر اسم قسم جديد بعد الرفع مش متطابق، هيتضاف هنا تلقائي وتقدر تعدّله.</div>
-  <div id="sectorsList" style="margin-top:10px"></div>
-  <div class="row" style="margin-top:12px">
-    <input type="text" id="newRawCat" placeholder="اسم قسم زي ما هو في ملف المحاسبة">
-    <select id="newRawSector"></select>
-    <button id="addRawCatBtn">إضافة</button>
-  </div>
+  <div class="sub" style="margin-top:14px">ملاحظة: تصنيف القطاع بيتحدد لكل <b>صنف</b> من لوحة "الأصناف"، مش من اسم القسم في ملف المحاسبة.</div>
 </div>
 
 <div class="card" id="itemsPanel" style="display:none">
@@ -222,6 +213,7 @@
     <h2 style="margin:0;font-size:14px">الشهور المطلوب مقارنتها</h2>
     <div class="row">
       <button class="ghost" id="pdfMonthsAll">تحديد الكل</button>
+      <button class="ghost" id="pdfMonthsNone">إلغاء الكل</button>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
         <input type="checkbox" id="pdfQuarterMode" style="width:16px;height:16px"> اجمع الشهور في كوارترات (كل 3 شهور مع بعض)
       </label>
@@ -263,28 +255,49 @@ const SEED_CUSTOMERS = [{"name":"SM - م مصطفي رمضان","class":"مبي�
 // تخزين مركزي على Google Sheets عن طريق Apps Script — عشان الشغل يتفتح ويتزامن من أي جهاز
 // بدل ما يبقى محفوظ على متصفح واحد بس (localStorage).
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyOOLyOIBu8vl6LyTlCaEJJQceCP1l285yio0_aT18-xDBEKxFiyaEAtShuv1I3YUoNlQ/exec';
+// مفتاح مشترك اختياري: لو حطيت نفس القيمة في SHARED_TOKEN هنا وفي Code.gs، أي حد
+// معندوش المفتاح ده مش هيقدر يقرا أو يكتب حتى لو عرف رابط الـApps Script.
+const SHARED_TOKEN = '';
+const NET_TIMEOUT_MS = 60000;
+const NET_RETRIES = 2;
+
+// أي طلب شبكة بيتعاد لحد مرتين لو فشل بسبب الشبكة/مهلة — الشبكة على الموبايل بتقطع كتير.
+async function apiFetch(url, options){
+  let lastErr;
+  for(let attempt = 0; attempt <= NET_RETRIES; attempt++){
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=> ctrl.abort(), NET_TIMEOUT_MS);
+    try{
+      const res = await fetch(url, Object.assign({signal: ctrl.signal}, options||{}));
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    }catch(e){
+      lastErr = e.name === 'AbortError' ? new Error('الطلب أخد وقت أطول من اللازم') : e;
+      if(attempt < NET_RETRIES) await new Promise(r=> setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }finally{ clearTimeout(timer); }
+  }
+  throw lastErr;
+}
+const tokenParam = SHARED_TOKEN ? `&token=${encodeURIComponent(SHARED_TOKEN)}` : '';
+
 window.storage = {
   async get(key){
-    const res = await fetch(`${APPS_SCRIPT_URL}?action=get&key=${encodeURIComponent(key)}`);
-    const data = await res.json();
+    const data = await apiFetch(`${APPS_SCRIPT_URL}?action=get&key=${encodeURIComponent(key)}${tokenParam}`);
     if(!data.ok) throw new Error(data.error || 'not found');
     return {key, value: data.value, shared:true};
   },
   async set(key, value){
-    const res = await fetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'set', key, value})});
-    const data = await res.json();
+    const data = await apiFetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'set', key, value, token: SHARED_TOKEN})});
     if(!data.ok) throw new Error(data.error || 'save failed');
     return {key, value, shared:true};
   },
   async delete(key){
-    const res = await fetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'delete', key})});
-    const data = await res.json();
+    const data = await apiFetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'delete', key, token: SHARED_TOKEN})});
     if(!data.ok) throw new Error(data.error || 'delete failed');
     return {key, deleted:true, shared:true};
   },
   async list(prefix){
-    const res = await fetch(`${APPS_SCRIPT_URL}?action=list&prefix=${encodeURIComponent(prefix||'')}`);
-    const data = await res.json();
+    const data = await apiFetch(`${APPS_SCRIPT_URL}?action=list&prefix=${encodeURIComponent(prefix||'')}${tokenParam}`);
     if(!data.ok) throw new Error(data.error || 'list failed');
     return {keys: data.keys || [], prefix, shared:true};
   }
@@ -294,7 +307,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v18';
+const APP_VERSION = 'v19';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -317,8 +330,18 @@ let itemOverride = {}; // { itemName: sectorName } — مصدره الأساسي
 let archivedYears = []; // سنين مؤرشفة: بياناتها محفوظة بس مستبعدة من التقرير الحالي
 let pendingByMonth = null; // { month: { customer: { item: {cat, net, wh} } } } awaiting classification resolution
 let pendingNewItems = []; // items first seen this upload, for the info message
+let duplicateMonths = []; // شهور موجودة بالفعل في الرفعة الحالية — بتحتاج قرار استبدال/إضافة
+let replaceExisting = false;
 
 const $ = (id) => document.getElementById(id);
+
+// أسماء العملاء والأصناف جاية من ملف إكسل خارجي — لازم تتهرّب قبل ما تتحط في HTML
+// عشان اسم فيه < أو " ميكسرش الجدول أو يحقن كود.
+function esc(v){
+  return String(v == null ? '' : v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 
 function normName(n){ return (n||"").toString().trim().replace(/\s+/g,' '); }
 
@@ -548,10 +571,17 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
   const sheet = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:''});
   const headerIdx = findHeaderRow(rows);
+  if(headerIdx === -1){
+    throw new Error('مش لاقي صف العناوين (لازم يكون فيه عمود اسمه c_name في أول 10 صفوف). اتأكد إنك رفعت ملف تصدير المحاسبة الخام مش ملف متعدّل.');
+  }
   const header = rows[headerIdx];
   const col = (name) => header.findIndex(h => normName(h) === name);
   const cCustomer = col('c_name'), cItem = col('Item_Name'), cVout = col('vout'), cVin = col('vin'),
         cDate = col('Order_Date'), cInv = col('Inv_Name');
+  const missing = [['c_name',cCustomer],['Item_Name',cItem],['vout',cVout]].filter(p => p[1] === -1).map(p => p[0]);
+  if(missing.length){
+    throw new Error('الملف ناقصه أعمدة أساسية: ' + missing.join('، ') + '. اتأكد إنه نفس تنسيق تصدير المحاسبة.');
+  }
   const byMonth = {}; // month -> customer -> item -> {cat, net, wh}
   const newItems = new Set();
   for(let i=headerIdx+1;i<rows.length;i++){
@@ -575,7 +605,7 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
   return {byMonth, newItems: Array.from(newItems)};
 }
 
-function itemSector(itemName, rawCat){
+function itemSector(itemName){
   if(itemOverride[itemName]) return itemOverride[itemName];
   return guessSector(itemName);
 }
@@ -583,7 +613,7 @@ function itemSector(itemName, rawCat){
 // القطاع الفعلي لكل جزء من صافي مبيعات صنف معين، بعد تطبيق ترحيل المخازن الإجباري (شتر وبلسيه / مصنع الأبواب).
 // بيرجع array من {sector, amt} — عادة عنصر واحد، وممكن أكتر لو الصنف اتباع من أكتر من مخزن في نفس الشهر.
 function itemEffectiveSectors(item, entry){
-  const base = itemSector(item, entry.cat);
+  const base = itemSector(item);
   const whKeys = entry.wh ? Object.keys(entry.wh) : [];
   if(!whKeys.length) return [{sector: base, amt: entry.net}];
   return whKeys.map(w => ({ sector: FORCED_SECTOR_BY_WAREHOUSE[w] || base, amt: entry.wh[w] }));
@@ -611,6 +641,9 @@ $('processBtn').addEventListener('click', async ()=>{
 
     pendingByMonth = byMonth;
     pendingNewItems = newItems;
+    // أخطر حالة: رفع نفس الملف تاني كان بيضيف الأرقام فوق القديمة ويضاعف المبيعات من غير أي تحذير.
+    duplicateMonths = Object.keys(byMonth).filter(m => monthsData[m]);
+    replaceExisting = duplicateMonths.length > 0;
     newItems.forEach(it => { itemOverride[it] = guessSector(it); });
     let saveWarn = '';
     if(newItems.length){
@@ -623,6 +656,14 @@ $('processBtn').addEventListener('click', async ()=>{
     const unmatched = Array.from(allCustomers).filter(c => !classification[c]);
 
     let msg = `<div class="msg ok">لقيت بيانات لشهور: ${Object.keys(byMonth).sort().map(monthLabel).join('، ')} (${allCustomers.size} عميل).</div>`;
+    if(duplicateMonths.length){
+      msg += `<div class="msg warn">
+        <b>تنبيه:</b> شهور محفوظة عندك خلاص: ${duplicateMonths.sort().map(monthLabel).join('، ')}.<br>
+        اختار تعمل إيه قبل الحفظ:
+        <label style="display:block;margin-top:6px"><input type="radio" name="dupMode" value="replace" checked> <b>استبدال</b> — امسح القديم واستخدم الملف ده (المناسب لو بترفع نفس الشهر تاني)</label>
+        <label style="display:block"><input type="radio" name="dupMode" value="append"> <b>إضافة فوق القديم</b> — اجمع الأرقام (استخدمه بس لو الملف ده جزء تاني من نفس الشهر)</label>
+      </div>`;
+    }
     if(newItems.length){
       msg += `<div class="msg warn">${newItems.length} صنف جديد اتحط تلقائي على أقرب قطاع بالتخمين — راجعهم من "الأصناف" لو حابب تظبطهم.</div>`;
     }
@@ -641,21 +682,32 @@ $('processBtn').addEventListener('click', async ()=>{
 
 function showUnmatched(list){
   $('unmatchedCard').style.display = 'block';
+  // الخيار الفاضي مهم: قبل كده كان أول خيار (جملة الإسكندرية) هو الافتراضي،
+  // فأي عميل المستخدم ما راجعوش كان بيتصنّف غلط من غير ما ياخد باله.
   $('unmatchedList').innerHTML = list.map((name)=>`
     <div class="row" style="margin-bottom:6px">
-      <span style="min-width:260px">${name}</span>
+      <span style="min-width:260px">${esc(name)}</span>
       <select data-name="${encodeURIComponent(name)}" class="classifSelect">
-        ${CLASS_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}
+        <option value="">— اختار التصنيف —</option>
+        ${CLASS_OPTIONS.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}
       </select>
     </div>`).join('');
 }
 
 $('saveClassifBtn').addEventListener('click', async ()=>{
-  document.querySelectorAll('.classifSelect').forEach(sel=>{
+  const sels = Array.from(document.querySelectorAll('.classifSelect'));
+  const blank = sels.filter(sel => !sel.value);
+  if(blank.length){
+    alert(`لسه ${blank.length} عميل من غير تصنيف. حدد تصنيف لكل واحد الأول.`);
+    blank[0].focus();
+    return;
+  }
+  sels.forEach(sel=>{
     const name = decodeURIComponent(sel.getAttribute('data-name'));
     classification[name] = sel.value;
   });
-  await saveClassification();
+  try{ await saveClassification(); }
+  catch(e){ alert('حفظ التصنيفات فشل: ' + e.message + ' — جرب تاني قبل ما تحفظ البيانات.'); return; }
   $('unmatchedCard').style.display = 'none';
 });
 
@@ -674,7 +726,11 @@ $('confirmCommitBtn').addEventListener('click', async ()=>{
 });
 
 async function commitAll(){
+  const dupSel = document.querySelector('input[name="dupMode"]:checked');
+  if(dupSel) replaceExisting = dupSel.value === 'replace';
   Object.keys(pendingByMonth).forEach(month=>{
+    // استبدال = امسح بيانات الشهر القديمة الأول عشان الأرقام ما تتضاعفش
+    if(replaceExisting && duplicateMonths.includes(month)) delete monthsData[month];
     if(!monthsData[month]) monthsData[month] = {};
     Object.keys(pendingByMonth[month]).forEach(cust=>{
       if(!monthsData[month][cust]) monthsData[month][cust] = {};
@@ -700,7 +756,7 @@ async function commitAll(){
     $('uploadMsg').innerHTML = `<div class="msg err">الحفظ فشل (${e.message}) — البيانات ظاهرة على الشاشة دلوقتي بس مش متخزنة، ومش هتلاقيها على أجهزة تانية. جرب "تحديث" وارفع تاني.</div>`;
     return;
   }
-  pendingByMonth = null; pendingNewItems = [];
+  pendingByMonth = null; pendingNewItems = []; duplicateMonths = []; replaceExisting = false;
   $('fileInput').value=''; $('monthInput').value=''; $('processBtn').disabled=true;
   renderMonthPills();
   renderReport();
@@ -719,10 +775,26 @@ function renderMonthPills(){
 }
 
 async function deleteMonth(m){
-  if(!confirm(`تمسح بيانات شهر ${monthLabel(m)}؟`)) return;
+  if(!confirm(`تمسح بيانات شهر ${monthLabel(m)}؟ ده مش بيترجع.`)) return;
+  const backup = monthsData[m];
   delete monthsData[m];
-  try{ await window.storage.delete('month:' + m); }catch(e){}
-  await saveMonths([]);
+  try{
+    await window.storage.delete('month:' + m);
+    // تحديث الفهرس بس. قبل كده saveMonths([]) كانت بتعيد رفع كل الشهور من أول وجديد.
+    await window.storage.set('monthsIndex', JSON.stringify(Object.keys(monthsData).sort()));
+  }catch(e){
+    monthsData[m] = backup;
+    alert('المسح فشل: ' + e.message + ' — الشهر لسه موجود.');
+    return;
+  }
+  // لو مبقاش فيه شهور في سنة مؤرشفة، شيلها من قايمة الأرشيف
+  const remainingYears = new Set(Object.keys(monthsData).map(yearOf));
+  const cleaned = archivedYears.filter(y => remainingYears.has(y));
+  if(cleaned.length !== archivedYears.length){
+    archivedYears = cleaned;
+    try{ await saveArchivedYears(); }catch(e){}
+  }
+  updateLocalCache();
   renderMonthPills();
   renderReport();
 }
@@ -739,9 +811,11 @@ document.querySelectorAll('.tab').forEach(t=>{
   });
 });
 
+// عملاء الشهور النشطة بس. قبل كده كانت بترجع عملاء السنين المؤرشفة كمان
+// فبيظهروا في التقرير بصفوف كلها أصفار.
 function allCustomers(){
   const set = new Set();
-  Object.values(monthsData).forEach(md => Object.keys(md).forEach(c=>set.add(c)));
+  activeMonths().forEach(m => Object.keys(monthsData[m]||{}).forEach(c=>set.add(c)));
   return Array.from(set);
 }
 
@@ -790,7 +864,7 @@ function computeSpecialSectorRows(sector){
   const customers = allCustomers().filter(c => classification[c] !== 'مستبعد');
   const rows = customers
     .map(c => ({ label:c, cls: classification[c] || 'غير محدد', months: customerSectorMonthlySeries(c, sector, months) }))
-    .filter(r => r.months.some(v => v > 0));
+    .filter(r => r.months.some(v => v !== 0));
   return {months, rows};
 }
 // صفوف عملاء تصنيف واحد بس (جملة الإسكندرية / جملة طنطا / موزع / مبيعات خاصة)، كل عميل بسطره.
@@ -869,14 +943,15 @@ function computeSpecialSectorRowsColumns(sector, columns){
   const customers = allCustomers().filter(c => classification[c] !== 'مستبعد');
   const rows = customers
     .map(c => ({ label:c, cls: classification[c] || 'غير محدد', months: customerSectorColumnSeries(c, sector, columns) }))
-    .filter(r => r.months.some(v => v > 0));
+    .filter(r => r.months.some(v => v !== 0));
   return {columns, rows};
 }
 
 // aggregateWholesale=true بيجمع كل عملاء الجملة (الإسكندرية + طنطا) في صف واحد ملخّص (للرسم البياني بس)
 function computeCustomerRows(aggregateWholesale){
   const months = activeMonths();
-  const customers = allCustomers();
+  // المصنّفين "مستبعد" كانوا بيظهروا في تقرير الشاشة رغم إنهم مستبعدين من الإكسل/PDF
+  const customers = allCustomers().filter(c => classification[c] !== 'مستبعد');
   const rows = [];
   const targetList = aggregateWholesale ? customers.filter(c => !WHOLESALE_CLASSES.includes(classification[c])) : customers;
   targetList.forEach(c=>{
@@ -923,7 +998,7 @@ function buildTableHtml(tabType, months, rows, sortMode){
     });
     let html = `<div class="tbl-wrap"><table><thead><tr>
       <th>م</th><th>بيان</th><th>التصنيف</th><th>الإجمالي</th>
-      ${months.map(m=> typeof m === 'string' ? `<th>${monthLabel(m)}</th>` : `<th>${m.label}</th>`).join('')}
+      ${months.map(m=> typeof m === 'string' ? `<th>${esc(monthLabel(m))}</th>` : `<th>${esc(m.label)}</th>`).join('')}
     </tr></thead><tbody>`;
     let grandTotals = months.map(()=>0);
     rows.forEach((r,i)=>{
@@ -938,7 +1013,7 @@ function buildTableHtml(tabType, months, rows, sortMode){
         }
         return `<td class="num" style="${style}">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`;
       }).join('');
-      html += `<tr><td>${i+1}</td><td style="text-align:right">${r.label}</td><td>${r.cls}</td><td class="num">${rowTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</td>${cells}</tr>`;
+      html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.label)}</td><td>${esc(r.cls)}</td><td class="num">${rowTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</td>${cells}</tr>`;
     });
     html += `<tr class="total-row"><td colspan="3">الإجمالي</td><td class="num">${grandTotals.reduce((a,b)=>a+b,0).toLocaleString('en-US',{maximumFractionDigits:0})}</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}</tr>`;
     html += '</tbody></table></div>';
@@ -947,14 +1022,14 @@ function buildTableHtml(tabType, months, rows, sortMode){
     const cols = mainSectors();
     let html = `<div class="tbl-wrap"><table><thead><tr>
       <th>م</th><th>العميل / المجموعة</th><th>التصنيف</th>
-      ${cols.map(s=>`<th>${s}</th>`).join('')}<th>الإجمالي</th>
+      ${cols.map(s=>`<th>${esc(s)}</th>`).join('')}<th>الإجمالي</th>
     </tr></thead><tbody>`;
     let grandTotals = cols.map(()=>0);
     rows.forEach((r,i)=>{
-      const sums = cols.map(s => r.sectors[s]||0);
+      const sums = cols.map(s => (r.sectors||{})[s]||0);
       const total = sums.reduce((a,b)=>a+b,0);
       sums.forEach((v,si)=>grandTotals[si]+=v);
-      html += `<tr><td>${i+1}</td><td style="text-align:right">${r.label}</td><td>${r.cls}</td>${sums.map(v=>`<td class="num">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`).join('')}<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
+      html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.label)}</td><td>${esc(r.cls)}</td>${sums.map(v=>`<td class="num">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`).join('')}<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
     });
     const gt = grandTotals.reduce((a,b)=>a+b,0);
     html += `<tr class="total-row"><td colspan="3">الإجمالي</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}<td class="num">${gt.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
@@ -970,8 +1045,11 @@ function renderReport(){
     $('chartsArea').style.display = 'none';
     return;
   }
-  const {rows} = computeCustomerRows(false);
-  $('reportArea').innerHTML = buildTableHtml(activeTab, months, rows);
+  const rows = computeCustomerRows(false).rows.filter(r => r.months.some(v => v !== 0));
+  // نفس ترتيب التصدير: من الأكبر للأصغر بدل الترتيب الأبجدي
+  $('reportArea').innerHTML = rows.length
+    ? buildTableHtml(activeTab, months, rows, 'total')
+    : '<div class="sub">مفيش بيانات معروضة — يمكن كل السنين مؤرشفة أو كل العملاء مستبعدين.</div>';
   renderCharts();
 }
 
@@ -1000,7 +1078,7 @@ function drawBarChart(canvasId, labels, data, color){
 // إجمالي كل قطاع (بما فيها ابواب WPC وشتر وبلسيه) عبر كل العملاء والشهور، ما عدا المستبعدين.
 function allSectorTotals(){
   const totals = {}; SECTORS.forEach(s=> totals[s]=0);
-  Object.keys(monthsData).forEach(m=>{
+  activeMonths().forEach(m=>{
     Object.keys(monthsData[m]).forEach(c=>{
       if(classification[c] === 'مستبعد') return;
       const sums = customerSectorSums(monthsData[m][c]);
@@ -1010,7 +1088,7 @@ function allSectorTotals(){
   return totals;
 }
 function renderCharts(){
-  const months = Object.keys(monthsData);
+  const months = activeMonths();
   if(!months.length){ $('chartsArea').style.display = 'none'; return; }
   const {rows} = computeCustomerRows(true); // عملاء الجملة مجمّعين في صف واحد
   const custTotals = rows.map(r => ({label:r.label, total: r.months.reduce((a,b)=>a+b,0)}))
@@ -1080,10 +1158,10 @@ function renderCustomersList(filter=''){
   const f = filter.trim();
   const rows = names.filter(n => !f || n.includes(f)).map(n => `
     <tr>
-      <td style="text-align:right">${n}</td>
+      <td style="text-align:right">${esc(n)}</td>
       <td>
         <select data-cust="${encodeURIComponent(n)}" class="custClassSelect">
-          ${CLASS_OPTIONS.map(o=>`<option value="${o}" ${classification[n]===o?'selected':''}>${o}</option>`).join('')}
+          ${CLASS_OPTIONS.map(o=>`<option value="${esc(o)}" ${classification[n]===o?'selected':''}>${esc(o)}</option>`).join('')}
         </select>
       </td>
     </tr>`).join('');
@@ -1113,15 +1191,23 @@ $('custSearch').addEventListener('input', (e)=> renderCustomersList(e.target.val
 function renderOwnSectorsList(){
   $('sectorsOwnList').innerHTML = SECTORS.map(s=>`
     <span class="pill done" style="display:inline-flex;align-items:center;gap:6px">
-      ${s}${SPECIAL_SECTORS.includes(s) ? ' <span class="badge">(شيت لوحده)</span>' : ''}
+      ${esc(s)}${SPECIAL_SECTORS.includes(s) ? ' <span class="badge">(شيت لوحده)</span>' : ''}
       <span class="ghost" style="cursor:pointer" data-del-sector="${encodeURIComponent(s)}">✕</span>
     </span>`).join('') || '<span class="badge">مفيش قطاعات لسه</span>';
   document.querySelectorAll('[data-del-sector]').forEach(el=>{
     el.addEventListener('click', async ()=>{
       const s = decodeURIComponent(el.getAttribute('data-del-sector'));
-      if(!confirm(`تحذف قطاع "${s}"؟ أي صنف متحسب عليه دلوقتي هيبقى محتاج إعادة تصنيف.`)) return;
+      const affected = Object.keys(itemOverride).filter(it => itemOverride[it] === s);
+      const fallback = SECTORS.filter(x=>x!==s)[0];
+      if(!fallback){ alert('مينفعش تحذف آخر قطاع.'); return; }
+      if(!confirm(`تحذف قطاع "${s}"؟ ${affected.length} صنف متحسب عليه دلوقتي هيتنقلوا لقطاع "${fallback}" وتقدر تعدّلهم من لوحة الأصناف.`)) return;
       SECTORS = SECTORS.filter(x=>x!==s);
-      await saveSectors();
+      affected.forEach(it => { itemOverride[it] = fallback; });
+      try{
+        await saveSectors();
+        if(affected.length) await saveItemOverride();
+      }catch(err){ alert('الحفظ فشل: ' + err.message); return; }
+      updateLocalCache();
       renderOwnSectorsList();
       renderReport();
     });
@@ -1132,7 +1218,9 @@ $('addSectorBtn').addEventListener('click', async ()=>{
   if(!name) return;
   if(SECTORS.includes(name)){ alert('القطاع ده موجود بالفعل'); return; }
   SECTORS.push(name);
-  await saveSectors();
+  try{ await saveSectors(); }
+  catch(e){ SECTORS = SECTORS.filter(x=>x!==name); alert('حفظ القطاع فشل: ' + e.message); return; }
+  updateLocalCache();
   $('newSectorName').value = '';
   renderOwnSectorsList();
 });
@@ -1166,11 +1254,11 @@ function renderItemsList(filter=''){
   const f = filter.trim();
   const rows = items.filter(o => !f || o.item.includes(f)).map(o => `
     <tr>
-      <td style="text-align:right">${o.item}</td>
+      <td style="text-align:right">${esc(o.item)}</td>
       <td class="num">${o.total.toLocaleString('en-US',{maximumFractionDigits:0})}</td>
       <td>
         <select data-item="${encodeURIComponent(o.item)}" class="itemSectorSelect">
-          ${SECTORS.map(s=>`<option value="${s}" ${itemSector(o.item,o.cat)===s?'selected':''}>${s}</option>`).join('')}
+          ${SECTORS.map(s=>`<option value="${esc(s)}" ${itemSector(o.item)===s?'selected':''}>${esc(s)}</option>`).join('')}
         </select>
       </td>
     </tr>`).join('');
@@ -1215,6 +1303,9 @@ $('exportPdfBtn').addEventListener('click', ()=>{
 $('closePdfBtn').addEventListener('click', ()=> $('pdfPanel').style.display='none');
 $('pdfMonthsAll').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfMonthChk').forEach(el=> el.checked = true);
+});
+$('pdfMonthsNone').addEventListener('click', ()=>{
+  document.querySelectorAll('.pdfMonthChk').forEach(el=> el.checked = false);
 });
 
 
@@ -1349,7 +1440,7 @@ $('updateBtn').addEventListener('click', async ()=>{
       }
     }
   }catch(e){}
-  location.reload(true);
+  location.reload();
 });
 let deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {

@@ -13,6 +13,16 @@
 
 var CHUNK_SIZE = 40000; // أقل من حد الـ50 ألف بهامش أمان
 
+// مفتاح مشترك اختياري. لو حطيت قيمة هنا لازم تحط نفس القيمة في SHARED_TOKEN
+// جوه index.html — من غير كده أي حد يعرف رابط الـWeb App يقدر يقرا ويكتب ويمسح البيانات.
+// خليها '' لو مش عايز تفعّلها.
+var SHARED_TOKEN = '';
+
+function checkToken_(token){
+  if(!SHARED_TOKEN) return true;
+  return String(token || '') === SHARED_TOKEN;
+}
+
 function getSpreadsheet_(){
   var props = PropertiesService.getScriptProperties();
   var id = props.getProperty('SS_ID');
@@ -73,13 +83,6 @@ function kvSet_(key, value){
   lock.waitLock(30000);
   try{
     var sh = getSheet_();
-    // امسح الأجزاء القديمة: نقرأ كل حاجة، نشيل صفوف المفتاح ده، ونعيد الكتابة دفعة واحدة.
-    // ده أسرع بكتير من deleteRow لكل صف لما يكون فيه عشرات الأجزاء.
-    var existing = [];
-    if(sh.getLastRow() >= 2){
-      existing = sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues()
-        .filter(function(r){ return r[0] && r[0] !== key; });
-    }
     var str = String(value);
     var chunks = [];
     for(var p = 0; p < str.length; p += CHUNK_SIZE){
@@ -87,9 +90,24 @@ function kvSet_(key, value){
     }
     if(!chunks.length) chunks.push([key, 0, '']);
 
-    var all = existing.concat(chunks);
-    if(sh.getLastRow() >= 2) sh.getRange(2, 1, sh.getLastRow() - 1, 3).clearContent();
-    if(all.length) sh.getRange(2, 1, all.length, 3).setValues(all);
+    // بنكتب فوق صفوف المفتاح نفسه بس، وباقي الشيت ما بيتلمسش.
+    // النسخة القديمة كانت بتقرا وتعيد كتابة كل الشيت في كل حفظ — مع بيانات كتير
+    // ده كان بيقرّب من مهلة الـ6 دقايق بتاعة Apps Script ويخاطر بضياع بيانات مفاتيح تانية
+    // لو الاستدعاء اتقطع في النص.
+    var own = findRows_(sh, key).map(function(r){ return r.row; });
+    var reuse = Math.min(own.length, chunks.length);
+    for(var i = 0; i < reuse; i++){
+      sh.getRange(own[i], 1, 1, 3).setValues([chunks[i]]);
+    }
+    if(chunks.length > own.length){
+      var extra = chunks.slice(own.length);
+      sh.getRange(sh.getLastRow() + 1, 1, extra.length, 3).setValues(extra);
+    } else if(own.length > chunks.length){
+      // الصفوف الزيادة تتمسح من تحت لفوق عشان أرقام الصفوف ما تتزحلقش
+      var surplus = own.slice(chunks.length).sort(function(a,b){ return b - a; });
+      for(var j = 0; j < surplus.length; j++) sh.deleteRow(surplus[j]);
+    }
+    SpreadsheetApp.flush();
   } finally {
     lock.releaseLock();
   }
@@ -129,6 +147,7 @@ function jsonOut_(obj){
 
 function doGet(e){
   try{
+    if(!checkToken_(e.parameter.token)) return jsonOut_({ok:false, error:'unauthorized'});
     var action = e.parameter.action;
     if(action === 'get'){
       var v = kvGet_(e.parameter.key);
@@ -147,6 +166,7 @@ function doGet(e){
 function doPost(e){
   try{
     var body = JSON.parse(e.postData.contents);
+    if(!checkToken_(body.token)) return jsonOut_({ok:false, error:'unauthorized'});
     if(body.action === 'set'){
       kvSet_(body.key, body.value);
       return jsonOut_({ok:true});
