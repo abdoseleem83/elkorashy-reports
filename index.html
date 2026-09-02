@@ -180,6 +180,30 @@
 </div>
 
 <script>
+// localStorage-backed shim so the app works as a standalone deployed page
+// (window.storage only exists inside the Claude artifacts sandbox, not on a real site).
+if(!window.storage){
+  window.storage = {
+    async get(key, shared){
+      const v = localStorage.getItem(key);
+      if(v === null) throw new Error('not found');
+      return {key, value: v, shared: !!shared};
+    },
+    async set(key, value, shared){
+      localStorage.setItem(key, value);
+      return {key, value, shared: !!shared};
+    },
+    async delete(key, shared){
+      localStorage.removeItem(key);
+      return {key, deleted: true, shared: !!shared};
+    },
+    async list(prefix, shared){
+      const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix));
+      return {keys, prefix, shared: !!shared};
+    }
+  };
+}
+
 const CATEGORY_MAP = {
   "قطاعات PVC كومبن": "قطاعات PVC كومبن",
   "قطاعات كرافت لاين": "قطاعات كرافت لاين",
@@ -192,7 +216,7 @@ const CATEGORY_MAP = {
   "ابواب WPC": "ابواب WPC",
 };
 const CLASS_OPTIONS = ["مبيعات جملة","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
-const APP_VERSION = 'v3';
+const APP_VERSION = 'v4';
 const SECTORS = ["قطاعات PVC كومبن","قطاعات كرافت لاين","نيو لاين","اكسسوارات","ابواب WPC"];
 
 let monthsData = {};   // { "2026-08": { customerName: { itemName: {cat, net} } } }
