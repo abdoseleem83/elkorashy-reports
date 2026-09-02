@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v18';
+const CACHE_VERSION = 'v19';
 const CACHE_NAME = 'elkorashy-reports-' + CACHE_VERSION;
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
@@ -15,20 +15,45 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then(keys => Promise.all(
       keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
-    ))
+    )).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
+// الصفحة نفسها: الشبكة الأول عشان أي نسخة جديدة توصل من غير ما المستخدم يدوس "تحديث"،
+// والكاش احتياطي لو مفيش نت. باقي الملفات: الكاش الأول عشان الفتح يفضل فوري.
+function isPageRequest(req){
+  return req.mode === 'navigate' || (req.destination === 'document');
+}
+
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET') return;
+  const req = e.request;
+  if (req.method !== 'GET') return;
+
+  // طلبات الـApps Script (بيانات حيّة) لازم تروح للشبكة دايمًا ومتتخزّنش أبدًا
+  const url = new URL(req.url);
+  if (url.hostname.endsWith('script.google.com') || url.hostname.endsWith('script.googleusercontent.com')) return;
+
+  if (isPageRequest(req)) {
+    e.respondWith(
+      fetch(req).then(res => {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
+        return res;
+      }).catch(() => caches.match(req).then(c => c || caches.match('./index.html')))
+    );
+    return;
+  }
+
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const fetchPromise = fetch(e.request).then(networkRes => {
-        caches.open(CACHE_NAME).then(cache => cache.put(e.request, networkRes.clone()));
-        return networkRes;
+    caches.match(req).then(cached => {
+      const network = fetch(req).then(res => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
+        }
+        return res;
       }).catch(() => cached);
-      return cached || fetchPromise;
+      return cached || network;
     })
   );
 });
