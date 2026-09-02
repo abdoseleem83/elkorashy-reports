@@ -10,6 +10,8 @@
 <link rel="apple-touch-icon" href="./icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
     --bg:#f3f4f8; --panel:#ffffff; --panel2:#f0f1f6; --border:#dcdfe8;
@@ -150,10 +152,21 @@
 
 <div class="card" id="sectorsPanel" style="display:none">
   <div class="flex-between">
-    <h2 style="margin:0">مطابقة أسماء الأقسام في ملف المحاسبة للقطاعات الخمسة</h2>
+    <h2 style="margin:0">القطاعات ومطابقة الأقسام</h2>
     <button class="ghost" id="closeSectorsBtn">إغلاق ✕</button>
   </div>
-  <div class="sub">أي اسم قسم يظهر في ملف المحاسبة (زي "اكسسوارات pvc" أو "جيفيز") لازم يترجم لواحد من القطاعات الخمسة تحت. لو ظهر اسم قسم جديد بعد الرفع مش متطابق، هيتضاف هنا تلقائي وتقدر تعدّله.</div>
+
+  <div class="sub">قائمة القطاعات المتاحة دلوقتي. تقدر تضيف قطاع جديد أو تحذف واحد مش مستخدم.</div>
+  <div id="sectorsOwnList" class="row" style="margin-top:6px"></div>
+  <div class="row" style="margin-top:10px">
+    <input type="text" id="newSectorName" placeholder="اسم قطاع جديد">
+    <button id="addSectorBtn">إضافة قطاع</button>
+  </div>
+
+  <hr style="border-color:var(--border);margin:18px 0">
+
+  <h2 style="margin:0 0 6px">مطابقة أسماء الأقسام في ملف المحاسبة للقطاعات</h2>
+  <div class="sub">أي اسم قسم يظهر في ملف المحاسبة (زي "اكسسوارات pvc" أو "جيفيز") لازم يترجم لواحد من القطاعات فوق. لو ظهر اسم قسم جديد بعد الرفع مش متطابق، هيتضاف هنا تلقائي وتقدر تعدّله.</div>
   <div id="sectorsList" style="margin-top:10px"></div>
   <div class="row" style="margin-top:12px">
     <input type="text" id="newRawCat" placeholder="اسم قسم زي ما هو في ملف المحاسبة">
@@ -196,12 +209,12 @@
 <div class="card" id="chartsArea" style="display:none">
   <div class="row" style="align-items:flex-start;gap:24px">
     <div style="flex:1;min-width:260px">
-      <h2>📊 أكبر 10 عملاء</h2>
+      <h2>💰 إجمالي مبالغ العملاء</h2>
       <canvas id="topCustomersChart" height="230"></canvas>
     </div>
     <div style="flex:1;min-width:260px">
-      <h2>📦 أكبر 10 أصناف</h2>
-      <canvas id="topItemsChart" height="230"></canvas>
+      <h2>🏷️ إجمالي القطاعات</h2>
+      <canvas id="sectorTotalsChart" height="230"></canvas>
     </div>
   </div>
 </div>
@@ -251,8 +264,8 @@ const CATEGORY_MAP = {
   "ابواب WPC": "ابواب WPC",
 };
 const CLASS_OPTIONS = ["مبيعات جملة","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
-const APP_VERSION = 'v6';
-const SECTORS = ["قطاعات PVC كومبن","قطاعات كرافت لاين","نيو لاين","اكسسوارات","ابواب WPC"];
+const APP_VERSION = 'v7';
+let SECTORS = ["قطاعات PVC كومبن","قطاعات كرافت لاين","نيو لاين","اكسسوارات","ابواب WPC"];
 
 let monthsData = {};   // { "2026-08": { customerName: { itemName: {cat, net} } } }
 let classification = {}; // { customerName: one of CLASS_OPTIONS }
@@ -264,6 +277,14 @@ let pendingNewItems = []; // items first seen this upload, for the info message
 const $ = (id) => document.getElementById(id);
 
 function normName(n){ return (n||"").toString().trim().replace(/\s+/g,' '); }
+
+const AR_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+function monthLabel(m){
+  const [y,mo] = (m||'').split('-');
+  const idx = parseInt(mo,10);
+  if(!y || !idx || !AR_MONTHS[idx]) return m;
+  return `${AR_MONTHS[idx]} ${y}`;
+}
 
 // Guess a default sector for a never-seen item, based on keywords in its name.
 function guessSector(itemName){
@@ -301,6 +322,13 @@ async function loadStorage(){
     const io = await window.storage.get('itemOverride');
     if(io) itemOverride = JSON.parse(io.value);
   }catch(e){}
+  try{
+    const sl = await window.storage.get('sectorsList');
+    if(sl) SECTORS = JSON.parse(sl.value);
+    else throw new Error();
+  }catch(e){
+    await saveSectors();
+  }
   $('loadStatus').textContent = 'جاهز';
   $('appVersionBadge').textContent = APP_VERSION;
   renderMonthPills();
@@ -315,6 +343,9 @@ async function saveCategoryMap(){
 }
 async function saveItemOverride(){
   await window.storage.set('itemOverride', JSON.stringify(itemOverride));
+}
+async function saveSectors(){
+  await window.storage.set('sectorsList', JSON.stringify(SECTORS));
 }
 async function saveClassification(){
   await window.storage.set('classification', JSON.stringify(classification));
@@ -432,7 +463,7 @@ $('processBtn').addEventListener('click', async ()=>{
     Object.values(byMonth).forEach(cm => Object.keys(cm).forEach(c => allCustomers.add(c)));
     const unmatched = Array.from(allCustomers).filter(c => !classification[c]);
 
-    let msg = `<div class="msg ok">لقيت بيانات لشهور: ${Object.keys(byMonth).sort().join('، ')} (${allCustomers.size} عميل).</div>`;
+    let msg = `<div class="msg ok">لقيت بيانات لشهور: ${Object.keys(byMonth).sort().map(monthLabel).join('، ')} (${allCustomers.size} عميل).</div>`;
     if(newItems.length){
       msg += `<div class="msg warn">${newItems.length} صنف جديد اتحطوا تلقائي على أقرب قطاع بالتخمين — راجعهم من "📦 الأصناف" لو حابب تظبطهم.</div>`;
     }
@@ -495,7 +526,7 @@ async function commitAll(){
     });
   });
   await saveMonths();
-  $('uploadMsg').innerHTML = `<div class="msg ok">تم الحفظ لشهور: ${Object.keys(pendingByMonth).sort().join('، ')}.</div>`;
+  $('uploadMsg').innerHTML = `<div class="msg ok">تم الحفظ لشهور: ${Object.keys(pendingByMonth).sort().map(monthLabel).join('، ')}.</div>`;
   pendingByMonth = null; pendingNewItems = [];
   $('fileInput').value=''; $('monthInput').value=''; $('processBtn').disabled=true;
   renderMonthPills();
@@ -505,7 +536,7 @@ async function commitAll(){
 function renderMonthPills(){
   const months = Object.keys(monthsData).sort();
   $('monthsPills').innerHTML = months.length
-    ? months.map(m=>`<span class="pill done">${m} <span class="ghost" style="cursor:pointer" onclick="deleteMonth('${m}')">✕</span></span>`).join('')
+    ? months.map(m=>`<span class="pill done">${monthLabel(m)} <span class="ghost" style="cursor:pointer" onclick="deleteMonth('${m}')">✕</span></span>`).join('')
     : '<span class="badge">لسه معندكش شهور محفوظة</span>';
 }
 
@@ -594,12 +625,21 @@ function computeCustomerRows(aggregateWholesale){
   return {months, rows};
 }
 
-function buildTableHtml(tabType, months, rows){
-  rows = rows.slice().sort((a,b)=> a.label.localeCompare(b.label,'ar'));
+function buildTableHtml(tabType, months, rows, sortMode){
+  rows = rows.slice();
+  if(sortMode === 'total'){
+    rows.sort((a,b)=>{
+      const ta = tabType==='monthly' ? a.months.reduce((x,y)=>x+y,0) : SECTORS.reduce((s,sec)=>s+(a.sectors[sec]||0),0);
+      const tb = tabType==='monthly' ? b.months.reduce((x,y)=>x+y,0) : SECTORS.reduce((s,sec)=>s+(b.sectors[sec]||0),0);
+      return tb - ta;
+    });
+  } else {
+    rows.sort((a,b)=> a.label.localeCompare(b.label,'ar'));
+  }
   if(tabType === 'monthly'){
     let html = `<div class="tbl-wrap"><table><thead><tr>
       <th>م</th><th>بيان</th><th>التصنيف</th><th>الإجمالي</th>
-      ${months.map(m=>`<th>${m}</th>`).join('')}
+      ${months.map(m=>`<th>${monthLabel(m)}</th>`).join('')}
     </tr></thead><tbody>`;
     let grandTotals = months.map(()=>0);
     rows.forEach((r,i)=>{
@@ -669,10 +709,13 @@ function renderCharts(){
   const {rows} = computeCustomerRows(true); // wholesale customers merged into one row, same as PDF
   const custTotals = rows.map(r => ({label:r.label, total: r.months.reduce((a,b)=>a+b,0)}))
     .sort((a,b)=> b.total - a.total).slice(0,10);
-  const itemTotals = allItemsWithTotals().sort((a,b)=> b.total - a.total).slice(0,10);
+  const sectorTotals = SECTORS.map(s => ({
+    label: s,
+    total: rows.reduce((sum,r)=> sum + (r.sectors[s]||0), 0)
+  })).sort((a,b)=> b.total - a.total);
   $('chartsArea').style.display = 'block';
-  drawBarChart('topCustomersChart', custTotals.map(o=>o.label), custTotals.map(o=>o.total), '#4f7cff');
-  drawBarChart('topItemsChart', itemTotals.map(o=>o.item), itemTotals.map(o=>o.total), '#2fd992');
+  drawBarChart('topCustomersChart', custTotals.map(o=>o.label), custTotals.map(o=>o.total), '#3b5fe0');
+  drawBarChart('sectorTotalsChart', sectorTotals.map(o=>o.label), sectorTotals.map(o=>o.total), '#0f9d63');
 }
 
 // ---- Export ----
@@ -682,7 +725,7 @@ $('exportBtn').addEventListener('click', ()=>{
   const customers = allCustomers().sort();
   const wbOut = XLSX.utils.book_new();
 
-  const monthlyRows = [['م','بيان','التصنيف','الإجمالي', ...months]];
+  const monthlyRows = [['م','بيان','التصنيف','الإجمالي', ...months.map(monthLabel)]];
   customers.forEach((c,i)=>{
     let rowTotal=0;
     const cells = months.map(m=>{ const v = monthsData[m][c]?customerTotal(monthsData[m][c]):0; rowTotal+=v; return v; });
@@ -739,6 +782,35 @@ $('closeCustomersBtn').addEventListener('click', ()=> $('customersPanel').style.
 $('custSearch').addEventListener('input', (e)=> renderCustomersList(e.target.value));
 
 // ---- Sectors panel ----
+function renderOwnSectorsList(){
+  $('sectorsOwnList').innerHTML = SECTORS.map(s=>`
+    <span class="pill done" style="display:inline-flex;align-items:center;gap:6px">
+      ${s}
+      <span class="ghost" style="cursor:pointer" data-del-sector="${encodeURIComponent(s)}">✕</span>
+    </span>`).join('') || '<span class="badge">مفيش قطاعات لسه</span>';
+  document.querySelectorAll('[data-del-sector]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      const s = decodeURIComponent(el.getAttribute('data-del-sector'));
+      if(!confirm(`تحذف قطاع "${s}"؟ أي صنف متحسب عليه دلوقتي هيبقى محتاج إعادة تصنيف.`)) return;
+      SECTORS = SECTORS.filter(x=>x!==s);
+      await saveSectors();
+      renderOwnSectorsList();
+      renderSectorsList();
+      renderReport();
+    });
+  });
+}
+$('addSectorBtn').addEventListener('click', async ()=>{
+  const name = normName($('newSectorName').value);
+  if(!name) return;
+  if(SECTORS.includes(name)){ alert('القطاع ده موجود بالفعل'); return; }
+  SECTORS.push(name);
+  await saveSectors();
+  $('newSectorName').value = '';
+  renderOwnSectorsList();
+  renderSectorsList();
+});
+
 function renderSectorsList(){
   const raws = Object.keys(categoryMap).sort();
   $('sectorsList').innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>اسم القسم في ملف المحاسبة</th><th>يتحسب على قطاع</th><th></th></tr></thead><tbody>
@@ -758,6 +830,7 @@ function renderSectorsList(){
       const raw = decodeURIComponent(sel.getAttribute('data-raw'));
       categoryMap[raw] = sel.value;
       await saveCategoryMap();
+      renderReport();
     });
   });
   document.querySelectorAll('[data-del]').forEach(btn=>{
@@ -776,6 +849,7 @@ $('manageSectorsBtn').addEventListener('click', ()=>{
   $('customersPanel').style.display = 'none';
   $('itemsPanel').style.display = 'none';
   $('pdfPanel').style.display = 'none';
+  renderOwnSectorsList();
   renderSectorsList();
 });
 $('closeSectorsBtn').addEventListener('click', ()=> $('sectorsPanel').style.display='none');
@@ -849,7 +923,7 @@ $('exportPdfBtn').addEventListener('click', ()=>{
 });
 $('closePdfBtn').addEventListener('click', ()=> $('pdfPanel').style.display='none');
 
-function generatePdf(includeMonthly, includeSector){
+async function generatePdf(includeMonthly, includeSector){
   const months = Object.keys(monthsData).sort();
   if(!months.length){ alert('مفيش بيانات لسه'); return; }
   if(!includeMonthly && !includeSector){ alert('اختار تقرير واحد على الأقل'); return; }
@@ -857,41 +931,70 @@ function generatePdf(includeMonthly, includeSector){
 
   let chartsHtml = '';
   const custImg = document.getElementById('topCustomersChart');
-  const itemImg = document.getElementById('topItemsChart');
-  if(custImg && itemImg){
+  const sectorImg = document.getElementById('sectorTotalsChart');
+  if(custImg && sectorImg){
     chartsHtml = `
       <div style="display:flex;gap:16px;margin-bottom:22px">
-        <div style="flex:1"><h3 style="font-size:13px">أكبر 10 عملاء</h3><img src="${custImg.toDataURL('image/png')}" style="width:100%"></div>
-        <div style="flex:1"><h3 style="font-size:13px">أكبر 10 أصناف</h3><img src="${itemImg.toDataURL('image/png')}" style="width:100%"></div>
+        <div style="flex:1"><h3 style="font-size:13px;margin:0 0 6px">إجمالي مبالغ العملاء</h3><img src="${custImg.toDataURL('image/png')}" style="width:100%"></div>
+        <div style="flex:1"><h3 style="font-size:13px;margin:0 0 6px">إجمالي القطاعات</h3><img src="${sectorImg.toDataURL('image/png')}" style="width:100%"></div>
       </div>`;
   }
 
   let sectionsHtml = '';
   if(includeMonthly){
-    sectionsHtml += `<h2 style="font-size:15px;margin:22px 0 6px">مقارنة المبيعات الشهرية</h2>${buildTableHtml('monthly', months, rows)}`;
+    sectionsHtml += `<h2 style="font-size:15px;margin:22px 0 6px">مقارنة المبيعات الشهرية (من الأكبر للأصغر)</h2>${buildTableHtml('monthly', months, rows, 'total')}`;
   }
   if(includeSector){
-    sectionsHtml += `<h2 style="font-size:15px;margin:22px 0 6px">مقارنة المبيعات بالقطاع</h2>${buildTableHtml('sector', months, rows)}`;
+    sectionsHtml += `<h2 style="font-size:15px;margin:22px 0 6px">مقارنة المبيعات بالقطاع (من الأكبر للأصغر)</h2>${buildTableHtml('sector', months, rows, 'total')}`;
   }
 
-  const w = window.open('', '_blank');
-  w.document.write(`
-    <html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تقارير مبيعات القرشي</title>
+  // Render off-screen (fixed width, light background) then rasterize + build a real downloadable PDF.
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed;left:-99999px;top:0;width:1000px;background:#fff;color:#111;padding:24px;font-family:Tahoma,Arial,sans-serif;direction:rtl;';
+  holder.innerHTML = `
     <style>
-      body{font-family:Tahoma,Arial,sans-serif;padding:20px;direction:rtl;background:#fff;color:#111}
-      h1{font-size:18px;margin-bottom:14px}
       table{border-collapse:collapse;width:100%;font-size:11px}
       th,td{border:1px solid #999;padding:5px 7px;text-align:center}
       th{background:#eee}
       .total-row td{background:#ddd;font-weight:700}
-    </style></head><body>
+      h1{font-size:18px;margin-bottom:14px}
+    </style>
     <h1>تقارير مبيعات القرشي — ${new Date().toLocaleDateString('ar-EG')}</h1>
     ${chartsHtml}
     ${sectionsHtml}
-    </body></html>`);
-  w.document.close();
-  w.onload = () => { w.focus(); w.print(); };
-  $('pdfPanel').style.display = 'none';
+  `;
+  document.body.appendChild(holder);
+
+  try{
+    $('pdfGenerateBtn').disabled = true;
+    $('pdfAllBtn').disabled = true;
+    const canvas = await html2canvas(holder, {scale:2, backgroundColor:'#ffffff'});
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p','mm','a4');
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const imgW = pageW;
+    const imgH = canvas.height * imgW / canvas.width;
+    let heightLeft = imgH;
+    let position = 0;
+    const imgData = canvas.toDataURL('image/png');
+    pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+    heightLeft -= pageH;
+    while(heightLeft > 0){
+      position = heightLeft - imgH;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+      heightLeft -= pageH;
+    }
+    pdf.save(`تقرير_مبيعات_القرشي_${new Date().toISOString().slice(0,10)}.pdf`);
+  }catch(e){
+    alert('حصل خطأ في إنشاء الـ PDF: ' + e.message);
+  }finally{
+    document.body.removeChild(holder);
+    $('pdfGenerateBtn').disabled = false;
+    $('pdfAllBtn').disabled = false;
+    $('pdfPanel').style.display = 'none';
+  }
 }
 
 $('pdfGenerateBtn').addEventListener('click', ()=>{
