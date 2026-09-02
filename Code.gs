@@ -1,116 +1,131 @@
 /**
- * تخزين مشترك (Key-Value) لتطبيق تقارير مبيعات القرشي.
- * ينشئ شيت باسم "KV" فيه عمودين: key و value، ويقرأ/يكتب فيه.
+ * باك إند تخزين مركزي لتطبيق "تقارير مبيعات القرشي".
+ * بيحفظ كل حاجة (الشهور، التصنيفات، القطاعات...) في Google Sheet واحد
+ * بدل ما تتخزن على متصفح كل جهاز لوحده — عشان الشغل يتفتح ويتزامن من أي جهاز.
  *
- * طريقة الاستخدام:
- * 1. Extensions > Apps Script من جوا Google Sheet جديد فاضي.
- * 2. امسح أي كود موجود، والصق هذا الملف كامل.
- * 3. Deploy > New deployment > نوع "Web app".
- *    - Execute as: Me
- *    - Who has access: Anyone
- * 4. انسخ الرابط (ينتهي بـ /exec) وابعته.
+ * التركيب:
+ * 1) افتح script.google.com على نفس المشروع اللي رابطه:
+ *    https://script.google.com/macros/s/AKfycbz9B3WIqHNQ1wkIDCb3lZklF2RESJW0kIz-WZxmi6W6VP2IuPhr0yVCx-mpJ4HE6oyh/exec
+ * 2) امسح أي كود موجود في Code.gs، والصق الكود ده مكانه، واحفظ (Ctrl+S).
+ * 3) Deploy > Manage deployments > دوس على قلم التعديل (Edit) بجانب الـ deployment الموجود
+ *    > في "Version" اختار "New version" > Deploy.
+ *    (السطر ده مهم عشان يفضل نفس اللينك شغال زي ما هو من غير ما يتغيّر)
+ * 4) لو أول مرة تعمل deploy: خليك متأكد إن "Execute as" = Me، و"Who has access" = Anyone.
  */
 
-const SHEET_NAME = 'KV';
-
-function getSheet_(){
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEET_NAME);
-  if(!sheet){
-    sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(['key', 'value', 'updated_at']);
+function getSpreadsheet_(){
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty('SS_ID');
+  let ss = null;
+  if(id){
+    try{ ss = SpreadsheetApp.openById(id); }catch(e){ id = null; }
   }
-  return sheet;
+  if(!ss){
+    ss = SpreadsheetApp.create('elkorashy-reports-data');
+    props.setProperty('SS_ID', ss.getId());
+  }
+  return ss;
 }
 
-function findRow_(sheet, key){
-  const data = sheet.getDataRange().getValues();
-  for(let i = 1; i < data.length; i++){
-    if(data[i][0] === key) return i + 1; // 1-indexed row number
+function getSheet_(){
+  const ss = getSpreadsheet_();
+  let sh = ss.getSheetByName('KV');
+  if(!sh){
+    sh = ss.insertSheet('KV');
+    sh.appendRow(['key', 'value']);
+    sh.setFrozenRows(1);
+  }
+  // امسح الشيت الافتراضي الفاضي اللي بيتعمل تلقائي مع أي Spreadsheet جديد
+  const def = ss.getSheetByName('Sheet1');
+  if(def && def.getName() !== sh.getName() && def.getLastRow() === 0) ss.deleteSheet(def);
+  return sh;
+}
+
+function findRow_(sh, key){
+  const values = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 0), 1).getValues();
+  for(let i = 0; i < values.length; i++){
+    if(values[i][0] === key) return i + 2; // +2: صف العنوان + الفهرسة من 1
   }
   return -1;
 }
 
 function kvGet_(key){
-  const sheet = getSheet_();
-  const row = findRow_(sheet, key);
-  if(row === -1) return {found:false};
-  const value = sheet.getRange(row, 2).getValue();
-  return {found:true, value: value};
+  const sh = getSheet_();
+  const row = findRow_(sh, key);
+  if(row === -1) return null;
+  return sh.getRange(row, 2).getValue();
 }
 
 function kvSet_(key, value){
   const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  lock.waitLock(15000);
   try{
-    const sheet = getSheet_();
-    const row = findRow_(sheet, key);
-    const now = new Date().toISOString();
-    if(row === -1){
-      sheet.appendRow([key, value, now]);
-    } else {
-      sheet.getRange(row, 2, 1, 2).setValues([[value, now]]);
-    }
+    const sh = getSheet_();
+    const row = findRow_(sh, key);
+    if(row === -1) sh.appendRow([key, value]);
+    else sh.getRange(row, 2).setValue(value);
   } finally {
     lock.releaseLock();
   }
-  return {ok:true};
 }
 
 function kvDelete_(key){
   const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  lock.waitLock(15000);
   try{
-    const sheet = getSheet_();
-    const row = findRow_(sheet, key);
-    if(row !== -1) sheet.deleteRow(row);
+    const sh = getSheet_();
+    const row = findRow_(sh, key);
+    if(row !== -1) sh.deleteRow(row);
   } finally {
     lock.releaseLock();
   }
-  return {ok:true};
 }
 
 function kvList_(prefix){
-  const sheet = getSheet_();
-  const data = sheet.getDataRange().getValues();
+  const sh = getSheet_();
+  const values = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 0), 1).getValues();
   const keys = [];
-  for(let i = 1; i < data.length; i++){
-    const k = data[i][0];
-    if(!prefix || (k && k.toString().indexOf(prefix) === 0)) keys.push(k);
-  }
-  return {keys: keys};
+  values.forEach(r => {
+    const k = r[0];
+    if(k && (!prefix || String(k).indexOf(prefix) === 0)) keys.push(k);
+  });
+  return keys;
 }
 
-function handle_(params){
-  const action = params.action;
-  const key = params.key;
-  let result;
-  if(action === 'get'){
-    result = kvGet_(key);
-  } else if(action === 'set'){
-    result = kvSet_(key, params.value);
-  } else if(action === 'delete'){
-    result = kvDelete_(key);
-  } else if(action === 'list'){
-    result = kvList_(params.prefix || '');
-  } else {
-    result = {error: 'unknown action'};
-  }
-  return ContentService.createTextOutput(JSON.stringify(result))
-    .setMimeType(ContentService.MimeType.JSON);
+function jsonOut_(obj){
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function doGet(e){
-  const params = e.parameter || {};
-  return handle_(params);
+  try{
+    const action = e.parameter.action;
+    if(action === 'get'){
+      const v = kvGet_(e.parameter.key);
+      if(v === null) return jsonOut_({ok:false, error:'not found'});
+      return jsonOut_({ok:true, key:e.parameter.key, value:v});
+    }
+    if(action === 'list'){
+      return jsonOut_({ok:true, keys: kvList_(e.parameter.prefix || '')});
+    }
+    return jsonOut_({ok:false, error:'unknown action'});
+  }catch(err){
+    return jsonOut_({ok:false, error:String(err)});
+  }
 }
 
 function doPost(e){
-  let params = {};
   try{
-    params = JSON.parse(e.postData.contents);
+    const body = JSON.parse(e.postData.contents);
+    if(body.action === 'set'){
+      kvSet_(body.key, body.value);
+      return jsonOut_({ok:true});
+    }
+    if(body.action === 'delete'){
+      kvDelete_(body.key);
+      return jsonOut_({ok:true});
+    }
+    return jsonOut_({ok:false, error:'unknown action'});
   }catch(err){
-    params = e.parameter || {};
+    return jsonOut_({ok:false, error:String(err)});
   }
-  return handle_(params);
 }
