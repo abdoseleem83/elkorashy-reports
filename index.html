@@ -9,6 +9,7 @@
 <link rel="icon" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --panel2:#1e2230; --border:#2a2f3d;
@@ -78,6 +79,8 @@
     .tbl-wrap{max-height:65vh}
     #unmatchedList .row{flex-direction:column;align-items:stretch;gap:4px}
     #unmatchedList .row span{min-width:auto}
+    #chartsArea .row{flex-direction:column}
+    #chartsArea canvas{max-height:220px}
   }
 </style>
 </head>
@@ -171,6 +174,19 @@
   <div id="itemsList" class="tbl-wrap" style="margin-top:10px"></div>
 </div>
 
+<div class="card" id="chartsArea" style="display:none">
+  <div class="row" style="align-items:flex-start;gap:24px">
+    <div style="flex:1;min-width:260px">
+      <h2>📊 أكبر 10 عملاء</h2>
+      <canvas id="topCustomersChart" height="230"></canvas>
+    </div>
+    <div style="flex:1;min-width:260px">
+      <h2>📦 أكبر 10 أصناف</h2>
+      <canvas id="topItemsChart" height="230"></canvas>
+    </div>
+  </div>
+</div>
+
 <div class="card">
   <div class="tabs">
     <div class="tab active" data-tab="monthly">مقارنة المبيعات الشهرية</div>
@@ -216,7 +232,7 @@ const CATEGORY_MAP = {
   "ابواب WPC": "ابواب WPC",
 };
 const CLASS_OPTIONS = ["مبيعات جملة","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
-const APP_VERSION = 'v4';
+const APP_VERSION = 'v5';
 const SECTORS = ["قطاعات PVC كومبن","قطاعات كرافت لاين","نيو لاين","اكسسوارات","ابواب WPC"];
 
 let monthsData = {};   // { "2026-08": { customerName: { itemName: {cat, net} } } }
@@ -516,50 +532,127 @@ function customerTotal(monthData){
   return t;
 }
 
-function renderReport(){
-  const months = Object.keys(monthsData).sort();
-  if(!months.length){ $('reportArea').innerHTML = '<div class="sub">ارفع أول ملف عشان يظهر التقرير.</div>'; return; }
-  const customers = allCustomers();
+function customerMonthlySeries(c, months){
+  return months.map(m => monthsData[m][c] ? customerTotal(monthsData[m][c]) : 0);
+}
+function customerSectorTotals(c, months){
+  const out = {};
+  SECTORS.forEach(s => out[s] = 0);
+  months.forEach(m=>{
+    const ss = customerSectorSums(monthsData[m][c]);
+    SECTORS.forEach(s => out[s] += (ss[s]||0));
+  });
+  return out;
+}
 
-  if(activeTab === 'monthly'){
+// aggregateWholesale=true merges every customer classified as "مبيعات جملة" into one summary row (PDF only)
+function computeCustomerRows(aggregateWholesale){
+  const months = Object.keys(monthsData).sort();
+  const customers = allCustomers();
+  const rows = [];
+  const targetList = aggregateWholesale ? customers.filter(c => classification[c] !== 'مبيعات جملة') : customers;
+  targetList.forEach(c=>{
+    rows.push({
+      label: c,
+      cls: classification[c] || 'غير محدد',
+      months: customerMonthlySeries(c, months),
+      sectors: customerSectorTotals(c, months)
+    });
+  });
+  if(aggregateWholesale){
+    const wholesale = customers.filter(c => classification[c] === 'مبيعات جملة');
+    if(wholesale.length){
+      const monthsSum = months.map(()=>0);
+      const sectorsSum = {}; SECTORS.forEach(s=>sectorsSum[s]=0);
+      wholesale.forEach(c=>{
+        customerMonthlySeries(c, months).forEach((v,i)=> monthsSum[i]+=v);
+        const cs = customerSectorTotals(c, months);
+        SECTORS.forEach(s=> sectorsSum[s]+=cs[s]);
+      });
+      rows.push({label:'مبيعات جملة', cls:'مبيعات جملة (مجمّع)', months: monthsSum, sectors: sectorsSum});
+    }
+  }
+  return {months, rows};
+}
+
+function buildTableHtml(tabType, months, rows){
+  rows = rows.slice().sort((a,b)=> a.label.localeCompare(b.label,'ar'));
+  if(tabType === 'monthly'){
     let html = `<div class="tbl-wrap"><table><thead><tr>
       <th>م</th><th>بيان</th><th>التصنيف</th><th>الإجمالي</th>
       ${months.map(m=>`<th>${m}</th>`).join('')}
     </tr></thead><tbody>`;
     let grandTotals = months.map(()=>0);
-    customers.sort().forEach((c,i)=>{
-      let rowTotal = 0;
-      const cells = months.map((m,mi)=>{
-        const v = monthsData[m][c] ? customerTotal(monthsData[m][c]) : 0;
-        rowTotal += v; grandTotals[mi]+=v;
-        return `<td class="num">${v?v.toLocaleString('ar-EG',{maximumFractionDigits:0}):'-'}</td>`;
-      }).join('');
-      html += `<tr><td>${i+1}</td><td style="text-align:right">${c}</td><td>${classification[c]||'<span class="missing">غير محدد</span>'}</td><td class="num">${rowTotal.toLocaleString('ar-EG',{maximumFractionDigits:0})}</td>${cells}</tr>`;
+    rows.forEach((r,i)=>{
+      const rowTotal = r.months.reduce((a,b)=>a+b,0);
+      r.months.forEach((v,mi)=>grandTotals[mi]+=v);
+      html += `<tr><td>${i+1}</td><td style="text-align:right">${r.label}</td><td>${r.cls}</td><td class="num">${rowTotal.toLocaleString('ar-EG',{maximumFractionDigits:0})}</td>${r.months.map(v=>`<td class="num">${v?v.toLocaleString('ar-EG',{maximumFractionDigits:0}):'-'}</td>`).join('')}</tr>`;
     });
     html += `<tr class="total-row"><td colspan="3">الإجمالي</td><td class="num">${grandTotals.reduce((a,b)=>a+b,0).toLocaleString('ar-EG',{maximumFractionDigits:0})}</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('ar-EG',{maximumFractionDigits:0})}</td>`).join('')}</tr>`;
     html += '</tbody></table></div>';
-    $('reportArea').innerHTML = html;
+    return html;
   } else {
-    // sector comparison, summed across all loaded months
     let html = `<div class="tbl-wrap"><table><thead><tr>
       <th>م</th><th>العميل / المجموعة</th><th>التصنيف</th>
       ${SECTORS.map(s=>`<th>${s}</th>`).join('')}<th>الإجمالي</th>
     </tr></thead><tbody>`;
     let grandTotals = SECTORS.map(()=>0);
-    customers.sort().forEach((c,i)=>{
-      const sums = SECTORS.map(s=>{
-        let v=0; months.forEach(m=>{ const ss = customerSectorSums(monthsData[m][c]); v += (ss[s]||0); });
-        return v;
-      });
+    rows.forEach((r,i)=>{
+      const sums = SECTORS.map(s => r.sectors[s]||0);
       const total = sums.reduce((a,b)=>a+b,0);
       sums.forEach((v,si)=>grandTotals[si]+=v);
-      html += `<tr><td>${i+1}</td><td style="text-align:right">${c}</td><td>${classification[c]||'<span class="missing">غير محدد</span>'}</td>${sums.map(v=>`<td class="num">${v?v.toLocaleString('ar-EG',{maximumFractionDigits:0}):'-'}</td>`).join('')}<td class="num">${total.toLocaleString('ar-EG',{maximumFractionDigits:0})}</td></tr>`;
+      html += `<tr><td>${i+1}</td><td style="text-align:right">${r.label}</td><td>${r.cls}</td>${sums.map(v=>`<td class="num">${v?v.toLocaleString('ar-EG',{maximumFractionDigits:0}):'-'}</td>`).join('')}<td class="num">${total.toLocaleString('ar-EG',{maximumFractionDigits:0})}</td></tr>`;
     });
     const gt = grandTotals.reduce((a,b)=>a+b,0);
     html += `<tr class="total-row"><td colspan="3">الإجمالي</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('ar-EG',{maximumFractionDigits:0})}</td>`).join('')}<td class="num">${gt.toLocaleString('ar-EG',{maximumFractionDigits:0})}</td></tr>`;
     html += '</tbody></table></div>';
-    $('reportArea').innerHTML = html;
+    return html;
   }
+}
+
+function renderReport(){
+  const months = Object.keys(monthsData).sort();
+  if(!months.length){
+    $('reportArea').innerHTML = '<div class="sub">ارفع أول ملف عشان يظهر التقرير.</div>';
+    $('chartsArea').style.display = 'none';
+    return;
+  }
+  const {rows} = computeCustomerRows(false);
+  $('reportArea').innerHTML = buildTableHtml(activeTab, months, rows);
+  renderCharts();
+}
+
+// ---- Top-10 charts ----
+const chartInstances = {};
+function truncLabel(l){ return l && l.length > 20 ? l.slice(0,20)+'…' : l; }
+function drawBarChart(canvasId, labels, data, color){
+  const canvas = document.getElementById(canvasId);
+  if(!canvas || !window.Chart) return;
+  if(chartInstances[canvasId]) chartInstances[canvasId].destroy();
+  chartInstances[canvasId] = new Chart(canvas, {
+    type: 'bar',
+    data: { labels: labels.map(truncLabel), datasets: [{ data, backgroundColor: color, borderRadius: 4 }] },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#9aa1b1' }, grid: { color: '#2a2f3d' } },
+        y: { ticks: { color: '#e8eaf0', font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+}
+function renderCharts(){
+  const months = Object.keys(monthsData);
+  if(!months.length){ $('chartsArea').style.display = 'none'; return; }
+  const custTotals = allCustomers().map(c => ({label:c, total: customerMonthlySeries(c, months).reduce((a,b)=>a+b,0)}))
+    .sort((a,b)=> b.total - a.total).slice(0,10);
+  const itemTotals = allItemsWithTotals().sort((a,b)=> b.total - a.total).slice(0,10);
+  $('chartsArea').style.display = 'block';
+  drawBarChart('topCustomersChart', custTotals.map(o=>o.label), custTotals.map(o=>o.total), '#4f7cff');
+  drawBarChart('topItemsChart', itemTotals.map(o=>o.item), itemTotals.map(o=>o.total), '#2fd992');
 }
 
 // ---- Export ----
@@ -726,8 +819,23 @@ $('itemSearch').addEventListener('input', (e)=> renderItemsList(e.target.value))
 
 // ---- PDF export (via browser print) ----
 $('exportPdfBtn').addEventListener('click', ()=>{
-  const reportHtml = $('reportArea').innerHTML;
+  const months = Object.keys(monthsData).sort();
+  if(!months.length){ alert('مفيش بيانات لسه'); return; }
+  const {rows} = computeCustomerRows(true); // merge wholesale customers into one row, PDF only
+  const reportHtml = buildTableHtml(activeTab, months, rows);
   const title = activeTab === 'monthly' ? 'مقارنة المبيعات الشهرية' : 'مقارنة المبيعات بالقطاع';
+
+  let chartsHtml = '';
+  const custImg = document.getElementById('topCustomersChart');
+  const itemImg = document.getElementById('topItemsChart');
+  if(custImg && itemImg){
+    chartsHtml = `
+      <div style="display:flex;gap:16px;margin-bottom:18px">
+        <div style="flex:1"><h3 style="font-size:13px">أكبر 10 عملاء</h3><img src="${custImg.toDataURL('image/png')}" style="width:100%"></div>
+        <div style="flex:1"><h3 style="font-size:13px">أكبر 10 أصناف</h3><img src="${itemImg.toDataURL('image/png')}" style="width:100%"></div>
+      </div>`;
+  }
+
   const w = window.open('', '_blank');
   w.document.write(`
     <html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>${title}</title>
@@ -740,6 +848,7 @@ $('exportPdfBtn').addEventListener('click', ()=>{
       .total-row td{background:#ddd;font-weight:700}
     </style></head><body>
     <h1>${title} — ${new Date().toLocaleDateString('ar-EG')}</h1>
+    ${chartsHtml}
     ${reportHtml}
     </body></html>`);
   w.document.close();
