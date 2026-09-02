@@ -54,6 +54,7 @@
   .flex-between{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
   .badge{font-size:11px;color:var(--muted)}
   select[multiple]{min-width:180px;min-height:90px}
+  .chart-box{position:relative;height:260px;width:100%}
   .num{font-family:Consolas,monospace}
   .missing{color:var(--warn)}
   .total-row td{background:#e7ebfa;font-weight:700}
@@ -101,7 +102,7 @@
   <div class="flex-between">
     <h2 style="margin:0">1) رفع ملف شهر جديد</h2>
     <span class="badge" id="loadStatus">بيتحمّل البيانات المحفوظة...</span>
-    <button class="ghost" id="updateBtn" title="تحقق من نسخة أحدث">🔄 تحديث</button>
+    <button class="ghost" id="updateBtn" title="تحقق من نسخة أحدث">تحديث</button>
   </div>
   <div class="row" style="margin-top:10px">
     <div>
@@ -129,9 +130,9 @@
   <div class="flex-between">
     <h2 style="margin:0">2) الشهور المحفوظة</h2>
     <div class="row">
-      <button class="secondary" id="manageCustomersBtn" title="تصنيف العملاء">👤 العملاء</button>
-      <button class="secondary" id="manageSectorsBtn" title="مطابقة القطاعات">🏷️ القطاعات</button>
-      <button class="secondary" id="manageItemsBtn" title="الأصناف">📦 الأصناف</button>
+      <button class="secondary" id="manageCustomersBtn" title="تصنيف العملاء">العملاء</button>
+      <button class="secondary" id="manageSectorsBtn" title="مطابقة القطاعات">القطاعات</button>
+      <button class="secondary" id="manageItemsBtn" title="الأصناف">الأصناف</button>
       <button class="secondary" id="exportBtn">تصدير Excel</button>
       <button class="secondary" id="exportPdfBtn">تصدير PDF</button>
     </div>
@@ -189,7 +190,7 @@
 
 <div class="card" id="pdfPanel" style="display:none">
   <div class="flex-between">
-    <h2 style="margin:0">📄 اختار التقارير المطلوب تصديرها PDF</h2>
+    <h2 style="margin:0">اختار التقارير المطلوب تصديرها PDF</h2>
     <button class="ghost" id="closePdfBtn">إغلاق ✕</button>
   </div>
   <div class="row" style="margin-top:8px">
@@ -209,12 +210,12 @@
 <div class="card" id="chartsArea" style="display:none">
   <div class="row" style="align-items:flex-start;gap:24px">
     <div style="flex:1;min-width:260px">
-      <h2>💰 إجمالي مبالغ العملاء</h2>
-      <canvas id="topCustomersChart" height="230"></canvas>
+      <h2>إجمالي مبالغ العملاء</h2>
+      <div class="chart-box"><canvas id="topCustomersChart"></canvas></div>
     </div>
     <div style="flex:1;min-width:260px">
-      <h2>🏷️ إجمالي القطاعات</h2>
-      <canvas id="sectorTotalsChart" height="230"></canvas>
+      <h2>إجمالي القطاعات</h2>
+      <div class="chart-box"><canvas id="sectorTotalsChart"></canvas></div>
     </div>
   </div>
 </div>
@@ -265,7 +266,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v11';
+const APP_VERSION = 'v12';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -456,7 +457,11 @@ $('processBtn').addEventListener('click', async ()=>{
     pendingByMonth = byMonth;
     pendingNewItems = newItems;
     newItems.forEach(it => { itemOverride[it] = guessSector(it); });
-    if(newItems.length) await saveItemOverride();
+    let saveWarn = '';
+    if(newItems.length){
+      try{ await saveItemOverride(); }
+      catch(e){ saveWarn = `<div class="msg warn">تعذّر حفظ تخمين الأصناف الجديدة على التخزين المركزي دلوقتي (${e.message}) — راجعهم من "الأصناف" أو جرب التحديث تاني.</div>`; }
+    }
 
     const allCustomers = new Set();
     Object.values(byMonth).forEach(cm => Object.keys(cm).forEach(c => allCustomers.add(c)));
@@ -464,8 +469,9 @@ $('processBtn').addEventListener('click', async ()=>{
 
     let msg = `<div class="msg ok">لقيت بيانات لشهور: ${Object.keys(byMonth).sort().map(monthLabel).join('، ')} (${allCustomers.size} عميل).</div>`;
     if(newItems.length){
-      msg += `<div class="msg warn">${newItems.length} صنف جديد اتحط تلقائي على أقرب قطاع بالتخمين — راجعهم من "📦 الأصناف" لو حابب تظبطهم.</div>`;
+      msg += `<div class="msg warn">${newItems.length} صنف جديد اتحط تلقائي على أقرب قطاع بالتخمين — راجعهم من "الأصناف" لو حابب تظبطهم.</div>`;
     }
+    msg += saveWarn;
     $('uploadMsg').innerHTML = msg;
 
     if(unmatched.length){
@@ -1049,7 +1055,7 @@ if('serviceWorker' in navigator){
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
 }
 $('updateBtn').addEventListener('click', async ()=>{
-  $('updateBtn').textContent = '⏳ بيدور على تحديث...';
+  $('updateBtn').textContent = 'بيدور على تحديث...';
   try{
     if('serviceWorker' in navigator){
       const reg = await navigator.serviceWorker.getRegistration();
