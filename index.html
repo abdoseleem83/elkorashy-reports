@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تقارير مبيعات القرشي</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#f3f4f8">
@@ -58,6 +58,9 @@
   .num{font-family:Consolas,monospace}
   .missing{color:var(--warn)}
   .total-row td{background:#e7ebfa;font-weight:700}
+  label.chk{display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--text);
+    background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer}
+  label.chk input{width:16px;height:16px;cursor:pointer}
 
   @media (max-width: 640px){
     body{padding:10px}
@@ -136,6 +139,7 @@
       <button class="secondary" id="archiveBtn" title="أرشفة سنة كاملة">الأرشيف</button>
       <button class="secondary" id="exportBtn">تصدير Excel</button>
       <button class="secondary" id="exportPdfBtn">تصدير PDF</button>
+      <span class="badge">الاتنين بنفس الاختيارات</span>
     </div>
   </div>
   <div id="monthsPills" class="row"></div>
@@ -160,6 +164,7 @@
     <h2 style="margin:0">تصنيف العملاء</h2>
     <div class="row">
       <input type="text" id="custSearch" placeholder="بحث باسم العميل...">
+      <select id="custClassFilter" title="فلتر بالتصنيف"></select>
       <button class="ghost" id="closeCustomersBtn">إغلاق ✕</button>
     </div>
   </div>
@@ -179,16 +184,7 @@
     <button id="addSectorBtn">إضافة قطاع</button>
   </div>
 
-  <hr style="border-color:var(--border);margin:18px 0">
-
-  <h2 style="margin:0 0 6px">مطابقة أسماء الأقسام في ملف المحاسبة للقطاعات</h2>
-  <div class="sub">أي اسم قسم يظهر في ملف المحاسبة (زي "اكسسوارات pvc" أو "جيفيز") لازم يترجم لواحد من القطاعات فوق. لو ظهر اسم قسم جديد بعد الرفع مش متطابق، هيتضاف هنا تلقائي وتقدر تعدّله.</div>
-  <div id="sectorsList" style="margin-top:10px"></div>
-  <div class="row" style="margin-top:12px">
-    <input type="text" id="newRawCat" placeholder="اسم قسم زي ما هو في ملف المحاسبة">
-    <select id="newRawSector"></select>
-    <button id="addRawCatBtn">إضافة</button>
-  </div>
+  <div class="sub" style="margin-top:14px">ملاحظة: تصنيف القطاع بيتحدد لكل <b>صنف</b> من لوحة "الأصناف"، مش من اسم القسم في ملف المحاسبة.</div>
 </div>
 
 <div class="card" id="itemsPanel" style="display:none">
@@ -196,6 +192,7 @@
     <h2 style="margin:0">الأصناف اللي بتتباع</h2>
     <div class="row">
       <input type="text" id="itemSearch" placeholder="بحث باسم الصنف...">
+      <select id="itemSectorFilter" title="فلتر بالقطاع"></select>
       <button class="ghost" id="closeItemsBtn">إغلاق ✕</button>
     </div>
   </div>
@@ -205,23 +202,31 @@
 
 <div class="card" id="pdfPanel" style="display:none">
   <div class="flex-between">
-    <h2 style="margin:0">اختار التقارير المطلوب تصديرها PDF</h2>
+    <h2 style="margin:0">إعدادات التصدير (PDF / Excel)</h2>
     <button class="ghost" id="closePdfBtn">إغلاق ✕</button>
   </div>
   <div class="row" style="margin-top:8px">
-    <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text)">
-      <input type="checkbox" id="pdfMonthly" checked style="width:16px;height:16px"> مقارنة المبيعات الشهرية
-    </label>
-    <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text)">
-      <input type="checkbox" id="pdfSector" checked style="width:16px;height:16px"> مقارنة المبيعات بالقطاع
-    </label>
+    <label class="chk"><input type="checkbox" id="pdfMonthly" checked> مقارنة المبيعات الشهرية</label>
+    <label class="chk"><input type="checkbox" id="pdfSector" checked> مقارنة المبيعات بالقطاع</label>
+    <label class="chk"><input type="checkbox" id="pdfCharts" checked> رسم بياني تحت كل مجموعة <span class="badge">(PDF بس)</span></label>
   </div>
+
+  <hr style="border-color:var(--border);margin:14px 0">
+  <div class="flex-between">
+    <h2 style="margin:0;font-size:14px">المجموعات المطلوب تظهر في التقرير</h2>
+    <div class="row">
+      <button class="ghost" id="pdfGroupsAll">تحديد الكل</button>
+      <button class="ghost" id="pdfGroupsNone">إلغاء الكل</button>
+    </div>
+  </div>
+  <div id="pdfGroupsList" class="row" style="margin-top:8px"></div>
 
   <hr style="border-color:var(--border);margin:14px 0">
   <div class="flex-between">
     <h2 style="margin:0;font-size:14px">الشهور المطلوب مقارنتها</h2>
     <div class="row">
       <button class="ghost" id="pdfMonthsAll">تحديد الكل</button>
+      <button class="ghost" id="pdfMonthsNone">إلغاء الكل</button>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
         <input type="checkbox" id="pdfQuarterMode" style="width:16px;height:16px"> اجمع الشهور في كوارترات (كل 3 شهور مع بعض)
       </label>
@@ -229,9 +234,14 @@
   </div>
   <div id="pdfMonthsList" class="row" style="margin-top:8px"></div>
 
-  <div class="row" style="margin-top:14px">
-    <button id="pdfGenerateBtn">تصدير المختار</button>
-    <button class="secondary" id="pdfAllBtn">تصدير الكل</button>
+  <div class="row" style="margin-top:16px">
+    <button id="pdfGenerateBtn">تصدير PDF</button>
+    <button id="xlsGenerateBtn">تصدير Excel</button>
+    <button class="secondary" id="pdfAllBtn">PDF لكل المجموعات</button>
+    <button class="secondary" id="xlsAllBtn">Excel لكل المجموعات</button>
+  </div>
+  <div class="sub" style="margin-top:8px">
+    الإكسل بينزل بنفس المجموعات والأعمدة والترتيب اللي فوق — كل مجموعة في شيت لوحدها.
   </div>
 </div>
 
@@ -263,28 +273,49 @@ const SEED_CUSTOMERS = [{"name":"SM - م مصطفي رمضان","class":"مبي�
 // تخزين مركزي على Google Sheets عن طريق Apps Script — عشان الشغل يتفتح ويتزامن من أي جهاز
 // بدل ما يبقى محفوظ على متصفح واحد بس (localStorage).
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyOOLyOIBu8vl6LyTlCaEJJQceCP1l285yio0_aT18-xDBEKxFiyaEAtShuv1I3YUoNlQ/exec';
+// مفتاح مشترك اختياري: لو حطيت نفس القيمة في SHARED_TOKEN هنا وفي Code.gs، أي حد
+// معندوش المفتاح ده مش هيقدر يقرا أو يكتب حتى لو عرف رابط الـApps Script.
+const SHARED_TOKEN = '';
+const NET_TIMEOUT_MS = 60000;
+const NET_RETRIES = 2;
+
+// أي طلب شبكة بيتعاد لحد مرتين لو فشل بسبب الشبكة/مهلة — الشبكة على الموبايل بتقطع كتير.
+async function apiFetch(url, options){
+  let lastErr;
+  for(let attempt = 0; attempt <= NET_RETRIES; attempt++){
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=> ctrl.abort(), NET_TIMEOUT_MS);
+    try{
+      const res = await fetch(url, Object.assign({signal: ctrl.signal}, options||{}));
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    }catch(e){
+      lastErr = e.name === 'AbortError' ? new Error('الطلب أخد وقت أطول من اللازم') : e;
+      if(attempt < NET_RETRIES) await new Promise(r=> setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }finally{ clearTimeout(timer); }
+  }
+  throw lastErr;
+}
+const tokenParam = SHARED_TOKEN ? `&token=${encodeURIComponent(SHARED_TOKEN)}` : '';
+
 window.storage = {
   async get(key){
-    const res = await fetch(`${APPS_SCRIPT_URL}?action=get&key=${encodeURIComponent(key)}`);
-    const data = await res.json();
+    const data = await apiFetch(`${APPS_SCRIPT_URL}?action=get&key=${encodeURIComponent(key)}${tokenParam}`);
     if(!data.ok) throw new Error(data.error || 'not found');
     return {key, value: data.value, shared:true};
   },
   async set(key, value){
-    const res = await fetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'set', key, value})});
-    const data = await res.json();
+    const data = await apiFetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'set', key, value, token: SHARED_TOKEN})});
     if(!data.ok) throw new Error(data.error || 'save failed');
     return {key, value, shared:true};
   },
   async delete(key){
-    const res = await fetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'delete', key})});
-    const data = await res.json();
+    const data = await apiFetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'delete', key, token: SHARED_TOKEN})});
     if(!data.ok) throw new Error(data.error || 'delete failed');
     return {key, deleted:true, shared:true};
   },
   async list(prefix){
-    const res = await fetch(`${APPS_SCRIPT_URL}?action=list&prefix=${encodeURIComponent(prefix||'')}`);
-    const data = await res.json();
+    const data = await apiFetch(`${APPS_SCRIPT_URL}?action=list&prefix=${encodeURIComponent(prefix||'')}${tokenParam}`);
     if(!data.ok) throw new Error(data.error || 'list failed');
     return {keys: data.keys || [], prefix, shared:true};
   }
@@ -294,7 +325,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v18';
+const APP_VERSION = 'v20';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -317,10 +348,27 @@ let itemOverride = {}; // { itemName: sectorName } — مصدره الأساسي
 let archivedYears = []; // سنين مؤرشفة: بياناتها محفوظة بس مستبعدة من التقرير الحالي
 let pendingByMonth = null; // { month: { customer: { item: {cat, net, wh} } } } awaiting classification resolution
 let pendingNewItems = []; // items first seen this upload, for the info message
+let duplicateMonths = []; // شهور موجودة بالفعل في الرفعة الحالية — بتحتاج قرار استبدال/إضافة
+let replaceExisting = false;
+let lastSyncAt = 0; // آخر مزامنة ناجحة مع التخزين المركزي
 
 const $ = (id) => document.getElementById(id);
 
+// أسماء العملاء والأصناف جاية من ملف إكسل خارجي — لازم تتهرّب قبل ما تتحط في HTML
+// عشان اسم فيه < أو " ميكسرش الجدول أو يحقن كود.
+function esc(v){
+  return String(v == null ? '' : v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function normName(n){ return (n||"").toString().trim().replace(/\s+/g,' '); }
+
+// حفظ "على قد ما ينفع": فشل الحفظ أثناء التحميل الأولي (مثلًا مفيش نت) مينفعش
+// يوقف باقي التحميل — الصفحة لازم تكمل شغل بالبيانات المحلية.
+async function trySave(fn){
+  try{ await fn(); return true; }catch(e){ return false; }
+}
 
 const AR_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 function monthLabel(m){
@@ -366,8 +414,12 @@ async function loadStorage(){
   }catch(e){}
   if(!shownFromCache) $('loadStatus').textContent = 'بيحمّل البيانات المحفوظة...';
 
-  monthsData = {};
+  // مهم: منمسحش اللي معروض غير لما البيانات المركزية توصل فعلًا. قبل كده كانت
+  // monthsData بتتفضّى على طول، فلو النت قطع كانت الشاشة تفضل فاضية.
+  const cachedSnapshot = monthsData;
+  let fetched = {};
   let loadedFromIndex = false;
+  let netFailed = false;
   try{
     const idx = await window.storage.get('monthsIndex');
     const months = JSON.parse(idx.value);
@@ -375,15 +427,18 @@ async function loadStorage(){
       try{ const r = await window.storage.get('month:' + m); return [m, JSON.parse(r.value)]; }
       catch(e){ return null; }
     }));
-    results.forEach(pair => { if(pair) monthsData[pair[0]] = pair[1]; });
+    if(months.length && results.every(x => x === null)) throw new Error('كل الشهور فشلت');
+    results.forEach(pair => { if(pair) fetched[pair[0]] = pair[1]; });
+    monthsData = fetched;
     loadedFromIndex = true;
-  }catch(e){}
+  }catch(e){ netFailed = true; monthsData = cachedSnapshot; }
   if(!loadedFromIndex){
     // ترحيل من الصيغة القديمة (مفتاح monthsData واحد) لو لسه موجودة
     try{
       const m = await window.storage.get('monthsData');
       if(m){
         monthsData = JSON.parse(m.value);
+        netFailed = false;
         await saveMonths();
         try{ await window.storage.delete('monthsData'); }catch(e2){}
       }
@@ -395,7 +450,7 @@ async function loadStorage(){
     else throw new Error();
   }catch(e){
     SEED_CUSTOMERS.forEach(s => classification[normName(s.name)] = s.class);
-    await saveClassification();
+    await trySave(saveClassification);
   }
   try{
     const io = await window.storage.get('itemOverride');
@@ -403,35 +458,41 @@ async function loadStorage(){
     else throw new Error();
   }catch(e){
     itemOverride = Object.assign({}, ITEM_SECTOR_SEED);
-    await saveItemOverride();
+    await trySave(saveItemOverride);
   }
   // أي صنف جديد ظهر في ملف القطاعات ومش موجود عند المستخدم لسه — يتضاف من غير ما يلغي تعديلاته
   let seedChanged = false;
   Object.keys(ITEM_SECTOR_SEED).forEach(item=>{
     if(!(item in itemOverride)){ itemOverride[item] = ITEM_SECTOR_SEED[item]; seedChanged = true; }
   });
-  if(seedChanged) await saveItemOverride();
+  if(seedChanged) await trySave(saveItemOverride);
   try{
     const sl = await window.storage.get('sectorsList');
     if(sl) SECTORS = JSON.parse(sl.value);
     else throw new Error();
   }catch(e){
-    await saveSectors();
+    await trySave(saveSectors);
   }
   // ترحيل: لو المستخدم كان عنده نسخة قديمة من القطاعات من غير مكن/حشوات/تصنيع/شتر وبلسيه، ضيفهم
   let sectorsChanged = false;
   ["قطاعات PVC كومبن","قطاعات كرافت لاين","نيو لاين","اكسسوارات","مكن","حشوات","تصنيع","ابواب WPC","شتر وبلسيه"].forEach(s=>{
     if(!SECTORS.includes(s)){ SECTORS.push(s); sectorsChanged = true; }
   });
-  if(sectorsChanged) await saveSectors();
+  if(sectorsChanged) await trySave(saveSectors);
 
   try{
     const ar = await window.storage.get('archivedYears');
     archivedYears = JSON.parse(ar.value);
   }catch(e){ archivedYears = []; }
 
-  updateLocalCache();
-  $('loadStatus').textContent = 'جاهز';
+  // لو المزامنة فشلت، منكتبش فوق الكاش المحلي بنسخة ناقصة
+  if(!netFailed){
+    updateLocalCache();
+    lastSyncAt = Date.now();
+  }
+  $('loadStatus').textContent = netFailed
+    ? 'مفيش اتصال — شغّال على آخر نسخة محفوظة على الجهاز'
+    : 'جاهز';
   $('appVersionBadge').textContent = APP_VERSION;
   renderMonthPills();
   renderReport();
@@ -548,10 +609,17 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
   const sheet = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:''});
   const headerIdx = findHeaderRow(rows);
+  if(headerIdx === -1){
+    throw new Error('مش لاقي صف العناوين (لازم يكون فيه عمود اسمه c_name في أول 10 صفوف). اتأكد إنك رفعت ملف تصدير المحاسبة الخام مش ملف متعدّل.');
+  }
   const header = rows[headerIdx];
   const col = (name) => header.findIndex(h => normName(h) === name);
   const cCustomer = col('c_name'), cItem = col('Item_Name'), cVout = col('vout'), cVin = col('vin'),
         cDate = col('Order_Date'), cInv = col('Inv_Name');
+  const missing = [['c_name',cCustomer],['Item_Name',cItem],['vout',cVout]].filter(p => p[1] === -1).map(p => p[0]);
+  if(missing.length){
+    throw new Error('الملف ناقصه أعمدة أساسية: ' + missing.join('، ') + '. اتأكد إنه نفس تنسيق تصدير المحاسبة.');
+  }
   const byMonth = {}; // month -> customer -> item -> {cat, net, wh}
   const newItems = new Set();
   for(let i=headerIdx+1;i<rows.length;i++){
@@ -575,7 +643,7 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
   return {byMonth, newItems: Array.from(newItems)};
 }
 
-function itemSector(itemName, rawCat){
+function itemSector(itemName){
   if(itemOverride[itemName]) return itemOverride[itemName];
   return guessSector(itemName);
 }
@@ -583,7 +651,7 @@ function itemSector(itemName, rawCat){
 // القطاع الفعلي لكل جزء من صافي مبيعات صنف معين، بعد تطبيق ترحيل المخازن الإجباري (شتر وبلسيه / مصنع الأبواب).
 // بيرجع array من {sector, amt} — عادة عنصر واحد، وممكن أكتر لو الصنف اتباع من أكتر من مخزن في نفس الشهر.
 function itemEffectiveSectors(item, entry){
-  const base = itemSector(item, entry.cat);
+  const base = itemSector(item);
   const whKeys = entry.wh ? Object.keys(entry.wh) : [];
   if(!whKeys.length) return [{sector: base, amt: entry.net}];
   return whKeys.map(w => ({ sector: FORCED_SECTOR_BY_WAREHOUSE[w] || base, amt: entry.wh[w] }));
@@ -611,6 +679,9 @@ $('processBtn').addEventListener('click', async ()=>{
 
     pendingByMonth = byMonth;
     pendingNewItems = newItems;
+    // أخطر حالة: رفع نفس الملف تاني كان بيضيف الأرقام فوق القديمة ويضاعف المبيعات من غير أي تحذير.
+    duplicateMonths = Object.keys(byMonth).filter(m => monthsData[m]);
+    replaceExisting = duplicateMonths.length > 0;
     newItems.forEach(it => { itemOverride[it] = guessSector(it); });
     let saveWarn = '';
     if(newItems.length){
@@ -623,6 +694,14 @@ $('processBtn').addEventListener('click', async ()=>{
     const unmatched = Array.from(allCustomers).filter(c => !classification[c]);
 
     let msg = `<div class="msg ok">لقيت بيانات لشهور: ${Object.keys(byMonth).sort().map(monthLabel).join('، ')} (${allCustomers.size} عميل).</div>`;
+    if(duplicateMonths.length){
+      msg += `<div class="msg warn">
+        <b>تنبيه:</b> شهور محفوظة عندك خلاص: ${duplicateMonths.sort().map(monthLabel).join('، ')}.<br>
+        اختار تعمل إيه قبل الحفظ:
+        <label style="display:block;margin-top:6px"><input type="radio" name="dupMode" value="replace" checked> <b>استبدال</b> — امسح القديم واستخدم الملف ده (المناسب لو بترفع نفس الشهر تاني)</label>
+        <label style="display:block"><input type="radio" name="dupMode" value="append"> <b>إضافة فوق القديم</b> — اجمع الأرقام (استخدمه بس لو الملف ده جزء تاني من نفس الشهر)</label>
+      </div>`;
+    }
     if(newItems.length){
       msg += `<div class="msg warn">${newItems.length} صنف جديد اتحط تلقائي على أقرب قطاع بالتخمين — راجعهم من "الأصناف" لو حابب تظبطهم.</div>`;
     }
@@ -641,21 +720,32 @@ $('processBtn').addEventListener('click', async ()=>{
 
 function showUnmatched(list){
   $('unmatchedCard').style.display = 'block';
+  // الخيار الفاضي مهم: قبل كده كان أول خيار (جملة الإسكندرية) هو الافتراضي،
+  // فأي عميل المستخدم ما راجعوش كان بيتصنّف غلط من غير ما ياخد باله.
   $('unmatchedList').innerHTML = list.map((name)=>`
     <div class="row" style="margin-bottom:6px">
-      <span style="min-width:260px">${name}</span>
+      <span style="min-width:260px">${esc(name)}</span>
       <select data-name="${encodeURIComponent(name)}" class="classifSelect">
-        ${CLASS_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}
+        <option value="">— اختار التصنيف —</option>
+        ${CLASS_OPTIONS.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}
       </select>
     </div>`).join('');
 }
 
 $('saveClassifBtn').addEventListener('click', async ()=>{
-  document.querySelectorAll('.classifSelect').forEach(sel=>{
+  const sels = Array.from(document.querySelectorAll('.classifSelect'));
+  const blank = sels.filter(sel => !sel.value);
+  if(blank.length){
+    alert(`لسه ${blank.length} عميل من غير تصنيف. حدد تصنيف لكل واحد الأول.`);
+    blank[0].focus();
+    return;
+  }
+  sels.forEach(sel=>{
     const name = decodeURIComponent(sel.getAttribute('data-name'));
     classification[name] = sel.value;
   });
-  await saveClassification();
+  try{ await saveClassification(); }
+  catch(e){ alert('حفظ التصنيفات فشل: ' + e.message + ' — جرب تاني قبل ما تحفظ البيانات.'); return; }
   $('unmatchedCard').style.display = 'none';
 });
 
@@ -674,7 +764,11 @@ $('confirmCommitBtn').addEventListener('click', async ()=>{
 });
 
 async function commitAll(){
+  const dupSel = document.querySelector('input[name="dupMode"]:checked');
+  if(dupSel) replaceExisting = dupSel.value === 'replace';
   Object.keys(pendingByMonth).forEach(month=>{
+    // استبدال = امسح بيانات الشهر القديمة الأول عشان الأرقام ما تتضاعفش
+    if(replaceExisting && duplicateMonths.includes(month)) delete monthsData[month];
     if(!monthsData[month]) monthsData[month] = {};
     Object.keys(pendingByMonth[month]).forEach(cust=>{
       if(!monthsData[month][cust]) monthsData[month][cust] = {};
@@ -700,7 +794,7 @@ async function commitAll(){
     $('uploadMsg').innerHTML = `<div class="msg err">الحفظ فشل (${e.message}) — البيانات ظاهرة على الشاشة دلوقتي بس مش متخزنة، ومش هتلاقيها على أجهزة تانية. جرب "تحديث" وارفع تاني.</div>`;
     return;
   }
-  pendingByMonth = null; pendingNewItems = [];
+  pendingByMonth = null; pendingNewItems = []; duplicateMonths = []; replaceExisting = false;
   $('fileInput').value=''; $('monthInput').value=''; $('processBtn').disabled=true;
   renderMonthPills();
   renderReport();
@@ -719,10 +813,26 @@ function renderMonthPills(){
 }
 
 async function deleteMonth(m){
-  if(!confirm(`تمسح بيانات شهر ${monthLabel(m)}؟`)) return;
+  if(!confirm(`تمسح بيانات شهر ${monthLabel(m)}؟ ده مش بيترجع.`)) return;
+  const backup = monthsData[m];
   delete monthsData[m];
-  try{ await window.storage.delete('month:' + m); }catch(e){}
-  await saveMonths([]);
+  try{
+    await window.storage.delete('month:' + m);
+    // تحديث الفهرس بس. قبل كده saveMonths([]) كانت بتعيد رفع كل الشهور من أول وجديد.
+    await window.storage.set('monthsIndex', JSON.stringify(Object.keys(monthsData).sort()));
+  }catch(e){
+    monthsData[m] = backup;
+    alert('المسح فشل: ' + e.message + ' — الشهر لسه موجود.');
+    return;
+  }
+  // لو مبقاش فيه شهور في سنة مؤرشفة، شيلها من قايمة الأرشيف
+  const remainingYears = new Set(Object.keys(monthsData).map(yearOf));
+  const cleaned = archivedYears.filter(y => remainingYears.has(y));
+  if(cleaned.length !== archivedYears.length){
+    archivedYears = cleaned;
+    try{ await saveArchivedYears(); }catch(e){}
+  }
+  updateLocalCache();
   renderMonthPills();
   renderReport();
 }
@@ -739,9 +849,11 @@ document.querySelectorAll('.tab').forEach(t=>{
   });
 });
 
+// عملاء الشهور النشطة بس. قبل كده كانت بترجع عملاء السنين المؤرشفة كمان
+// فبيظهروا في التقرير بصفوف كلها أصفار.
 function allCustomers(){
   const set = new Set();
-  Object.values(monthsData).forEach(md => Object.keys(md).forEach(c=>set.add(c)));
+  activeMonths().forEach(m => Object.keys(monthsData[m]||{}).forEach(c=>set.add(c)));
   return Array.from(set);
 }
 
@@ -784,28 +896,6 @@ function customerSectorMonthlySeries(c, sector, months){
     return t;
   });
 }
-// صفوف شيت قطاع خاص: كل عميل ليه مبيعات فيه، شهر بشهر، ما عدا المستبعدين — بغض النظر عن تصنيفه.
-function computeSpecialSectorRows(sector){
-  const months = activeMonths();
-  const customers = allCustomers().filter(c => classification[c] !== 'مستبعد');
-  const rows = customers
-    .map(c => ({ label:c, cls: classification[c] || 'غير محدد', months: customerSectorMonthlySeries(c, sector, months) }))
-    .filter(r => r.months.some(v => v > 0));
-  return {months, rows};
-}
-// صفوف عملاء تصنيف واحد بس (جملة الإسكندرية / جملة طنطا / موزع / مبيعات خاصة)، كل عميل بسطره.
-function computeCustomerRowsByClass(cls){
-  const months = activeMonths();
-  const customers = allCustomers().filter(c => classification[c] === cls);
-  const rows = customers.map(c => ({
-    label: c,
-    cls: classification[c] || 'غير محدد',
-    months: customerMonthlySeries(c, months),
-    sectors: customerSectorTotals(c, months)
-  }));
-  return {months, rows};
-}
-
 // ---- أعمدة مقارنة قابلة للاختيار (شهور مفردة أو كوارترات مجمّعة) — للـPDF/الإكسل بس ----
 // عمود = {key, label, months:[...]}. لو quarterMode=false كل شهر عمود لوحده، ولو true كل 3 شهور (ربع سنة تقويمي) بيتجمعوا في عمود واحد.
 function buildColumns(selectedMonths, quarterMode){
@@ -869,14 +959,15 @@ function computeSpecialSectorRowsColumns(sector, columns){
   const customers = allCustomers().filter(c => classification[c] !== 'مستبعد');
   const rows = customers
     .map(c => ({ label:c, cls: classification[c] || 'غير محدد', months: customerSectorColumnSeries(c, sector, columns) }))
-    .filter(r => r.months.some(v => v > 0));
+    .filter(r => r.months.some(v => v !== 0));
   return {columns, rows};
 }
 
 // aggregateWholesale=true بيجمع كل عملاء الجملة (الإسكندرية + طنطا) في صف واحد ملخّص (للرسم البياني بس)
 function computeCustomerRows(aggregateWholesale){
   const months = activeMonths();
-  const customers = allCustomers();
+  // المصنّفين "مستبعد" كانوا بيظهروا في تقرير الشاشة رغم إنهم مستبعدين من الإكسل/PDF
+  const customers = allCustomers().filter(c => classification[c] !== 'مستبعد');
   const rows = [];
   const targetList = aggregateWholesale ? customers.filter(c => !WHOLESALE_CLASSES.includes(classification[c])) : customers;
   targetList.forEach(c=>{
@@ -903,32 +994,45 @@ function computeCustomerRows(aggregateWholesale){
   return {months, rows};
 }
 
-function buildTableHtml(tabType, months, rows, sortMode){
+function rowGrandTotal(tabType, r){
+  return tabType==='monthly'
+    ? r.months.reduce((x,y)=>x+y,0)
+    : mainSectors().reduce((s,sec)=> s + ((r.sectors||{})[sec]||0), 0);
+}
+// الترتيب اتفصل عن الرسم عشان الـPDF يقدر يرتّب مرة واحدة وبعدين يقسّم الصفوف على صفحات.
+function sortRowsForTable(tabType, rows){
+  return rows.slice().sort((a,b)=> rowGrandTotal(tabType,b) - rowGrandTotal(tabType,a));
+}
+
+// opts (اختياري، للـPDF): startIndex = رقم أول صف في الترقيم،
+// totalsFrom = الصفوف اللي صف الإجمالي يتحسب منها (كل الصفوف مش الجزء ده بس).
+function buildTableHtml(tabType, months, rows, sortMode, opts){
+  opts = opts || {};
+  const startIndex = opts.startIndex || 0;
+  const showTotals = !('totalsFrom' in opts) || opts.totalsFrom;
+  const totalsRows = opts.totalsFrom || rows;
   rows = rows.slice();
   if(sortMode === 'total'){
-    rows.sort((a,b)=>{
-      const ta = tabType==='monthly' ? a.months.reduce((x,y)=>x+y,0) : mainSectors().reduce((s,sec)=>s+(a.sectors[sec]||0),0);
-      const tb = tabType==='monthly' ? b.months.reduce((x,y)=>x+y,0) : mainSectors().reduce((s,sec)=>s+(b.sectors[sec]||0),0);
-      return tb - ta;
-    });
-  } else {
+    rows = sortRowsForTable(tabType, rows);
+  } else if(sortMode !== null){
     rows.sort((a,b)=> a.label.localeCompare(b.label,'ar'));
   }
   if(tabType === 'monthly'){
     // أعلى رقم في كل عمود شهر يتلوّن أخضر، وأقل رقم (من غير الأصفار) يتلوّن أحمر — بمعزل عن صف الإجمالي.
     const colStats = months.map((_, mi) => {
-      const vals = rows.map(r => r.months[mi]).filter(v => v > 0);
+      // التلوين على كل صفوف الجدول، مش الجزء الظاهر في الصفحة دي بس
+      const vals = totalsRows.map(r => r.months[mi]).filter(v => v > 0);
       if(vals.length < 2) return null;
       return { max: Math.max(...vals), min: Math.min(...vals) };
     });
     let html = `<div class="tbl-wrap"><table><thead><tr>
       <th>م</th><th>بيان</th><th>التصنيف</th><th>الإجمالي</th>
-      ${months.map(m=> typeof m === 'string' ? `<th>${monthLabel(m)}</th>` : `<th>${m.label}</th>`).join('')}
+      ${months.map(m=> typeof m === 'string' ? `<th>${esc(monthLabel(m))}</th>` : `<th>${esc(m.label)}</th>`).join('')}
     </tr></thead><tbody>`;
     let grandTotals = months.map(()=>0);
+    totalsRows.forEach(r => r.months.forEach((v,mi)=> grandTotals[mi]+=v));
     rows.forEach((r,i)=>{
       const rowTotal = r.months.reduce((a,b)=>a+b,0);
-      r.months.forEach((v,mi)=>grandTotals[mi]+=v);
       const cells = r.months.map((v,mi)=>{
         const st = colStats[mi];
         let style = '';
@@ -938,26 +1042,30 @@ function buildTableHtml(tabType, months, rows, sortMode){
         }
         return `<td class="num" style="${style}">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`;
       }).join('');
-      html += `<tr><td>${i+1}</td><td style="text-align:right">${r.label}</td><td>${r.cls}</td><td class="num">${rowTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</td>${cells}</tr>`;
+      html += `<tr><td>${startIndex+i+1}</td><td style="text-align:right">${esc(r.label)}</td><td>${esc(r.cls)}</td><td class="num">${rowTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</td>${cells}</tr>`;
     });
-    html += `<tr class="total-row"><td colspan="3">الإجمالي</td><td class="num">${grandTotals.reduce((a,b)=>a+b,0).toLocaleString('en-US',{maximumFractionDigits:0})}</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}</tr>`;
+    if(showTotals){
+      html += `<tr class="total-row"><td colspan="3">الإجمالي</td><td class="num">${grandTotals.reduce((a,b)=>a+b,0).toLocaleString('en-US',{maximumFractionDigits:0})}</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}</tr>`;
+    }
     html += '</tbody></table></div>';
     return html;
   } else {
     const cols = mainSectors();
     let html = `<div class="tbl-wrap"><table><thead><tr>
       <th>م</th><th>العميل / المجموعة</th><th>التصنيف</th>
-      ${cols.map(s=>`<th>${s}</th>`).join('')}<th>الإجمالي</th>
+      ${cols.map(s=>`<th>${esc(s)}</th>`).join('')}<th>الإجمالي</th>
     </tr></thead><tbody>`;
     let grandTotals = cols.map(()=>0);
+    totalsRows.forEach(r => cols.forEach((s,si)=> grandTotals[si] += ((r.sectors||{})[s]||0)));
     rows.forEach((r,i)=>{
-      const sums = cols.map(s => r.sectors[s]||0);
+      const sums = cols.map(s => (r.sectors||{})[s]||0);
       const total = sums.reduce((a,b)=>a+b,0);
-      sums.forEach((v,si)=>grandTotals[si]+=v);
-      html += `<tr><td>${i+1}</td><td style="text-align:right">${r.label}</td><td>${r.cls}</td>${sums.map(v=>`<td class="num">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`).join('')}<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
+      html += `<tr><td>${startIndex+i+1}</td><td style="text-align:right">${esc(r.label)}</td><td>${esc(r.cls)}</td>${sums.map(v=>`<td class="num">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`).join('')}<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
     });
-    const gt = grandTotals.reduce((a,b)=>a+b,0);
-    html += `<tr class="total-row"><td colspan="3">الإجمالي</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}<td class="num">${gt.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
+    if(showTotals){
+      const gt = grandTotals.reduce((a,b)=>a+b,0);
+      html += `<tr class="total-row"><td colspan="3">الإجمالي</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}<td class="num">${gt.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
+    }
     html += '</tbody></table></div>';
     return html;
   }
@@ -970,8 +1078,11 @@ function renderReport(){
     $('chartsArea').style.display = 'none';
     return;
   }
-  const {rows} = computeCustomerRows(false);
-  $('reportArea').innerHTML = buildTableHtml(activeTab, months, rows);
+  const rows = computeCustomerRows(false).rows.filter(r => r.months.some(v => v !== 0));
+  // نفس ترتيب التصدير: من الأكبر للأصغر بدل الترتيب الأبجدي
+  $('reportArea').innerHTML = rows.length
+    ? buildTableHtml(activeTab, months, rows, 'total')
+    : '<div class="sub">مفيش بيانات معروضة — يمكن كل السنين مؤرشفة أو كل العملاء مستبعدين.</div>';
   renderCharts();
 }
 
@@ -1000,7 +1111,7 @@ function drawBarChart(canvasId, labels, data, color){
 // إجمالي كل قطاع (بما فيها ابواب WPC وشتر وبلسيه) عبر كل العملاء والشهور، ما عدا المستبعدين.
 function allSectorTotals(){
   const totals = {}; SECTORS.forEach(s=> totals[s]=0);
-  Object.keys(monthsData).forEach(m=>{
+  activeMonths().forEach(m=>{
     Object.keys(monthsData[m]).forEach(c=>{
       if(classification[c] === 'مستبعد') return;
       const sums = customerSectorSums(monthsData[m][c]);
@@ -1010,7 +1121,7 @@ function allSectorTotals(){
   return totals;
 }
 function renderCharts(){
-  const months = Object.keys(monthsData);
+  const months = activeMonths();
   if(!months.length){ $('chartsArea').style.display = 'none'; return; }
   const {rows} = computeCustomerRows(true); // عملاء الجملة مجمّعين في صف واحد
   const custTotals = rows.map(r => ({label:r.label, total: r.months.reduce((a,b)=>a+b,0)}))
@@ -1023,77 +1134,171 @@ function renderCharts(){
 }
 
 // ---- Export ----
-function monthlyAoa(rows, months){
-  const header = ['م','بيان','التصنيف','الإجمالي', ...months.map(m=> typeof m === 'string' ? monthLabel(m) : m.label)];
+// ---- تصدير Excel: بنفس اختيارات وتنسيق الـPDF ----
+// نفس المجموعات المختارة، نفس الأعمدة (شهور/كوارترات)، ونفس الترتيب من الأكبر للأصغر.
+function monthlyAoa(rows, columns, totalsRows){
+  const header = ['م','بيان','التصنيف','الإجمالي', ...columns.map(c=> typeof c === 'string' ? monthLabel(c) : c.label)];
   const body = rows.map((r,i)=>[i+1, r.label, r.cls, r.months.reduce((a,b)=>a+b,0), ...r.months]);
-  return [header, ...body];
+  const src = totalsRows || rows;
+  const colTotals = columns.map((_,ci)=> src.reduce((a,r)=> a + (r.months[ci]||0), 0));
+  const totalRow = ['', 'الإجمالي', '', colTotals.reduce((a,b)=>a+b,0), ...colTotals];
+  return [header, ...body, totalRow];
 }
-function sectorAoa(rows, cols){
+function sectorAoa(rows, cols, totalsRows){
   const header = ['م','العميل / المجموعة','التصنيف', ...cols, 'الإجمالي'];
   const body = rows.map((r,i)=>{
-    const sums = cols.map(s=> r.sectors[s]||0);
+    const sums = cols.map(sc=> (r.sectors||{})[sc]||0);
     return [i+1, r.label, r.cls, ...sums, sums.reduce((a,b)=>a+b,0)];
   });
-  return [header, ...body];
+  const src = totalsRows || rows;
+  const colTotals = cols.map(sc=> src.reduce((a,r)=> a + ((r.sectors||{})[sc]||0), 0));
+  const totalRow = ['', 'الإجمالي', '', ...colTotals, colTotals.reduce((a,b)=>a+b,0)];
+  return [header, ...body, totalRow];
 }
-$('exportBtn').addEventListener('click', ()=>{
-  const months = activeMonths();
-  if(!months.length){ alert('مفيش بيانات لسه'); return; }
+
+// أسماء شيتات إكسل: 31 حرف بحد أقصى وممنوع فيها : \\ / ? * [ ]
+function safeSheetName(name, used){
+  let base = String(name).replace(/[:\\\/?*\[\]]/g, '-').slice(0,31).trim() || 'شيت';
+  let out = base, n = 2;
+  while(used.has(out)){
+    const suffix = ' ' + n++;
+    out = base.slice(0, 31 - suffix.length) + suffix;
+  }
+  used.add(out);
+  return out;
+}
+
+// بيرجع صفوف المجموعة زي ما الـPDF بيحسبها بالظبط
+function groupRows(g, columns){
+  if(g.kind === 'class'){
+    if(g.agg){
+      const row = computeAggregatedClassRow(g.key, g.title, columns);
+      return row ? [row] : [];
+    }
+    return computeCustomerRowsByClassColumns(g.key, columns).rows
+      .filter(r => r.months.some(v => v !== 0));
+  }
+  const sr = computeSpecialSectorRowsColumns(g.key, columns).rows;
+  if(g.agg && sr.length){
+    const totals = columns.map((_,i)=> sr.reduce((s,r)=> s + (r.months[i]||0), 0));
+    return [{label:`مبيعات ${g.key}`, cls:`${sr.length} عميل`, months: totals}];
+  }
+  return sr;
+}
+
+// عنوان التقرير والفترة فوق كل شيت — زي رأس الـPDF
+function sheetWithHeader(aoa, title, period, width){
+  const pad = (arr) => arr.concat(new Array(Math.max(0, width - arr.length)).fill(''));
+  const head = [
+    pad([`تقارير مبيعات القرشي — ${title}`]),
+    pad([`${period} — تاريخ التقرير ${new Date().toLocaleDateString('ar-EG')}`]),
+    pad([]),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet([...head, ...aoa]);
+  // دمج سطري العنوان على عرض الجدول عشان يبانوا زي رأس الـPDF
+  ws['!merges'] = [
+    {s:{r:0,c:0}, e:{r:0,c:Math.max(0,width-1)}},
+    {s:{r:1,c:0}, e:{r:1,c:Math.max(0,width-1)}},
+  ];
+  // عمود "بيان" أعرض عشان أسماء العملاء تبان
+  ws['!cols'] = new Array(width).fill(null).map((_,i)=> ({wch: i===1 ? 30 : 14}));
+  ws['!freeze'] = {xSplit:0, ySplit:4};
+  return ws;
+}
+
+function generateExcel(includeMonthly, includeSector, opts){
+  opts = opts || {};
+  const allMonths = activeMonths();
+  if(!allMonths.length){ alert('مفيش بيانات لسه'); return; }
+  if(!includeMonthly && !includeSector){ alert('اختار تقرير واحد على الأقل (شهري أو قطاعي)'); return; }
+
+  const checked = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(el=>el.value);
+  const selectedMonths = checked.length ? checked : allMonths;
+  const columns = buildColumns(selectedMonths, $('pdfQuarterMode').checked);
+  const period = periodLabel(columns);
+
+  const wantedIds = opts.allGroups
+    ? PDF_GROUPS.map(g=>g.id)
+    : Array.from(document.querySelectorAll('.pdfGroupChk:checked')).map(el=>el.value);
+  if(!wantedIds.length){ alert('اختار مجموعة واحدة على الأقل'); return; }
+  const groups = PDF_GROUPS.filter(g => wantedIds.includes(g.id));
+
   const wbOut = XLSX.utils.book_new();
-  const cols = mainSectors();
+  const used = new Set();
+  const secCols = mainSectors();
 
-  // جملة الإسكندرية/طنطا: صف واحد مجمّع من غير أسماء عملاء
-  [
-    {cls:'مبيعات جملة الاسكندرية', name:'جملة-اسكندرية', title:'مبيعات جملة الإسكندرية'},
-    {cls:'مبيعات جملة طنطا', name:'جملة-طنطا', title:'مبيعات جملة طنطا'},
-  ].forEach(({cls,name,title})=>{
-    const row = computeAggregatedClassRow(cls, title, months.map(m=>({key:m, label:monthLabel(m), months:[m]})));
-    if(!row) return;
-    XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(monthlyAoa([row], months)), `شهري-${name}`);
-    XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(sectorAoa([row], cols)), `قطاع-${name}`);
-  });
-
-  // الموزعين ومبيعات خاصة: عميل بعميل
-  [
-    {cls:'موزع', name:'موزعين'},
-    {cls:'مبيعات خاصة', name:'خاصة'},
-  ].forEach(({cls,name})=>{
-    const {rows} = computeCustomerRowsByClass(cls);
+  groups.forEach(g=>{
+    const rows = groupRows(g, columns);
     if(!rows.length) return;
-    XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(monthlyAoa(rows, months)), `شهري-${name}`);
-    XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(sectorAoa(rows, cols)), `قطاع-${name}`);
+    if(includeMonthly){
+      const sorted = sortRowsForTable('monthly', rows);
+      const aoa = monthlyAoa(sorted, columns);
+      XLSX.utils.book_append_sheet(wbOut,
+        sheetWithHeader(aoa, g.title, period, aoa[0].length),
+        safeSheetName('شهري-' + g.title, used));
+    }
+    // القطاعات الخاصة كلها قطاع واحد أصلًا، فمفيش تفصيل قطاعي ليها
+    if(includeSector && g.kind === 'class'){
+      const sorted = sortRowsForTable('sector', rows);
+      const aoa = sectorAoa(sorted, secCols);
+      XLSX.utils.book_append_sheet(wbOut,
+        sheetWithHeader(aoa, g.title, period, aoa[0].length),
+        safeSheetName('قطاع-' + g.title, used));
+    }
   });
 
-  SPECIAL_SECTORS.forEach(sector=>{
-    const {rows} = computeSpecialSectorRows(sector);
-    if(!rows.length) return;
-    const sheetName = `شيت ${sector}`.slice(0,31);
-    XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(monthlyAoa(rows, months)), sheetName);
-  });
-
+  if(!wbOut.SheetNames.length){ alert('مفيش بيانات في المجموعات اللي اخترتها للفترة دي'); return; }
   XLSX.writeFile(wbOut, `تقرير_مبيعات_القرشي_${new Date().toISOString().slice(0,10)}.xlsx`);
-});
+}
+
+// زرار الإكسل بيفتح نفس لوحة التصدير بتاعة الـPDF عشان الاختيارات تبقى واحدة
+$('exportBtn').addEventListener('click', ()=> openExportPanel());
 
 // ---- Customers panel ----
-function renderCustomersList(filter=''){
+// فلتر التصنيف: '' = الكل، 'غير محدد' = عملاء لسه من غير تصنيف
+function renderCustClassFilter(){
+  const sel = $('custClassFilter');
+  if(sel.options.length) return;
+  sel.innerHTML = `<option value="">كل التصنيفات</option>` +
+    CLASS_OPTIONS.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('') +
+    `<option value="__none__">من غير تصنيف</option>`;
+}
+
+function renderCustomersList(){
+  renderCustClassFilter();
+  const filter = $('custSearch').value;
+  const clsFilter = $('custClassFilter').value;
   const names = Array.from(new Set([...Object.keys(classification), ...allCustomers()])).sort();
   const f = filter.trim();
-  const rows = names.filter(n => !f || n.includes(f)).map(n => `
+  const matched = names.filter(n => {
+    if(f && !n.includes(f)) return false;
+    if(!clsFilter) return true;
+    if(clsFilter === '__none__') return !classification[n];
+    return classification[n] === clsFilter;
+  });
+  const rows = matched.map(n => `
     <tr>
-      <td style="text-align:right">${n}</td>
+      <td style="text-align:right">${esc(n)}</td>
       <td>
         <select data-cust="${encodeURIComponent(n)}" class="custClassSelect">
-          ${CLASS_OPTIONS.map(o=>`<option value="${o}" ${classification[n]===o?'selected':''}>${o}</option>`).join('')}
+          ${CLASS_OPTIONS.map(o=>`<option value="${esc(o)}" ${classification[n]===o?'selected':''}>${esc(o)}</option>`).join('')}
         </select>
       </td>
     </tr>`).join('');
-  $('customersList').innerHTML = `<table><thead><tr><th>العميل</th><th>التصنيف</th></tr></thead><tbody>${rows || '<tr><td colspan=2>مفيش نتائج</td></tr>'}</tbody></table>`;
+  $('customersList').innerHTML =
+    `<div class="badge" style="padding:4px 2px">ظاهر ${matched.length} من ${names.length} عميل</div>` +
+    `<table><thead><tr><th>العميل</th><th>التصنيف</th></tr></thead><tbody>${rows || '<tr><td colspan=2>مفيش نتائج</td></tr>'}</tbody></table>`;
   document.querySelectorAll('.custClassSelect').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
       const name = decodeURIComponent(sel.getAttribute('data-cust'));
+      const prev = classification[name];
       classification[name] = sel.value;
-      await saveClassification();
+      try{ await saveClassification(); }
+      catch(e){ classification[name] = prev; alert('حفظ التصنيف فشل: ' + e.message); sel.value = prev || ''; return; }
+      updateLocalCache();
       renderReport();
+      // لو بنفلتر على تصنيف معيّن، العميل اللي اتغيّر لازم يختفي من القايمة
+      if($('custClassFilter').value) renderCustomersList();
     });
   });
 }
@@ -1107,21 +1312,30 @@ $('manageCustomersBtn').addEventListener('click', ()=>{
   renderCustomersList();
 });
 $('closeCustomersBtn').addEventListener('click', ()=> $('customersPanel').style.display='none');
-$('custSearch').addEventListener('input', (e)=> renderCustomersList(e.target.value));
+$('custSearch').addEventListener('input', ()=> renderCustomersList());
+$('custClassFilter').addEventListener('change', ()=> renderCustomersList());
 
 // ---- Sectors panel ----
 function renderOwnSectorsList(){
   $('sectorsOwnList').innerHTML = SECTORS.map(s=>`
     <span class="pill done" style="display:inline-flex;align-items:center;gap:6px">
-      ${s}${SPECIAL_SECTORS.includes(s) ? ' <span class="badge">(شيت لوحده)</span>' : ''}
+      ${esc(s)}${SPECIAL_SECTORS.includes(s) ? ' <span class="badge">(شيت لوحده)</span>' : ''}
       <span class="ghost" style="cursor:pointer" data-del-sector="${encodeURIComponent(s)}">✕</span>
     </span>`).join('') || '<span class="badge">مفيش قطاعات لسه</span>';
   document.querySelectorAll('[data-del-sector]').forEach(el=>{
     el.addEventListener('click', async ()=>{
       const s = decodeURIComponent(el.getAttribute('data-del-sector'));
-      if(!confirm(`تحذف قطاع "${s}"؟ أي صنف متحسب عليه دلوقتي هيبقى محتاج إعادة تصنيف.`)) return;
+      const affected = Object.keys(itemOverride).filter(it => itemOverride[it] === s);
+      const fallback = SECTORS.filter(x=>x!==s)[0];
+      if(!fallback){ alert('مينفعش تحذف آخر قطاع.'); return; }
+      if(!confirm(`تحذف قطاع "${s}"؟ ${affected.length} صنف متحسب عليه دلوقتي هيتنقلوا لقطاع "${fallback}" وتقدر تعدّلهم من لوحة الأصناف.`)) return;
       SECTORS = SECTORS.filter(x=>x!==s);
-      await saveSectors();
+      affected.forEach(it => { itemOverride[it] = fallback; });
+      try{
+        await saveSectors();
+        if(affected.length) await saveItemOverride();
+      }catch(err){ alert('الحفظ فشل: ' + err.message); return; }
+      updateLocalCache();
       renderOwnSectorsList();
       renderReport();
     });
@@ -1132,7 +1346,9 @@ $('addSectorBtn').addEventListener('click', async ()=>{
   if(!name) return;
   if(SECTORS.includes(name)){ alert('القطاع ده موجود بالفعل'); return; }
   SECTORS.push(name);
-  await saveSectors();
+  try{ await saveSectors(); }
+  catch(e){ SECTORS = SECTORS.filter(x=>x!==name); alert('حفظ القطاع فشل: ' + e.message); return; }
+  updateLocalCache();
   $('newSectorName').value = '';
   renderOwnSectorsList();
 });
@@ -1161,26 +1377,49 @@ function allItemsWithTotals(){
   return Object.keys(map).map(item => ({item, cat: map[item].cat, total: map[item].total}));
 }
 
-function renderItemsList(filter=''){
+function renderItemSectorFilter(){
+  const sel = $('itemSectorFilter');
+  const prev = sel.value;
+  sel.innerHTML = `<option value="">كل القطاعات</option>` +
+    SECTORS.map(sc=>`<option value="${esc(sc)}">${esc(sc)}</option>`).join('');
+  if(prev && SECTORS.includes(prev)) sel.value = prev;
+}
+
+function renderItemsList(){
+  renderItemSectorFilter();
+  const filter = $('itemSearch').value;
+  const secFilter = $('itemSectorFilter').value;
   const items = allItemsWithTotals().sort((a,b)=> b.total - a.total);
   const f = filter.trim();
-  const rows = items.filter(o => !f || o.item.includes(f)).map(o => `
+  const matched = items.filter(o => {
+    if(f && !o.item.includes(f)) return false;
+    if(secFilter && itemSector(o.item) !== secFilter) return false;
+    return true;
+  });
+  const rows = matched.map(o => `
     <tr>
-      <td style="text-align:right">${o.item}</td>
+      <td style="text-align:right">${esc(o.item)}</td>
       <td class="num">${o.total.toLocaleString('en-US',{maximumFractionDigits:0})}</td>
       <td>
         <select data-item="${encodeURIComponent(o.item)}" class="itemSectorSelect">
-          ${SECTORS.map(s=>`<option value="${s}" ${itemSector(o.item,o.cat)===s?'selected':''}>${s}</option>`).join('')}
+          ${SECTORS.map(s=>`<option value="${esc(s)}" ${itemSector(o.item)===s?'selected':''}>${esc(s)}</option>`).join('')}
         </select>
       </td>
     </tr>`).join('');
-  $('itemsList').innerHTML = `<table><thead><tr><th>الصنف</th><th>الإجمالي</th><th>يتحسب على قطاع</th></tr></thead><tbody>${rows || '<tr><td colspan=3>مفيش أصناف لسه</td></tr>'}</tbody></table>`;
+  const shownTotal = matched.reduce((a,o)=> a + o.total, 0);
+  $('itemsList').innerHTML =
+    `<div class="badge" style="padding:4px 2px">ظاهر ${matched.length} من ${items.length} صنف — إجمالي المعروض ${shownTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</div>` +
+    `<table><thead><tr><th>الصنف</th><th>الإجمالي</th><th>يتحسب على قطاع</th></tr></thead><tbody>${rows || '<tr><td colspan=3>مفيش أصناف</td></tr>'}</tbody></table>`;
   document.querySelectorAll('.itemSectorSelect').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
       const item = decodeURIComponent(sel.getAttribute('data-item'));
+      const prev = itemOverride[item];
       itemOverride[item] = sel.value;
-      await saveItemOverride();
+      try{ await saveItemOverride(); }
+      catch(e){ itemOverride[item] = prev; alert('حفظ القطاع فشل: ' + e.message); sel.value = prev || ''; return; }
+      updateLocalCache();
       renderReport();
+      if($('itemSectorFilter').value) renderItemsList();
     });
   });
 }
@@ -1194,151 +1433,418 @@ $('manageItemsBtn').addEventListener('click', ()=>{
   renderItemsList();
 });
 $('closeItemsBtn').addEventListener('click', ()=> $('itemsPanel').style.display='none');
-$('itemSearch').addEventListener('input', (e)=> renderItemsList(e.target.value));
+$('itemSearch').addEventListener('input', ()=> renderItemsList());
+$('itemSectorFilter').addEventListener('change', ()=> renderItemsList());
 
 // ---- PDF export (via browser print) ----
+// ---- تعريف مجموعات التقرير ----
+// كل مجموعة سطر واحد في لوحة التصدير، والمستخدم بيختار اللي عايزه يظهر.
+// kind: 'class' = عملاء تصنيف معيّن، 'special' = قطاع ليه شيت لوحده.
+// agg: true = صف واحد مجمّع من غير أسماء عملاء.
+const PDF_GROUPS = [
+  {id:'wh-alex',  kind:'class',   key:'مبيعات جملة الاسكندرية', title:'مبيعات جملة الإسكندرية', agg:true},
+  {id:'wh-tanta', kind:'class',   key:'مبيعات جملة طنطا',        title:'مبيعات جملة طنطا',        agg:true},
+  {id:'dist',     kind:'class',   key:'موزع',                    title:'الموزعين',                 agg:false},
+  {id:'private',  kind:'class',   key:'مبيعات خاصة',             title:'عملاء مبيعات خاصة',        agg:false},
+  {id:'doors',    kind:'special', key:'ابواب WPC',               title:'شيت ابواب WPC',            agg:false},
+  {id:'shutter',  kind:'special', key:'شتر وبلسيه',              title:'شيت شتر وبلسيه',           agg:true},
+];
+
+function renderPdfGroupsList(){
+  $('pdfGroupsList').innerHTML = PDF_GROUPS.map(g=>`
+    <label class="chk"><input type="checkbox" class="pdfGroupChk" value="${g.id}" checked> ${esc(g.title)}</label>
+  `).join('');
+}
+
 function renderPdfMonthsList(){
   const months = activeMonths();
   $('pdfMonthsList').innerHTML = months.map(m => `
-    <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:5px 9px">
+    <label class="chk" style="font-size:12.5px;padding:5px 9px">
       <input type="checkbox" class="pdfMonthChk" value="${m}" checked style="width:14px;height:14px"> ${monthLabel(m)}
     </label>`).join('') || '<span class="badge">مفيش شهور محفوظة</span>';
 }
-$('exportPdfBtn').addEventListener('click', ()=>{
+// لوحة واحدة بتخدم الـPDF والإكسل بنفس الاختيارات
+function openExportPanel(){
   $('customersPanel').style.display = 'none';
   $('sectorsPanel').style.display = 'none';
   $('itemsPanel').style.display = 'none';
   $('archivePanel').style.display = 'none';
   $('pdfPanel').style.display = 'block';
   renderPdfMonthsList();
-});
+  renderPdfGroupsList();
+  $('pdfPanel').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+$('exportPdfBtn').addEventListener('click', ()=> openExportPanel());
 $('closePdfBtn').addEventListener('click', ()=> $('pdfPanel').style.display='none');
 $('pdfMonthsAll').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfMonthChk').forEach(el=> el.checked = true);
 });
+$('pdfMonthsNone').addEventListener('click', ()=>{
+  document.querySelectorAll('.pdfMonthChk').forEach(el=> el.checked = false);
+});
+$('pdfGroupsAll').addEventListener('click', ()=>{
+  document.querySelectorAll('.pdfGroupChk').forEach(el=> el.checked = true);
+});
+$('pdfGroupsNone').addEventListener('click', ()=>{
+  document.querySelectorAll('.pdfGroupChk').forEach(el=> el.checked = false);
+});
 
+// ================== بناء الـPDF ==================
+// الطريقة القديمة كانت بتصوّر التقرير كله كصورة واحدة وتقصّها على الصفحات بالمسطرة،
+// فالصفوف كانت بتتقطع في نصها ومفيش رأس على الصفحات اللي بعد الأولى.
+// دلوقتي: كل جدول بيتقسّم لمجموعات صفوف، كل مجموعة بتتصوّر لوحدها ومبتتقسمش،
+// ورأس التقرير بيتحط فوق كل صفحة.
 
-async function generatePdf(includeMonthly, includeSector){
+const PDF_MARGIN = 10;            // مم — هامش الصفحة
+const PDF_ROWS_PER_CHUNK = 10;    // صفوف الجدول في كل كتلة غير قابلة للقطع.
+                                  // كتل أصغر = فراغ أقل في آخر الصفحة، لأن الكتلة
+                                  // اللي مش هتكمّل بتنزل للصفحة اللي بعدها كاملة.
+const PDF_RENDER_W = 920;         // عرض الرسم بالبكسل — أصغر = خط أوضح في الصفحة
+const PDF_SCALE = 2;              // دقة html2canvas
+
+// بيرسم شارت أفقي على canvas مخفي ويرجّع صورته جاهزة كـ data URL.
+// Chart.js بيرسم العربي عادي على الـcanvas.
+async function chartImage(labels, data, color, width, height){
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  canvas.style.cssText = `position:fixed;left:-99999px;top:0;width:${width}px;height:${height}px`;
+  document.body.appendChild(canvas);
+  let chart;
+  try{
+    chart = new Chart(canvas, {
+      type:'bar',
+      data:{ labels: labels.map(truncLabel), datasets:[{ data, backgroundColor: color, borderRadius:3 }] },
+      options:{
+        indexAxis:'y', responsive:false, animation:false, devicePixelRatio:1,
+        plugins:{ legend:{display:false} },
+        scales:{
+          x:{ ticks:{color:'#333', font:{size:12}}, grid:{color:'#ddd'} },
+          y:{ ticks:{color:'#111', font:{size:12}}, grid:{display:false} }
+        }
+      }
+    });
+    return canvas.toDataURL('image/png');
+  } finally {
+    if(chart) chart.destroy();
+    document.body.removeChild(canvas);
+  }
+}
+
+// بيقسّم صفوف الجدول لمجموعات، كل مجموعة جدول كامل برأسه — عشان الرأس يتكرر
+// على كل صفحة والصف ما يتقطعش في نصه.
+function chunkRows(rows, size){
+  const out = [];
+  for(let i=0;i<rows.length;i+=size) out.push(rows.slice(i, i+size));
+  return out;
+}
+
+function periodLabel(columns){
+  const months = columns.flatMap(c=>c.months).sort();
+  if(!months.length) return '';
+  const from = monthLabel(months[0]);
+  const to = monthLabel(months[months.length-1]);
+  return from === to ? `عن شهر ${from}` : `عن الفترة من ${from} إلى ${to}`;
+}
+
+const PDF_STYLE = `
+  .tbl-wrap{overflow:visible !important;max-height:none !important}
+  table{border-collapse:collapse;width:100%;font-size:10.5px;table-layout:fixed;margin:0}
+  th,td{border:1px solid #999;padding:4px 5px;text-align:center;word-wrap:break-word;overflow-wrap:break-word}
+  th{background:#eee;font-weight:700;font-size:10px}
+  td.num{font-weight:700;direction:ltr;font-family:Arial,sans-serif;white-space:nowrap}
+  td:nth-child(2),th:nth-child(2){width:190px;text-align:right}
+  .total-row td{background:#ddd;font-weight:700}
+  .grp-title{font-size:15px;font-weight:700;padding:8px 0 5px;border-bottom:1.5px solid #777;margin-bottom:5px}
+  .sub-title{font-size:12px;font-weight:700;color:#333;padding:5px 0 3px}
+  .chart-cap{font-size:11.5px;font-weight:700;color:#333;padding:5px 0 2px}
+  .blk{margin-bottom:7px}
+`;
+
+// بيبني عنصر مخفي فيه التقرير كله، ويصوّره بـhtml2canvas مرة واحدة.
+// كل استدعاء لـhtml2canvas بينسخ الصفحة كلها، فاستدعاء واحد أسرع بمراحل من عشرات.
+async function renderReportCanvas(html){
+  const holder = document.createElement('div');
+  holder.id = 'pdfHolder';
+  holder.style.cssText = `position:fixed;left:-99999px;top:0;width:${PDF_RENDER_W}px;` +
+    `background:#fff;color:#111;font-family:Tahoma,Arial,sans-serif;direction:rtl;padding:0;margin:0;`;
+  holder.innerHTML = `<style>${PDF_STYLE}</style>${html}`;
+  document.body.appendChild(holder);
+  try{
+    // مهم: نستنى صور الشارت تتحمّل الأول. لو قسنا نقط القطع والصور لسه فاضية،
+    // الارتفاعات كلها بتطلع غلط وبيضيع آخر جزء من التقرير ويتقطع الجدول في نصه.
+    await Promise.all(Array.from(holder.querySelectorAll('img')).map(img =>
+      img.complete && img.naturalHeight
+        ? Promise.resolve()
+        : new Promise(res => { img.onload = img.onerror = res; })
+    ));
+    // نقط القطع المسموحة = نهاية كل كتلة. الصورة مبتتقطعش في أي مكان تاني.
+    const ends = Array.from(holder.querySelectorAll('.blk'))
+      .map(el => el.offsetTop + el.offsetHeight);
+    const canvas = await html2canvas(holder, {
+      scale: PDF_SCALE,
+      backgroundColor: '#ffffff',
+      width: holder.scrollWidth,
+      height: holder.scrollHeight,
+      windowHeight: holder.scrollHeight,
+    });
+    // المقياس بيتحسب من العرض مش من الارتفاع: html2canvas ساعات بيطلّع صورة أطول
+    // من العنصر (فراغ زايد تحت)، والحساب بالارتفاع كان بيوسّع نقط القطع فيتقطع
+    // الجدول في نص صف. العرض دايمًا مضبوط، والمقياس واحد في الاتجاهين.
+    const k = canvas.width / (holder.scrollWidth || 1);
+    return {canvas, stops: ends.map(e => e * k)};
+  } finally {
+    document.body.removeChild(holder);
+  }
+}
+
+// بيقص شريحة أفقية من الصورة الكبيرة ويرجّعها كـdata URL
+function sliceCanvas(src, topPx, heightPx){
+  const c = document.createElement('canvas');
+  c.width = src.width;
+  c.height = Math.max(1, Math.round(heightPx));
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0,0,c.width,c.height);
+  ctx.drawImage(src, 0, Math.round(topPx), src.width, c.height, 0, 0, src.width, c.height);
+  return c.toDataURL('image/jpeg', 0.92);
+}
+
+async function generatePdf(includeMonthly, includeSector, opts){
+  opts = opts || {};
   const allMonths = activeMonths();
   if(!allMonths.length){ alert('مفيش بيانات لسه'); return; }
-  if(!includeMonthly && !includeSector){ alert('اختار تقرير واحد على الأقل'); return; }
+  if(!includeMonthly && !includeSector){ alert('اختار تقرير واحد على الأقل (شهري أو قطاعي)'); return; }
 
   const checked = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(el=>el.value);
   const selectedMonths = checked.length ? checked : allMonths;
   const quarterMode = $('pdfQuarterMode').checked;
   const columns = buildColumns(selectedMonths, quarterMode);
 
-  const sectionStyle = 'font-size:16px;margin:28px 0 10px;padding-bottom:5px;border-bottom:2px solid #999';
-  let sectionsHtml = '';
+  const wantedIds = opts.allGroups
+    ? PDF_GROUPS.map(g=>g.id)
+    : Array.from(document.querySelectorAll('.pdfGroupChk:checked')).map(el=>el.value);
+  if(!wantedIds.length){ alert('اختار مجموعة واحدة على الأقل'); return; }
+  const groups = PDF_GROUPS.filter(g => wantedIds.includes(g.id));
+  const withCharts = opts.allGroups ? true : $('pdfCharts').checked;
 
-  // جملة الإسكندرية/طنطا: صف واحد مجمّع من غير أسماء عملاء
-  [
-    {cls:'مبيعات جملة الاسكندرية', title:'مبيعات جملة الإسكندرية'},
-    {cls:'مبيعات جملة طنطا', title:'مبيعات جملة طنطا'},
-  ].forEach(({cls,title})=>{
-    const row = computeAggregatedClassRow(cls, title, columns);
-    if(!row) return;
-    sectionsHtml += `<h2 style="${sectionStyle}">${title}</h2>`;
-    if(includeMonthly) sectionsHtml += `<h3 style="font-size:13px;margin:14px 0 6px">مقارنة المبيعات (من الأكبر للأصغر)</h3>${buildTableHtml('monthly', columns, [row], 'total')}`;
-    if(includeSector) sectionsHtml += `<h3 style="font-size:13px;margin:14px 0 6px">مقارنة المبيعات بالقطاع</h3>${buildTableHtml('sector', columns, [row], 'total')}`;
-  });
-
-  // الموزعين ومبيعات خاصة: عميل بعميل زي ما هو (مفرّطين)
-  [
-    {cls:'موزع', title:'الموزعين'},
-    {cls:'مبيعات خاصة', title:'عملاء مبيعات خاصة'},
-  ].forEach(({cls,title})=>{
-    const {rows} = computeCustomerRowsByClassColumns(cls, columns);
-    if(!rows.length) return;
-    sectionsHtml += `<h2 style="${sectionStyle}">${title}</h2>`;
-    if(includeMonthly) sectionsHtml += `<h3 style="font-size:13px;margin:14px 0 6px">مقارنة المبيعات (من الأكبر للأصغر)</h3>${buildTableHtml('monthly', columns, rows, 'total')}`;
-    if(includeSector) sectionsHtml += `<h3 style="font-size:13px;margin:14px 0 6px">مقارنة المبيعات بالقطاع (من الأكبر للأصغر)</h3>${buildTableHtml('sector', columns, rows, 'total')}`;
-  });
-
-  // القطاعات الخاصة: الأبواب مفصّلة عميل بعميل زي الموزعين، وشتر وبلسيه صف واحد مجمّع
-  if(includeMonthly){
-    SPECIAL_SECTORS.forEach(sector=>{
-      const {rows} = computeSpecialSectorRowsColumns(sector, columns);
-      if(!rows.length) return;
-      if(sector === 'ابواب WPC'){
-        sectionsHtml += `<h2 style="${sectionStyle}">شيت ${sector}</h2>${buildTableHtml('monthly', columns, rows, 'total')}`;
-      } else {
-        const totals = columns.map((_,i)=> rows.reduce((s,r)=> s + (r.months[i]||0), 0));
-        const aggRow = {label:`مبيعات ${sector}`, cls:`${rows.length} عميل`, months: totals};
-        sectionsHtml += `<h2 style="${sectionStyle}">شيت ${sector}</h2>${buildTableHtml('monthly', columns, [aggRow], 'total')}`;
-      }
-    });
-  }
-
-  const holder = document.createElement('div');
-  holder.style.cssText = 'position:fixed;left:-99999px;top:0;width:1000px;background:#fff;color:#111;padding:24px;font-family:Tahoma,Arial,sans-serif;direction:rtl;';
-  holder.innerHTML = `
-    <style>
-      /* المهم: إلغاء قص الجداول — .tbl-wrap في الموقع بيحدد max-height بيقطع أي جدول طويل في الـPDF */
-      .tbl-wrap{overflow:visible !important;max-height:none !important}
-      table{border-collapse:collapse;width:100%;font-size:10.5px;table-layout:fixed}
-      th,td{border:1px solid #999;padding:4px 5px;text-align:center;word-wrap:break-word;overflow-wrap:break-word}
-      th{background:#eee;font-weight:700;font-size:10px}
-      /* الأرقام: إنجليزي + بولد + اتجاه من الشمال لليمين عشان تتقرأ صح */
-      td.num{font-weight:700;direction:ltr;font-family:Arial,sans-serif;white-space:nowrap}
-      /* عمود البيان أعرض عشان أسماء العملاء تتقرأ من غير قص */
-      td:nth-child(2),th:nth-child(2){width:200px;text-align:right}
-      .total-row td{background:#ddd;font-weight:700}
-      h1{font-size:18px;margin-bottom:14px}
-    </style>
-    <h1>تقارير مبيعات القرشي — ${new Date().toLocaleDateString('ar-EG')}</h1>
-    ${sectionsHtml}
-  `;
-  document.body.appendChild(holder);
+  const btn = $('pdfGenerateBtn');
+  const btnLabel = btn.textContent;
+  btn.disabled = true; $('pdfAllBtn').disabled = true;
+  btn.textContent = 'بيجهّز التقرير...';
+  await new Promise(r=>setTimeout(r,30)); // يدي المتصفح فرصة يرسم حالة الزرار
 
   try{
-    $('pdfGenerateBtn').disabled = true;
-    $('pdfAllBtn').disabled = true;
-    const canvas = await html2canvas(holder, {scale:2, backgroundColor:'#ffffff'});
+    // ---- 1) بناء محتوى التقرير كله كـHTML، كل كتلة .blk نقطة قطع مسموحة ----
+    let body = '';
+    for(const g of groups){
+      let rows = [];
+      if(g.kind === 'class'){
+        if(g.agg){
+          const row = computeAggregatedClassRow(g.key, g.title, columns);
+          if(row) rows = [row];
+        } else {
+          rows = computeCustomerRowsByClassColumns(g.key, columns).rows
+            .filter(r => r.months.some(v => v !== 0));
+        }
+      } else {
+        const sr = computeSpecialSectorRowsColumns(g.key, columns).rows;
+        if(g.agg && sr.length){
+          const totals = columns.map((_,i)=> sr.reduce((s,r)=> s + (r.months[i]||0), 0));
+          rows = [{label:`مبيعات ${g.key}`, cls:`${sr.length} عميل`, months: totals}];
+        } else {
+          rows = sr;
+        }
+      }
+      if(!rows.length) continue;
+
+      // العنوان ملزوق بأول جدول في نفس الكتلة، عشان ميقعش لوحده في آخر صفحة
+      let head = `<div class="grp-title">${esc(g.title)}</div>`;
+      const canSector = g.kind === 'class'; // القطاعات الخاصة كلها قطاع واحد أصلًا
+
+      const addTable = (tabType, subTitle) => {
+        const sorted = sortRowsForTable(tabType, rows);
+        const chunks = chunkRows(sorted, PDF_ROWS_PER_CHUNK);
+        chunks.forEach((ch, ci)=>{
+          const tbl = buildTableHtml(tabType, columns, ch, null, {
+            startIndex: ci*PDF_ROWS_PER_CHUNK,
+            totalsFrom: ci === chunks.length-1 ? sorted : null
+          });
+          const sub = ci === 0 ? `<div class="sub-title">${esc(subTitle)}</div>` : '';
+          body += `<div class="blk">${head}${sub}${tbl}</div>`;
+          head = ''; // العنوان مرة واحدة بس
+        });
+      };
+
+      if(includeMonthly) addTable('monthly', 'مقارنة المبيعات (من الأكبر للأصغر)');
+      if(includeSector && canSector) addTable('sector', 'مقارنة المبيعات بالقطاع (من الأكبر للأصغر)');
+
+      // شارت المجموعة دي تحتها مباشرة
+      if(withCharts){
+        const totals = rows.map(r => ({label:r.label, total:r.months.reduce((a,b)=>a+b,0)}))
+          .filter(o => o.total > 0).sort((a,b)=> b.total - a.total).slice(0,10);
+        if(totals.length > 1 && window.Chart){
+          const chartH = 46 + totals.length * 26;
+          const img = await chartImage(totals.map(o=>o.label), totals.map(o=>o.total),
+            '#3b5fe0', PDF_RENDER_W, chartH);
+          body += `<div class="blk">
+            <div class="chart-cap">${esc(`أعلى ${totals.length} في ${g.title}`)}</div>
+            <img src="${img}" style="width:100%;display:block">
+          </div>`;
+        }
+      }
+      body += `<div style="height:12px"></div>`;
+    }
+
+    if(!body){ alert('مفيش بيانات في المجموعات اللي اخترتها للفترة دي'); return; }
+
+    // ---- 2) رأس التقرير — بيتصوّر مع المحتوى وبيتكرر فوق كل صفحة ----
+    const period = periodLabel(columns);
+    const headerHtml = `<div id="pdfHead" style="border-bottom:2px solid #333;padding:0 0 7px;margin-bottom:8px">
+      <div style="font-size:20px;font-weight:700">تقارير مبيعات القرشي</div>
+      <div style="font-size:12.5px;color:#444;margin-top:4px">${esc(period)} — تاريخ التقرير ${esc(new Date().toLocaleDateString('ar-EG'))}</div>
+    </div>`;
+
+    btn.textContent = 'بيرسم الصفحات...';
+    await new Promise(r=>setTimeout(r,30));
+
+    // الرأس بيتصوّر لوحده مرة واحدة عشان يتكرر، والمحتوى مرة واحدة كمان
+    const headRes = await renderReportCanvas(`<div class="blk">${headerHtml}</div>`);
+    const headCanvas = headRes.canvas;
+    const contentRes = await renderReportCanvas(body);
+    const { canvas, stops } = contentRes;
+
+    // ---- 3) التوزيع على الصفحات عند نقط القطع بس ----
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF('p','mm','a4');
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    const imgW = pageW;
-    const imgH = canvas.height * imgW / canvas.width;
-    let heightLeft = imgH;
-    let position = 0;
-    const imgData = canvas.toDataURL('image/png');
-    pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
-    heightLeft -= pageH;
-    while(heightLeft > 0){
-      position = heightLeft - imgH;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
-      heightLeft -= pageH;
+    const contentW = pageW - PDF_MARGIN*2;
+    const pxToMm = contentW / (PDF_RENDER_W * PDF_SCALE); // بكسل الصورة → مم
+
+    const headData = headCanvas.toDataURL('image/png');
+    const headHmm = headCanvas.height * pxToMm;
+    const topY = PDF_MARGIN + headHmm + 2;
+    const availMm = (pageH - PDF_MARGIN - 7) - topY;   // مساحة المحتوى في الصفحة
+    const availPx = availMm / pxToMm;
+
+    const stopsPx = stops.filter(v => v > 0);
+    const BLEED = 5 * PDF_SCALE;      // بيبلع حد الجدول السفلي عند القطع
+    const MIN_SLICE_PX = 14 * PDF_SCALE; // أي باقي أقل من كده مجرد فراغ، مش محتوى
+    // آخر كتلة هي نهاية المحتوى الفعلي — اللي بعدها فراغ بحكم البناء،
+    // وكان بيتحوّل لصفحة أخيرة فاضية.
+    const contentEnd = stopsPx.length
+      ? Math.min(canvas.height, Math.max(...stopsPx) + BLEED)
+      : canvas.height;
+
+    let cursor = 0;
+    let first = true;
+    let guard = 0;
+    while(cursor < contentEnd - MIN_SLICE_PX && guard++ < 500){
+      const limit = cursor + availPx;
+      // آخر نقطة قطع مسموحة جوه المساحة المتاحة
+      let cut = 0;
+      for(const s of stopsPx){ if(s > cursor + MIN_SLICE_PX && s + BLEED <= limit) cut = s + BLEED; }
+      // كتلة أطول من صفحة كاملة (نادر) — نقطعها بالمساحة عشان ما ندخلش في لوب
+      if(!cut) cut = Math.min(limit, contentEnd);
+      // الباقي بعد القطع ضئيل؟ خده مع الصفحة دي بدل ما نفتحله صفحة لوحده
+      if(cut >= contentEnd - MIN_SLICE_PX) cut = contentEnd;
+      // الصفحة بتتفتح هنا، بعد ما اتأكدنا إن فيه محتوى فعلاً
+      if(!first) pdf.addPage();
+      first = false;
+      const h = cut - cursor;
+      pdf.addImage(headData, 'PNG', PDF_MARGIN, PDF_MARGIN, contentW, headHmm);
+      pdf.addImage(sliceCanvas(canvas, cursor, h), 'JPEG', PDF_MARGIN, topY, contentW, h * pxToMm);
+      cursor = cut;
     }
+
+    // أرقام الصفحات (لاتيني عشان الخط الافتراضي يعرضها صح)
+    const total = pdf.internal.getNumberOfPages();
+    for(let i=1;i<=total;i++){
+      pdf.setPage(i);
+      pdf.setFontSize(9);
+      pdf.setTextColor(110);
+      pdf.text(`${i} / ${total}`, pageW/2, pageH - PDF_MARGIN + 2, {align:'center'});
+    }
+
     pdf.save(`تقرير_مبيعات_القرشي_${new Date().toISOString().slice(0,10)}.pdf`);
   }catch(e){
     alert('حصل خطأ في إنشاء الـ PDF: ' + e.message);
   }finally{
-    document.body.removeChild(holder);
-    $('pdfGenerateBtn').disabled = false;
-    $('pdfAllBtn').disabled = false;
+    btn.disabled = false; $('pdfAllBtn').disabled = false;
+    btn.textContent = btnLabel;
     $('pdfPanel').style.display = 'none';
   }
 }
 
 $('pdfGenerateBtn').addEventListener('click', ()=>{
-  generatePdf($('pdfMonthly').checked, $('pdfSector').checked);
+  generatePdf($('pdfMonthly').checked, $('pdfSector').checked, {});
 });
-$('pdfAllBtn').addEventListener('click', ()=> generatePdf(true, true));
+$('pdfAllBtn').addEventListener('click', ()=> generatePdf(true, true, {allGroups:true}));
+$('xlsGenerateBtn').addEventListener('click', ()=>{
+  try{ generateExcel($('pdfMonthly').checked, $('pdfSector').checked, {}); }
+  catch(e){ alert('حصل خطأ في تصدير الإكسل: ' + e.message); }
+});
+$('xlsAllBtn').addEventListener('click', ()=>{
+  try{ generateExcel(true, true, {allGroups:true}); }
+  catch(e){ alert('حصل خطأ في تصدير الإكسل: ' + e.message); }
+});
 
 loadStorage();
 
-// ---- PWA install ----
+// ---- PWA + التحديث التلقائي ----
+// المطلوب: كل ما اللينك يتفتح أو يترجعله، يشوف لوحده لو فيه نسخة أحدث ويحدّث،
+// من غير ما المستخدم يدوس "تحديث".
+let swRegistration = null;
+let reloadingForUpdate = false;
+
 if('serviceWorker' in navigator){
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+  window.addEventListener('load', async () => {
+    try{
+      swRegistration = await navigator.serviceWorker.register('./sw.js');
+      // نسخة جديدة نزلت وجاهزة → فعّلها فورًا
+      swRegistration.addEventListener('updatefound', ()=>{
+        const sw = swRegistration.installing;
+        if(!sw) return;
+        sw.addEventListener('statechange', ()=>{
+          if(sw.state === 'installed' && navigator.serviceWorker.controller){
+            sw.postMessage({type:'SKIP_WAITING'});
+          }
+        });
+      });
+      if(swRegistration.waiting) swRegistration.waiting.postMessage({type:'SKIP_WAITING'});
+    }catch(e){}
+  });
+  // أول ما الـSW الجديد يمسك الصفحة، اعمل ريلود مرة واحدة بس
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(reloadingForUpdate) return;
+    reloadingForUpdate = true;
+    location.reload();
+  });
 }
+
+// فحص التحديث + إعادة مزامنة البيانات لما الصفحة ترجع قدام (تبديل تابات / فتح التطبيق تاني)
+const RESYNC_AFTER_MS = 60000; // من غير ده كل تبديل تاب سريع كان هيعمل طلب شبكة
+
+async function checkForUpdates(){
+  try{ if(swRegistration) await swRegistration.update(); }catch(e){}
+}
+
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState !== 'visible') return;
+  checkForUpdates();
+  if(Date.now() - lastSyncAt > RESYNC_AFTER_MS){
+    lastSyncAt = Date.now();
+    // هات آخر بيانات من التخزين المركزي — يمكن حد تاني رفع شهر جديد
+    loadStorage().catch(()=>{});
+  }
+});
+window.addEventListener('online', ()=>{ checkForUpdates(); });
 $('updateBtn').addEventListener('click', async ()=>{
   $('updateBtn').textContent = 'بيدور على تحديث...';
+  reloadingForUpdate = true; // الريلود اليدوي تحت هو اللي هيحصل، مش بتاع controllerchange
   try{
     if('serviceWorker' in navigator){
-      const reg = await navigator.serviceWorker.getRegistration();
+      const reg = swRegistration || await navigator.serviceWorker.getRegistration();
       if(reg){
         await reg.update();
         if(reg.waiting){ reg.waiting.postMessage({type:'SKIP_WAITING'}); }
@@ -1349,7 +1855,7 @@ $('updateBtn').addEventListener('click', async ()=>{
       }
     }
   }catch(e){}
-  location.reload(true);
+  location.reload();
 });
 let deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
