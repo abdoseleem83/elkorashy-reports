@@ -325,7 +325,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v21';
+const APP_VERSION = 'v22';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1192,8 +1192,7 @@ function groupRows(g, columns){
   // تصنيفات بتنضم للمجموعة كصف واحد مجمّع لكل واحد (الجملة جوه الموزعين).
   // الترتيب بيتعمل بعد كده على الصفوف كلها مع بعض، فبتاخد ترتيبها الطبيعي بينهم.
   (g.withAggClasses || []).forEach(cls=>{
-    const src = PDF_GROUPS.find(x => x.kind === 'class' && x.agg && x.key === cls);
-    const row = computeAggregatedClassRow(cls, src ? src.title : cls, columns);
+    const row = computeAggregatedClassRow(cls, AGG_CLASS_TITLES[cls] || cls, columns);
     if(row && row.months.some(v => v !== 0)) rows.push(row);
   });
   return rows;
@@ -1454,14 +1453,19 @@ $('itemSectorFilter').addEventListener('change', ()=> renderItemsList());
 // كل مجموعة سطر واحد في لوحة التصدير، والمستخدم بيختار اللي عايزه يظهر.
 // kind: 'class' = عملاء تصنيف معيّن، 'special' = قطاع ليه شيت لوحده.
 // agg: true = صف واحد مجمّع من غير أسماء عملاء.
+// اسم الصف المجمّع لكل تصنيف بيتحسب صف واحد (الاسم في بيانات المحاسبة مكتوب
+// "الاسكندرية"، وده الاسم اللي بيتعرض في التقرير).
+const AGG_CLASS_TITLES = {
+  'مبيعات جملة الاسكندرية': 'مبيعات جملة الإسكندرية',
+  'مبيعات جملة طنطا': 'مبيعات جملة طنطا',
+};
+
 // withAggClasses: تصنيفات بتتحسب صف واحد مجمّع وبتتحط جوه المجموعة دي وتتساوى
-// مع صفوفها في الترتيب — الجملة (إسكندرية/طنطا) بتظهر جوه الموزعين كأنها موزع.
-// defaultOff: الخيار موجود بس مش متعلّم افتراضي، عشان الأرقام ما تتكررش.
+// مع صفوفها في الترتيب — الجملة (إسكندرية/طنطا) بتظهر جوه الموزعين كأنها موزع،
+// ومالهاش قسم مستقل في التقرير.
 const PDF_GROUPS = [
   {id:'dist',     kind:'class',   key:'موزع',                    title:'الموزعين',                 agg:false,
    withAggClasses:['مبيعات جملة الاسكندرية','مبيعات جملة طنطا']},
-  {id:'wh-alex',  kind:'class',   key:'مبيعات جملة الاسكندرية', title:'مبيعات جملة الإسكندرية', agg:true, defaultOff:true},
-  {id:'wh-tanta', kind:'class',   key:'مبيعات جملة طنطا',        title:'مبيعات جملة طنطا',        agg:true, defaultOff:true},
   {id:'private',  kind:'class',   key:'مبيعات خاصة',             title:'عملاء مبيعات خاصة',        agg:false},
   {id:'doors',    kind:'special', key:'ابواب WPC',               title:'شيت ابواب WPC',            agg:false},
   {id:'shutter',  kind:'special', key:'شتر وبلسيه',              title:'شيت شتر وبلسيه',           agg:true},
@@ -1469,8 +1473,7 @@ const PDF_GROUPS = [
 
 function renderPdfGroupsList(){
   $('pdfGroupsList').innerHTML = PDF_GROUPS.map(g=>`
-    <label class="chk"><input type="checkbox" class="pdfGroupChk" value="${g.id}" ${g.defaultOff ? '' : 'checked'}>
-      ${esc(g.title)}${g.defaultOff ? ' <span class="badge">(داخلة أصلاً في الموزعين)</span>' : ''}</label>
+    <label class="chk"><input type="checkbox" class="pdfGroupChk" value="${g.id}" checked> ${esc(g.title)}</label>
   `).join('');
 }
 
