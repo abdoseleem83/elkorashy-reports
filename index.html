@@ -233,7 +233,7 @@ const SEED_CUSTOMERS = [{"name":"SM - م مصطفي رمضان","class":"مبي�
 
 // تخزين مركزي على Google Sheets عن طريق Apps Script — عشان الشغل يتفتح ويتزامن من أي جهاز
 // بدل ما يبقى محفوظ على متصفح واحد بس (localStorage).
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz9B3WIqHNQ1wkIDCb3lZklF2RESJW0kIz-WZxmi6W6VP2IuPhr0yVCx-mpJ4HE6oyh/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyOOLyOIBu8vl6LyTlCaEJJQceCP1l285yio0_aT18-xDBEKxFiyaEAtShuv1I3YUoNlQ/exec';
 window.storage = {
   async get(key){
     const res = await fetch(`${APPS_SCRIPT_URL}?action=get&key=${encodeURIComponent(key)}`);
@@ -265,7 +265,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v10';
+const APP_VERSION = 'v11';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من

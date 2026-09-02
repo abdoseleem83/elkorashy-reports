@@ -42,7 +42,8 @@ function getSheet_(){
 }
 
 function findRow_(sh, key){
-  const values = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 0), 1).getValues();
+  if(sh.getLastRow() < 2) return -1;
+  const values = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
   for(let i = 0; i < values.length; i++){
     if(values[i][0] === key) return i + 2; // +2: صف العنوان + الفهرسة من 1
   }
@@ -83,7 +84,8 @@ function kvDelete_(key){
 
 function kvList_(prefix){
   const sh = getSheet_();
-  const values = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 0), 1).getValues();
+  if(sh.getLastRow() < 2) return [];
+  const values = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
   const keys = [];
   values.forEach(r => {
     const k = r[0];
