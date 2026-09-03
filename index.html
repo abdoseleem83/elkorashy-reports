@@ -387,7 +387,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v32';
+const APP_VERSION = 'v33';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -425,6 +425,11 @@ const FORCED_SECTOR_BY_WAREHOUSE = {
   'بلسيه': 'شتر وبلسيه',
   'مخزن منتج تام مصنع انشاص': 'ابواب WPC',
 };
+// القاعدة دي قديمة من قبل ما يبقى فيه تفنيطات. لو صنف مش أبواب اتباع من مخزن
+// مصنع الأبواب، بيتحسب على "ابواب WPC" العام — وده بيخلي أرقام تظهر في التقرير
+// من غير ما يبقى فيه أي صنف متصنّف عليها، فالمستخدم يدوّر ومش يلاقي.
+// عشان كده بقت قابلة للإيقاف من لوحة القطاعات.
+let warehouseForcingOn = true;
 
 let monthsData = {};   // { "2026-08": { customerName: { itemName: {cat, net, wh:{warehouseRaw:net}} } } }
 let classification = {}; // { customerName: one of CLASS_OPTIONS }
@@ -578,6 +583,8 @@ async function loadStorage(){
       if(cachedSectors) SECTORS = JSON.parse(cachedSectors);
       const cachedSheets = localStorage.getItem('cache:sectorSheets');
       if(cachedSheets) sectorSheet = JSON.parse(cachedSheets);
+      const cachedWF = localStorage.getItem('cache:warehouseForcing');
+      if(cachedWF !== null) warehouseForcingOn = JSON.parse(cachedWF) !== false;
       const cachedArchive = localStorage.getItem('cache:archivedYears');
       if(cachedArchive) archivedYears = JSON.parse(cachedArchive);
       $('appVersionBadge').textContent = APP_VERSION;
@@ -707,6 +714,10 @@ async function loadStorage(){
     const ss = await window.storage.get('sectorSheets');
     sectorSheet = JSON.parse(ss.value) || {};
   }catch(e){ if(!Object.keys(sectorSheet).length) sectorSheet = {}; }
+  try{
+    const wf = await window.storage.get('warehouseForcing');
+    warehouseForcingOn = JSON.parse(wf.value) !== false;
+  }catch(e){}
   // أي قطاع لسه متصنّفش: تخمين أولي بالاسم (ابواب/حلوق/برور -> شيت الأبواب،
   // شتر/بلسيه -> شيت شتر). المستخدم يقدر يعدّل أي واحد من لوحة القطاعات.
   let sheetsChanged = false;
@@ -776,6 +787,7 @@ function writeLocalCache(){
     localStorage.setItem('cache:itemOverrideDiff', JSON.stringify(diffFromSeed(itemOverride, ITEM_SECTOR_SEED)));
     localStorage.setItem('cache:sectorsList', JSON.stringify(SECTORS));
     localStorage.setItem('cache:sectorSheets', JSON.stringify(sectorSheet));
+    localStorage.setItem('cache:warehouseForcing', JSON.stringify(warehouseForcingOn));
     localStorage.setItem('cache:archivedYears', JSON.stringify(archivedYears));
   }catch(e){}
 }
@@ -941,6 +953,9 @@ async function saveSectors(){
 async function saveSectorSheets(){
   await window.storage.set('sectorSheets', JSON.stringify(sectorSheet));
 }
+async function saveWarehouseForcing(){
+  await window.storage.set('warehouseForcing', JSON.stringify(warehouseForcingOn));
+}
 async function saveClassification(){
   await window.storage.set('classificationDiff', JSON.stringify(diffFromSeed(classification, seedClassificationMap())));
 }
@@ -1014,6 +1029,7 @@ function itemSector(itemName){
 // يتحسب. من غير كده كل مبيعات مصنع الأبواب كانت بترجع "ابواب WPC" العام
 // وأعمدة التفنيطات تفضل فاضية مهما صنّفت الأصناف.
 function resolveForcedSector(base, warehouse){
+  if(!warehouseForcingOn) return base; // المستخدم قافل الترحيل
   const forced = FORCED_SECTOR_BY_WAREHOUSE[warehouse];
   if(!forced) return base;
   const baseSheet = sheetOf(base), forcedSheet = sheetOf(forced);
@@ -1471,8 +1487,13 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
     // الشيت الخاص (أبواب/شتر) بيتقارن بقطاعاته الفرعية — ابواب 70/80/90...
     // مش بالقطاعات العادية اللي هو أصلًا مستبعد منها.
     const baseCols = opts.sectorCols || mainSectors();
-    const cols = baseCols.filter(sec =>
-      totalsSrc.some(r => ((r.sectors||{})[sec]||0) !== 0));
+    // مهم: الأعمدة بتتحدد من كل صفوف الجدول (allRows) مش من الجزء المعروض في
+    // الصفحة دي. من غير كده كل جزء كان بيطلع بأعمدة مختلفة — عمود يظهر في
+    // الجدول الأول ويختفي من اللي بعده حسب صفوفه هو.
+    const colSrc = opts.allRows || totalsSrc;
+    const cols = opts.showAllSectorCols
+      ? baseCols
+      : baseCols.filter(sec => colSrc.some(r => ((r.sectors||{})[sec]||0) !== 0));
     let html = `<div class="tbl-wrap"><table style="${fitStyle(cols.length + 1)}"><thead><tr>
       <th>م</th><th${sortAttr('label')}>العميل / المجموعة${arrow('label')}</th>${clsHead}
       ${cols.map((s,si)=>`<th${sortAttr(si)}>${esc(s)}${arrow(si)}</th>`).join('')}<th${sortAttr('total')}>الإجمالي${arrow('total')}</th>
@@ -1628,7 +1649,7 @@ function renderReport(){
     : '';
   $('reportArea').innerHTML = rows.length
     ? buildTableHtml(activeTab, months, rows, null,
-        {sortable:true, growthCols: reportView.growthCols, showClass: reportView.showClass})
+        {sortable:true, growthCols: reportView.growthCols, showClass: reportView.showClass, allRows: rows})
     : '<div class="sub">مفيش نتائج مطابقة للبحث أو الفلتر.</div>';
   bindSortHeaders();
   renderCharts();
@@ -2019,10 +2040,12 @@ function monthlyAoa(rows, columns, totalsRows, withGrowth, showClass){
   if(g) totalRow.push(...growthCells(colTotals));
   return [header, ...body, totalRow];
 }
-function sectorAoa(rows, allCols, totalsRows, showClass){
+function sectorAoa(rows, allCols, totalsRows, showClass, showAllCols){
   const src = totalsRows || rows;
-  // نفس منطق الشاشة: القطاع اللي مفيهوش أي مبيعات مبيظهرش عمود
-  const cols = allCols.filter(sc => src.some(r => ((r.sectors||{})[sc]||0) !== 0));
+  // نفس منطق الشاشة: القطاع اللي مفيهوش أي مبيعات مبيظهرش عمود —
+  // إلا لو دي أعمدة شيت خاص، ساعتها بتظهر كلها.
+  const cols = showAllCols ? allCols
+    : allCols.filter(sc => src.some(r => ((r.sectors||{})[sc]||0) !== 0));
   const header = ['م','العميل / المجموعة', ...(showClass ? ['التصنيف'] : []), ...cols, 'الإجمالي'];
   const body = rows.map((r,i)=>{
     const sums = cols.map(sc=> (r.sectors||{})[sc]||0);
@@ -2154,7 +2177,7 @@ function generateExcel(includeMonthly, includeSector, opts){
     if(includeSector && canSectorSheet){
       const cols = sheetCols && sheetCols.length ? sheetCols : secCols;
       const sorted = sortRowsForTable('sector', rows, cols);
-      const aoa = sectorAoa(sorted, cols, null, withShowClass);
+      const aoa = sectorAoa(sorted, cols, null, withShowClass, !!(sheetCols && sheetCols.length));
       XLSX.utils.book_append_sheet(wbOut,
         sheetWithHeader(aoa, g.title, period, aoa[0].length),
         safeSheetName('قطاع-' + g.title, used));
@@ -2346,18 +2369,48 @@ function renderOwnSectorsList(){
       <td><button class="ghost" data-del-sector="${encodeURIComponent(sec)}" style="padding:3px 9px">حذف ✕</button></td>
     </tr>`).join('');
 
+  // شرح ترحيل المخازن + زرار إيقافه. ده مصدر أرقام بتظهر في التقرير من غير
+  // ما يبقى فيه صنف متصنّف عليها، فلازم يكون واضح وتحت إيد المستخدم.
+  const whRules = Object.keys(FORCED_SECTOR_BY_WAREHOUSE)
+    .map(w=>`${esc(w)} ← ${esc(FORCED_SECTOR_BY_WAREHOUSE[w])}`).join(' · ');
+  const whBox = `
+    <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:12px">
+      <label class="chk" style="background:none;border:none;padding:0">
+        <input type="checkbox" id="whForcingChk" ${warehouseForcingOn?'checked':''}>
+        <b>ترحيل المخازن الإجباري</b>
+      </label>
+      <div class="sub" style="margin:6px 0 0">
+        أي بضاعة تخرج من المخازن دي بتتحسب على القطاع اللي جنبها مهما كان تصنيف
+        الصنف: <b>${whRules}</b>.
+        <br>ده بيخلي أصناف مش أبواب تظهر تحت "ابواب WPC" لو اتباعت من مخزن المصنع —
+        وساعتها متلاقيش أي صنف متصنّف عليها لما تدوّر.
+        <br><b>لو قفلته</b>، كل صنف هيتحسب على تصنيفه بس.
+      </div>
+    </div>`;
+
   const counts = SPECIAL_SHEETS.map(sh=>{
     const list = sectorsOfSheet(sh.id);
     return `<span class="pill done">شيت ${esc(sh.title)}: ${list.length} قطاع${list.length?' — '+esc(list.join('، ')):''}</span>`;
   }).join(' ');
 
   $('sectorsOwnList').innerHTML = SECTORS.length
-    ? `<div class="row" style="margin-bottom:10px">${counts}</div>
+    ? whBox + `<div class="row" style="margin-bottom:10px">${counts}</div>
        <div class="tbl-wrap" style="max-height:420px">
          <table><thead><tr><th>القطاع</th><th>بيندرج تحت</th><th></th></tr></thead>
          <tbody>${rows}</tbody></table>
        </div>`
     : '<span class="badge">مفيش قطاعات لسه</span>';
+
+  const whChk = $('whForcingChk');
+  if(whChk) whChk.addEventListener('change', async ()=>{
+    const prev = warehouseForcingOn;
+    warehouseForcingOn = whChk.checked;
+    try{ await saveWarehouseForcing(); }
+    catch(e){ warehouseForcingOn = prev; whChk.checked = prev; alert('الحفظ فشل: ' + e.message); return; }
+    updateLocalCache(true);
+    renderOwnSectorsList();
+    renderReport();
+  });
 
   document.querySelectorAll('.sectorSheetSelect').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
@@ -2430,6 +2483,28 @@ $('manageSectorsBtn').addEventListener('click', ()=>{
 $('closeSectorsBtn').addEventListener('click', ()=> $('sectorsPanel').style.display='none');
 
 // ---- Items panel ----
+// القطاع الفعلي لصنف بعد ترحيل المخازن — بيرجع {sectors:{قطاع:مبلغ}, forcedBy:[مخازن]}
+// ده بيوضّح ليه صنف مصنّف على "اكسسوارات" بيظهر تحت "ابواب WPC" في التقرير:
+// عشان اتباع من مخزن مرحَّل إجباريًا.
+function itemActualSectors(itemName){
+  const out = {}; const forcedBy = new Set();
+  const base = itemSector(itemName);
+  activeMonths().forEach(m=>{
+    Object.keys(monthsData[m]||{}).forEach(c=>{
+      const entry = (monthsData[m][c]||{})[itemName];
+      if(!entry) return;
+      const whKeys = entry.wh ? Object.keys(entry.wh) : [];
+      if(!whKeys.length){ out[base] = (out[base]||0) + entry.net; return; }
+      whKeys.forEach(w=>{
+        const sec = resolveForcedSector(base, w);
+        out[sec] = (out[sec]||0) + entry.wh[w];
+        if(sec !== base) forcedBy.add(w);
+      });
+    });
+  });
+  return {sectors: out, forcedBy: Array.from(forcedBy)};
+}
+
 function allItemsWithTotals(){
   const map = {}; // item -> {cat, total}
   Object.values(monthsData).forEach(custMap=>{
@@ -2458,21 +2533,41 @@ function renderItemsList(){
   const secFilter = $('itemSectorFilter').value;
   const items = allItemsWithTotals().sort((a,b)=> b.total - a.total);
   const f = filter.trim();
+  // القطاع الفعلي لكل صنف (بعد ترحيل المخازن) — بيتحسب مرة واحدة هنا
+  const actual = {};
+  items.forEach(o => { actual[o.item] = itemActualSectors(o.item); });
+
   const matched = items.filter(o => {
     if(f && !o.item.includes(f)) return false;
-    if(secFilter && itemSector(o.item) !== secFilter) return false;
-    return true;
+    if(!secFilter) return true;
+    // الفلتر بيلاقي الصنف بتصنيفه أو بالقطاع اللي بيتحسب عليه فعليًا.
+    // من غير كده صنف بيروح "ابواب WPC" بترحيل المخزن مكانش بيظهر في الفلتر خالص
+    // والمستخدم يشوف رقم في التقرير ومش لاقي مصدره.
+    if(itemSector(o.item) === secFilter) return true;
+    return (actual[o.item].sectors[secFilter] || 0) !== 0;
   });
-  const rows = matched.map(o => `
+
+  const rows = matched.map(o => {
+    const a = actual[o.item];
+    const base = itemSector(o.item);
+    const other = Object.keys(a.sectors).filter(sec => sec !== base && a.sectors[sec] !== 0);
+    const note = other.length
+      ? `<div class="badge" style="color:var(--warn);margin-top:3px">
+           بيتحسب فعليًا على: ${esc(other.join('، '))}
+           ${a.forcedBy.length ? `<br>بسبب مخزن: ${esc(a.forcedBy.join('، '))}` : ''}
+         </div>`
+      : '';
+    return `
     <tr>
-      <td style="text-align:right">${esc(o.item)}</td>
+      <td style="text-align:right">${esc(o.item)}${note}</td>
       <td class="num">${o.total.toLocaleString('en-US',{maximumFractionDigits:0})}</td>
       <td>
         <select data-item="${encodeURIComponent(o.item)}" class="itemSectorSelect">
-          ${SECTORS.map(s=>`<option value="${esc(s)}" ${itemSector(o.item)===s?'selected':''}>${esc(s)}</option>`).join('')}
+          ${SECTORS.map(s=>`<option value="${esc(s)}" ${base===s?'selected':''}>${esc(s)}</option>`).join('')}
         </select>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   bulkVisibleItems = matched.map(o => o.item);
   renderBulkSectorOptions();
   const shownTotal = matched.reduce((a,o)=> a + o.total, 0);
@@ -2863,6 +2958,10 @@ async function generatePdf(includeMonthly, includeSector, opts){
             growthCols: withGrowthCols,
             showClass: withShowClass,
             sectorCols,
+            allRows: sorted,          // الأعمدة ثابتة عبر كل أجزاء الجدول
+            // أعمدة الشيت الخاص بتظهر كلها حتى لو قطاع مأخدش بضاعة —
+            // المستخدم هو اللي حددها فعايز يشوف الصفر مش يدوّر على العمود.
+            showAllSectorCols: !!sectorCols,
           });
           const sub = ci === 0 ? `<div class="sub-title">${esc(subTitle)}</div>` : '';
           body += `<div class="blk">${head}${sub}${tbl}</div>`;
