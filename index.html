@@ -105,6 +105,7 @@
   <div class="flex-between">
     <h2 style="margin:0">1) رفع ملف شهر جديد</h2>
     <span class="badge" id="loadStatus">بيتحمّل البيانات المحفوظة...</span>
+    <span class="badge" id="saveStatus" style="display:none;align-items:center"></span>
     <button class="ghost" id="updateBtn" title="تحقق من نسخة أحدث">تحديث</button>
   </div>
   <div class="row" style="margin-top:10px">
@@ -279,19 +280,34 @@ const SHARED_TOKEN = '';
 const NET_TIMEOUT_MS = 60000;
 const NET_RETRIES = 2;
 
-// أي طلب شبكة بيتعاد لحد مرتين لو فشل بسبب الشبكة/مهلة — الشبكة على الموبايل بتقطع كتير.
-async function apiFetch(url, options){
+// أخطاء عابرة بتتحل بإعادة المحاولة. أهمها "unknown action": Apps Script بيعمل
+// redirect للـPOST، والـredirect ساعات بيحوّل الطلب لـGET من غير جسم فالسيرفر
+// ميعرفش المطلوب. مش عطل دائم — إعادة الطلب بتعدّي عادي.
+function isTransientError(msg){
+  return /unknown action|not found|HTTP 5\d\d|Service invoked too many|Exceeded maximum|timed out|وقت أطول/i.test(msg || '');
+}
+
+// أي طلب شبكة بيتعاد لحد مرتين لو فشل بسبب الشبكة/مهلة/رد عابر —
+// الشبكة على الموبايل بتقطع كتير.
+async function apiFetch(url, options, opts){
+  opts = opts || {};
+  const retries = opts.retries == null ? NET_RETRIES : opts.retries;
   let lastErr;
-  for(let attempt = 0; attempt <= NET_RETRIES; attempt++){
+  for(let attempt = 0; attempt <= retries; attempt++){
     const ctrl = new AbortController();
     const timer = setTimeout(()=> ctrl.abort(), NET_TIMEOUT_MS);
     try{
       const res = await fetch(url, Object.assign({signal: ctrl.signal}, options||{}));
       if(!res.ok) throw new Error('HTTP ' + res.status);
-      return await res.json();
+      const data = await res.json();
+      // رد وصل بس السيرفر رفضه لسبب عابر — نعيد المحاولة بدل ما نفشّل العملية
+      if(data && data.ok === false && isTransientError(data.error) && attempt < retries){
+        throw new Error(data.error);
+      }
+      return data;
     }catch(e){
       lastErr = e.name === 'AbortError' ? new Error('الطلب أخد وقت أطول من اللازم') : e;
-      if(attempt < NET_RETRIES) await new Promise(r=> setTimeout(r, 1000 * Math.pow(2, attempt)));
+      if(attempt < retries) await new Promise(r=> setTimeout(r, 800 * Math.pow(2, attempt)));
     }finally{ clearTimeout(timer); }
   }
   throw lastErr;
@@ -325,7 +341,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v22';
+const APP_VERSION = 'v23';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -369,6 +385,88 @@ function normName(n){ return (n||"").toString().trim().replace(/\s+/g,' '); }
 async function trySave(fn){
   try{ await fn(); return true; }catch(e){ return false; }
 }
+
+// ---- طابور الحفظ المؤجل ----
+// تغيير قطاع صنف أو تصنيف عميل كان بيبعت طلب حفظ فوري لكل تغيير، وكل طلب بيرفع
+// الخريطة كلها. لو بتظبط عشرين صنف ورا بعض، دي عشرين رفعة كاملة — بطيء وبيزوّد
+// فرص الفشل. دلوقتي التغييرات بتتجمع وبتتبعت مرة واحدة، وبتتعاد لوحدها لو فشلت.
+const SAVE_DEBOUNCE_MS = 1500;
+const SAVE_MAX_ATTEMPTS = 4;
+const saveJobs = new Map(); // name -> {fn, timer, running, dirty, attempt, label}
+
+function pendingSaveCount(){
+  let n = 0;
+  saveJobs.forEach(j => { if(j.timer || j.running || j.dirty) n++; });
+  return n;
+}
+
+function renderSaveStatus(state, text){
+  const el = $('saveStatus');
+  if(!el) return;
+  if(!state){ el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'inline-flex';
+  const colors = {saving:'var(--muted)', ok:'var(--accent2)', err:'var(--danger)'};
+  el.style.color = colors[state] || 'var(--muted)';
+  el.innerHTML = esc(text) + (state === 'err'
+    ? ' <button class="ghost" id="retrySaveBtn" style="padding:2px 8px;margin-right:6px">حاول تاني</button>'
+    : '');
+  const btn = $('retrySaveBtn');
+  if(btn) btn.addEventListener('click', ()=> flushSaves(true));
+}
+
+async function runSaveJob(name){
+  const job = saveJobs.get(name);
+  if(!job || job.running) return;
+  job.timer = null;
+  job.running = true;
+  job.dirty = false;
+  renderSaveStatus('saving', 'بيحفظ...');
+  try{
+    await job.fn();
+    job.attempt = 0;
+    job.running = false;
+    // اتغيّرت تاني وإحنا بنحفظ؟ احفظ الأحدث
+    if(job.dirty){ scheduleSave(name, job.fn, job.label, 300); return; }
+    saveJobs.delete(name);
+    updateLocalCache();
+    renderSaveStatus(pendingSaveCount() ? 'saving' : 'ok', pendingSaveCount() ? 'بيحفظ...' : 'كل التعديلات محفوظة ✓');
+    if(!pendingSaveCount()) setTimeout(()=>{ if(!pendingSaveCount()) renderSaveStatus(null); }, 2500);
+  }catch(e){
+    job.running = false;
+    job.attempt = (job.attempt || 0) + 1;
+    if(job.attempt < SAVE_MAX_ATTEMPTS){
+      const wait = 2000 * Math.pow(2, job.attempt - 1);
+      renderSaveStatus('saving', `الحفظ فشل — هيعيد المحاولة (${job.attempt}/${SAVE_MAX_ATTEMPTS - 1})`);
+      job.timer = setTimeout(()=> runSaveJob(name), wait);
+    } else {
+      renderSaveStatus('err', `${job.label} لسه مش متحفظ: ${e.message}`);
+    }
+  }
+}
+
+// بيأجّل الحفظ شوية عشان التغييرات المتتالية تتجمع في طلب واحد
+function scheduleSave(name, fn, label, delay){
+  const job = saveJobs.get(name) || {attempt:0};
+  job.fn = fn; job.label = label || 'التعديلات';
+  if(job.running){ job.dirty = true; saveJobs.set(name, job); return; }
+  if(job.timer) clearTimeout(job.timer);
+  job.timer = setTimeout(()=> runSaveJob(name), delay == null ? SAVE_DEBOUNCE_MS : delay);
+  saveJobs.set(name, job);
+  renderSaveStatus('saving', 'فيه تعديلات لسه بتتحفظ...');
+}
+
+// بيشغّل أي حفظ مستني على طول (عند الضغط على "حاول تاني" أو قبل تصدير/غلق)
+function flushSaves(){
+  saveJobs.forEach((job, name)=>{
+    if(job.timer){ clearTimeout(job.timer); job.timer = null; }
+    if(!job.running){ job.attempt = 0; runSaveJob(name); }
+  });
+}
+
+// تحذير لو المستخدم بيقفل والتعديلات لسه مش متبعتة
+window.addEventListener('beforeunload', (e)=>{
+  if(pendingSaveCount()){ e.preventDefault(); e.returnValue = ''; }
+});
 
 const AR_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 function monthLabel(m){
@@ -751,6 +849,7 @@ $('saveClassifBtn').addEventListener('click', async ()=>{
 
 $('confirmCommitBtn').addEventListener('click', async ()=>{
   if(!pendingByMonth) return;
+  flushSaves();
   const allCustomers = new Set();
   Object.values(pendingByMonth).forEach(cm => Object.keys(cm).forEach(c => allCustomers.add(c)));
   const stillUnmatched = Array.from(allCustomers).filter(c => !classification[c]);
@@ -1303,11 +1402,9 @@ function renderCustomersList(){
   document.querySelectorAll('.custClassSelect').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
       const name = decodeURIComponent(sel.getAttribute('data-cust'));
-      const prev = classification[name];
       classification[name] = sel.value;
-      try{ await saveClassification(); }
-      catch(e){ classification[name] = prev; alert('حفظ التصنيف فشل: ' + e.message); sel.value = prev || ''; return; }
       updateLocalCache();
+      scheduleSave('classification', saveClassification, 'تصنيفات العملاء');
       renderReport();
       // لو بنفلتر على تصنيف معيّن، العميل اللي اتغيّر لازم يختفي من القايمة
       if($('custClassFilter').value) renderCustomersList();
@@ -1425,11 +1522,9 @@ function renderItemsList(){
   document.querySelectorAll('.itemSectorSelect').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
       const item = decodeURIComponent(sel.getAttribute('data-item'));
-      const prev = itemOverride[item];
       itemOverride[item] = sel.value;
-      try{ await saveItemOverride(); }
-      catch(e){ itemOverride[item] = prev; alert('حفظ القطاع فشل: ' + e.message); sel.value = prev || ''; return; }
       updateLocalCache();
+      scheduleSave('itemOverride', saveItemOverride, 'قطاعات الأصناف');
       renderReport();
       if($('itemSectorFilter').value) renderItemsList();
     });
@@ -1486,6 +1581,7 @@ function renderPdfMonthsList(){
 }
 // لوحة واحدة بتخدم الـPDF والإكسل بنفس الاختيارات
 function openExportPanel(){
+  flushSaves(); // أي تعديل لسه مستني يتبعت قبل ما نصدّر
   $('customersPanel').style.display = 'none';
   $('sectorsPanel').style.display = 'none';
   $('itemsPanel').style.display = 'none';
