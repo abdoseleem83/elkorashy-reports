@@ -235,6 +235,7 @@
     <label class="chk"><input type="checkbox" id="pdfSector" checked> مقارنة المبيعات بالقطاع</label>
     <label class="chk"><input type="checkbox" id="pdfGrowthCols" checked> عمودَي الفرق والنمو % في جدول المبيعات</label>
     <label class="chk"><input type="checkbox" id="pdfShowClass"> عمود التصنيف</label>
+    <label class="chk"><input type="checkbox" id="pdfRanks" checked> ميداليات لأعلى 10</label>
     <label class="chk"><input type="checkbox" id="pdfGrowth"> تقرير النمو المفصّل (جدول منفصل)</label>
     <label class="chk"><input type="checkbox" id="pdfCharts" checked> رسم بياني تحت كل مجموعة <span class="badge">(PDF بس)</span></label>
     <label class="chk"><input type="checkbox" id="pdfWatermark" checked> لوجو الشركة خلفية <span class="badge">(PDF بس)</span></label>
@@ -302,6 +303,7 @@
     <label class="chk"><input type="checkbox" id="reportAggWholesale" checked> اجمع الجملة في صف واحد</label>
     <label class="chk"><input type="checkbox" id="reportGrowthCols" checked> عمود الفرق والنمو %</label>
     <label class="chk"><input type="checkbox" id="reportShowClass"> عمود التصنيف</label>
+    <label class="chk"><input type="checkbox" id="reportRanks" checked> ميداليات لأعلى 10</label>
     <button class="ghost" id="reportMonthsBtn">الشهور المعروضة</button>
     <span class="badge" id="reportCount"></span>
   </div>
@@ -396,7 +398,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v34';
+const APP_VERSION = 'v35';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1395,6 +1397,29 @@ function computeSpecialSectorRowsColumns(sector, columns){
   return {columns, rows};
 }
 
+// ---- ميداليات الترتيب ----
+// دوائر ملونة مرسومة بالـCSS مش إيموجي: الإيموجي مبيظهرش في الـPDF (html2canvas
+// بيرسمه مربعات فاضية)، وده اتجرّب قبل كده واتشال.
+// بتظهر بس لما الترتيب بالإجمالي تنازلي — غير كده الميدالية هتبقى مضلّلة.
+const RANK_STYLES = {
+  1: {bg:'#d4af37', fg:'#fff', ring:'#b8952f'}, // ذهبي
+  2: {bg:'#a8a9ad', fg:'#fff', ring:'#8e8f93'}, // فضي
+  3: {bg:'#cd7f32', fg:'#fff', ring:'#a9682a'}, // برونزي
+};
+function rankCell(n, enabled){
+  if(!enabled || n > 10) return String(n);
+  const st = RANK_STYLES[n];
+  if(st){
+    return `<span style="display:inline-block;min-width:20px;height:20px;line-height:20px;
+      border-radius:50%;background:${st.bg};color:${st.fg};border:1.5px solid ${st.ring};
+      font-weight:700;text-align:center;font-size:11.5px">${n}</span>`;
+  }
+  // من 4 لـ10: دائرة باهتة تفرّقهم عن باقي الجدول
+  return `<span style="display:inline-block;min-width:20px;height:20px;line-height:20px;
+    border-radius:50%;background:#eef1f7;color:#42506b;border:1px solid #d3d9e6;
+    font-weight:700;text-align:center;font-size:11px">${n}</span>`;
+}
+
 function rowGrandTotal(tabType, r, sectorCols){
   return tabType==='monthly'
     ? r.months.reduce((x,y)=>x+y,0)
@@ -1431,6 +1456,9 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
     return 'font-size:8.8px';
   };
   const monthlyCols = months.length + (growthCols ? 2 : 0);
+  // الميداليات مالهاش معنى إلا لو الجدول مرتّب بالإجمالي من الأكبر للأصغر
+  const ranks = !!opts.ranks;
+  const rankOf = (i)=> rankCell(startIndex + i + 1, ranks);
   const gLabel = (m)=> typeof m === 'string' ? monthLabel(m) : m.label;
   const sortAttr = (key)=> sortable ? ` data-sort="${key}"` : '';
   const arrow = (key)=> sortable && String(reportView.sortKey) === String(key)
@@ -1476,7 +1504,7 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
         gCells = `<td class="num" style="color:${d>0?'#0a7a4a':(d<0?'#c0392b':'#666')}">${d>=0?'+':''}${d.toLocaleString('en-US',{maximumFractionDigits:0})}</td>` +
                  `<td class="num" style="color:${pc===null?'#0a7a4a':(pc>0?'#0a7a4a':(pc<0?'#c0392b':'#666'))};font-weight:700">${pctText(pc)}</td>`;
       }
-      html += `<tr><td>${startIndex+i+1}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}<td class="num">${rowTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</td>${cells}${gCells}</tr>`;
+      html += `<tr><td>${rankOf(i)}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}<td class="num">${rowTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</td>${cells}${gCells}</tr>`;
     });
     if(showTotals){
       let gTotal = '';
@@ -1512,7 +1540,7 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
     rows.forEach((r,i)=>{
       const sums = cols.map(s => (r.sectors||{})[s]||0);
       const total = sums.reduce((a,b)=>a+b,0);
-      html += `<tr><td>${startIndex+i+1}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}${sums.map(v=>`<td class="num">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`).join('')}<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
+      html += `<tr><td>${rankOf(i)}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}${sums.map(v=>`<td class="num">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`).join('')}<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
     });
     if(showTotals){
       const gt = grandTotals.reduce((a,b)=>a+b,0);
@@ -1533,6 +1561,7 @@ const reportView = {
   sortDir: 'desc',
   growthCols: true,   // عمودَي الفرق والنمو % جوه جدول المبيعات
   showClass: false,   // عمود التصنيف — مقفول افتراضي
+  ranks: true,        // ميداليات لأعلى 10
 };
 
 // الشهور اللي التقرير بيعرضها فعلًا (النشطة ناقص اللي المستخدم خفاها)
@@ -1653,12 +1682,17 @@ function renderReport(){
 
   const rows = sortReportRows(reportRows(months), activeTab);
   const total = rows.reduce((a,r)=> a + rowGrandTotal(activeTab, r), 0);
+  const ranksOff = reportView.ranks && !(reportView.sortKey === 'total' && reportView.sortDir === 'desc');
   $('reportCount').textContent = rows.length
-    ? `${rows.length} صف — إجمالي ${total.toLocaleString('en-US',{maximumFractionDigits:0})}`
+    ? `${rows.length} صف — إجمالي ${total.toLocaleString('en-US',{maximumFractionDigits:0})}` +
+      (ranksOff ? ' — الميداليات مخفية عشان الترتيب مش بالإجمالي' : '')
     : '';
   $('reportArea').innerHTML = rows.length
-    ? buildTableHtml(activeTab, months, rows, null,
-        {sortable:true, growthCols: reportView.growthCols, showClass: reportView.showClass, allRows: rows})
+    ? buildTableHtml(activeTab, months, rows, null, {
+        sortable:true, growthCols: reportView.growthCols, showClass: reportView.showClass, allRows: rows,
+        // الميدالية معناها "الأعلى مبيعات" — فمتظهرش لو المستخدم رتّب بعمود تاني
+        ranks: reportView.ranks && reportView.sortKey === 'total' && reportView.sortDir === 'desc',
+      })
     : '<div class="sub">مفيش نتائج مطابقة للبحث أو الفلتر.</div>';
   bindSortHeaders();
   renderCharts();
@@ -1915,6 +1949,7 @@ function renderGrowthTab(months){
 function growthTableHtml(rows, prevM, curM, opts){
   opts = opts || {};
   const startIndex = opts.startIndex || 0;
+  const ranks = !!opts.ranks;
   const showClass = !!opts.showClass;
   const clsHead = showClass ? '<th>التصنيف</th>' : '';
   const clsCell = (r)=> showClass ? `<td>${esc(r.cls)}</td>` : '';
@@ -1928,7 +1963,7 @@ function growthTableHtml(rows, prevM, curM, opts){
       <th>${esc(periodName(prevM))}</th><th>${esc(periodName(curM))}</th><th>الفرق</th><th>النمو</th>
     </tr></thead><tbody>
       ${rows.map((r,i)=>`<tr>
-        <td>${startIndex+i+1}</td>
+        <td>${rankCell(startIndex+i+1, ranks)}</td>
         <td style="text-align:right">${esc(r.label)}</td>
         ${clsCell(r)}
         <td class="num">${fmtNum(r.prev)}</td>
@@ -1969,6 +2004,7 @@ $('reportClassFilter').addEventListener('change', (e)=>{ reportView.cls = e.targ
 $('reportAggWholesale').addEventListener('change', (e)=>{ reportView.aggWholesale = e.target.checked; renderReport(); });
 $('reportGrowthCols').addEventListener('change', (e)=>{ reportView.growthCols = e.target.checked; renderReport(); });
 $('reportShowClass').addEventListener('change', (e)=>{ reportView.showClass = e.target.checked; renderReport(); });
+$('reportRanks').addEventListener('change', (e)=>{ reportView.ranks = e.target.checked; renderReport(); });
 $('reportMonthsBtn').addEventListener('click', ()=>{
   const panel = $('reportMonthsPanel');
   const showing = panel.style.display !== 'none';
@@ -2941,6 +2977,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
   const includeGrowth = opts.allGroups ? true : $('pdfGrowth').checked;
   const withGrowthCols = opts.allGroups ? true : $('pdfGrowthCols').checked;
   const withShowClass = $('pdfShowClass') ? $('pdfShowClass').checked : false;
+  const withRanks = $('pdfRanks') ? $('pdfRanks').checked : true;
   const withWatermark = $('pdfWatermark') ? $('pdfWatermark').checked : true;
   if(!includeMonthly && !includeSector && !includeGrowth){ alert('اختار تقرير واحد على الأقل (شهري أو قطاعي أو نمو)'); return; }
 
@@ -2991,6 +3028,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
             growthCols: withGrowthCols,
             showClass: withShowClass,
             sectorCols,
+            ranks: withRanks,
             allRows: sorted,          // الأعمدة ثابتة عبر كل أجزاء الجدول
             // أعمدة الشيت الخاص بتظهر كلها حتى لو قطاع مأخدش بضاعة —
             // المستخدم هو اللي حددها فعايز يشوف الصفر مش يدوّر على العمود.
@@ -3024,6 +3062,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
               startIndex: ci*PDF_ROWS_PER_CHUNK,
               totalsFrom: ci === gChunks.length-1 ? gRows : null,
               showClass: withShowClass,
+              ranks: withRanks,
             });
             const sub = ci === 0
               ? `<div class="sub-title">النمو: ${esc(periodName(growthView.curMonths))} مقابل ${esc(periodName(growthView.prevMonths))}</div>`
