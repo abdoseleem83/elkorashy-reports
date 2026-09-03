@@ -398,7 +398,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v35';
+const APP_VERSION = 'v36';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2836,7 +2836,6 @@ function setExportButtons(enabled){
 }
 
 const PDF_MARGIN = 10;            // مم — هامش الصفحة
-const PDF_ROWS_PER_CHUNK = 10;    // صفوف الجدول في كل كتلة غير قابلة للقطع.
                                   // كتل أصغر = فراغ أقل في آخر الصفحة، لأن الكتلة
                                   // اللي مش هتكمّل بتنزل للصفحة اللي بعدها كاملة.
 const PDF_RENDER_W = 920;         // عرض الرسم بالبكسل — أصغر = خط أوضح في الصفحة
@@ -2868,14 +2867,6 @@ async function chartImage(labels, data, color, width, height){
     if(chart) chart.destroy();
     document.body.removeChild(canvas);
   }
-}
-
-// بيقسّم صفوف الجدول لمجموعات، كل مجموعة جدول كامل برأسه — عشان الرأس يتكرر
-// على كل صفحة والصف ما يتقطعش في نصه.
-function chunkRows(rows, size){
-  const out = [];
-  for(let i=0;i<rows.length;i+=size) out.push(rows.slice(i, i+size));
-  return out;
 }
 
 function periodLabel(columns){
@@ -2923,9 +2914,27 @@ async function renderReportCanvas(html){
         ? Promise.resolve()
         : new Promise(res => { img.onload = img.onerror = res; })
     ));
-    // نقط القطع المسموحة = نهاية كل كتلة. الصورة مبتتقطعش في أي مكان تاني.
-    const ends = Array.from(holder.querySelectorAll('.blk'))
-      .map(el => el.offsetTop + el.offsetHeight);
+    // نقط القطع المسموحة: نهاية كل كتلة، وكمان نهاية كل صف في أي جدول —
+    // عشان الجدول يفضل جدول واحد متصل ويتقطع بين صفين بدل ما نقسّمه جداول.
+    // كل نقطة جوه جدول بتشيل معاها مكان رأس الجدول في الصورة، عشان الرأس
+    // يترسم من تاني فوق الصفحة اللي بتكمّل نص الجدول.
+    // القياس بـgetBoundingClientRect مش offsetTop: جوه الجداول الـoffsetParent
+    // مش مضمون وبيدي أرقام غلط.
+    const hostTop = holder.getBoundingClientRect().top;
+    const ends = [];
+    holder.querySelectorAll('.blk').forEach(el => {
+      ends.push({y: el.getBoundingClientRect().bottom - hostTop, thead: null});
+    });
+    holder.querySelectorAll('table').forEach(tb => {
+      const th = tb.querySelector('thead');
+      if(!th) return;
+      const tr = th.getBoundingClientRect();
+      const top = tr.top - hostTop, bottom = tr.bottom - hostTop;
+      tb.querySelectorAll('tbody tr').forEach(row => {
+        ends.push({y: row.getBoundingClientRect().bottom - hostTop, thead: {top, bottom}});
+      });
+    });
+    ends.sort((a,b)=> a.y - b.y);
     const canvas = await html2canvas(holder, {
       scale: PDF_SCALE,
       backgroundColor: '#ffffff',
@@ -2937,7 +2946,10 @@ async function renderReportCanvas(html){
     // من العنصر (فراغ زايد تحت)، والحساب بالارتفاع كان بيوسّع نقط القطع فيتقطع
     // الجدول في نص صف. العرض دايمًا مضبوط، والمقياس واحد في الاتجاهين.
     const k = canvas.width / (holder.scrollWidth || 1);
-    return {canvas, stops: ends.map(e => e * k)};
+    return {canvas, stops: ends.map(e => ({
+      y: e.y * k,
+      thead: e.thead ? {top: e.thead.top * k, bottom: e.thead.bottom * k} : null,
+    }))};
   } finally {
     document.body.removeChild(holder);
   }
@@ -3018,26 +3030,23 @@ async function generatePdf(includeMonthly, includeSector, opts){
       let head = `<div class="grp-title">${esc(g.title)}</div>`;
       const canSector = g.kind === 'class'; // القطاعات الخاصة كلها قطاع واحد أصلًا
 
+      // جدول واحد متصل للمجموعة كلها. القطع بيحصل بين صفين والرأس بيتكرر
+      // فوق الصفحة الجديدة — من غير ما الجدول يتقسّم جداول منفصلة.
       const addTable = (tabType, subTitle, sectorCols) => {
         const sorted = sortRowsForTable(tabType, rows, sectorCols);
-        const chunks = chunkRows(sorted, PDF_ROWS_PER_CHUNK);
-        chunks.forEach((ch, ci)=>{
-          const tbl = buildTableHtml(tabType, columns, ch, null, {
-            startIndex: ci*PDF_ROWS_PER_CHUNK,
-            totalsFrom: ci === chunks.length-1 ? sorted : null,
-            growthCols: withGrowthCols,
-            showClass: withShowClass,
-            sectorCols,
-            ranks: withRanks,
-            allRows: sorted,          // الأعمدة ثابتة عبر كل أجزاء الجدول
-            // أعمدة الشيت الخاص بتظهر كلها حتى لو قطاع مأخدش بضاعة —
-            // المستخدم هو اللي حددها فعايز يشوف الصفر مش يدوّر على العمود.
-            showAllSectorCols: !!sectorCols,
-          });
-          const sub = ci === 0 ? `<div class="sub-title">${esc(subTitle)}</div>` : '';
-          body += `<div class="blk">${head}${sub}${tbl}</div>`;
-          head = ''; // العنوان مرة واحدة بس
+        const tbl = buildTableHtml(tabType, columns, sorted, null, {
+          totalsFrom: sorted,
+          growthCols: withGrowthCols,
+          showClass: withShowClass,
+          sectorCols,
+          ranks: withRanks,
+          allRows: sorted,
+          // أعمدة الشيت الخاص بتظهر كلها حتى لو قطاع مأخدش بضاعة —
+          // المستخدم هو اللي حددها فعايز يشوف الصفر مش يدوّر على العمود.
+          showAllSectorCols: !!sectorCols,
         });
+        body += `<div class="blk">${head}<div class="sub-title">${esc(subTitle)}</div>${tbl}</div>`;
+        head = ''; // العنوان مرة واحدة بس
       };
 
       // الشيت الخاص (أبواب/شتر) بيتقارن بقطاعاته الفرعية — ابواب 70/80/90...
@@ -3056,20 +3065,14 @@ async function generatePdf(includeMonthly, includeSector, opts){
       if(growthOk){
         const gRows = growthRowsFrom(rows, growthView.prevMonths, growthView.curMonths);
         if(gRows.length){
-          const gChunks = chunkRows(gRows, PDF_ROWS_PER_CHUNK);
-          gChunks.forEach((ch, ci)=>{
-            const tbl = growthTableHtml(ch, growthView.prevMonths, growthView.curMonths, {
-              startIndex: ci*PDF_ROWS_PER_CHUNK,
-              totalsFrom: ci === gChunks.length-1 ? gRows : null,
-              showClass: withShowClass,
-              ranks: withRanks,
-            });
-            const sub = ci === 0
-              ? `<div class="sub-title">النمو: ${esc(periodName(growthView.curMonths))} مقابل ${esc(periodName(growthView.prevMonths))}</div>`
-              : '';
-            body += `<div class="blk">${head}${sub}${tbl}</div>`;
-            head = '';
+          const tbl = growthTableHtml(gRows, growthView.prevMonths, growthView.curMonths, {
+            totalsFrom: gRows,
+            showClass: withShowClass,
+            ranks: withRanks,
           });
+          const sub = `<div class="sub-title">النمو: ${esc(periodName(growthView.curMonths))} مقابل ${esc(periodName(growthView.prevMonths))}</div>`;
+          body += `<div class="blk">${head}${sub}${tbl}</div>`;
+          head = '';
         }
       }
 
@@ -3139,26 +3142,37 @@ async function generatePdf(includeMonthly, includeSector, opts){
       if(ratio > 0) wmState = {data: LOGO_WATERMARK, ratio};
     }
     const topY = PDF_MARGIN + headHmm + 2;
-    const availMm = (pageH - PDF_MARGIN - 7) - topY;   // مساحة المحتوى في الصفحة
-    const availPx = availMm / pxToMm;
+    const bottomY = pageH - PDF_MARGIN - 7;            // فوق رقم الصفحة
 
-    const stopsPx = stops.filter(v => v > 0);
+    const stopsPx = stops.filter(v => v.y > 0);
     const BLEED = 5 * PDF_SCALE;      // بيبلع حد الجدول السفلي عند القطع
     const MIN_SLICE_PX = 14 * PDF_SCALE; // أي باقي أقل من كده مجرد فراغ، مش محتوى
     // آخر كتلة هي نهاية المحتوى الفعلي — اللي بعدها فراغ بحكم البناء،
     // وكان بيتحوّل لصفحة أخيرة فاضية.
     const contentEnd = stopsPx.length
-      ? Math.min(canvas.height, Math.max(...stopsPx) + BLEED)
+      ? Math.min(canvas.height, Math.max(...stopsPx.map(v=>v.y)) + BLEED)
       : canvas.height;
 
     let cursor = 0;
     let first = true;
     let guard = 0;
     while(cursor < contentEnd - MIN_SLICE_PX && guard++ < 500){
+      // الصفحة دي بتكمّل جدول من الصفحة اللي قبلها؟ يبقى نكرّر رأس الجدول
+      // فوقها. أول نقطة قطع جاية هي أول صف هيتطبع؛ لو تابعة لجدول رأسه فات
+      // خلاص (bottom قبل المؤشر) يبقى إحنا في نص الجدول.
+      let rep = null;
+      if(!first){
+        const nxt = stopsPx.find(v => v.y > cursor + 1);
+        if(nxt && nxt.thead && nxt.thead.bottom <= cursor) rep = nxt.thead;
+      }
+      const repH = rep ? (rep.bottom - rep.top) : 0;
+      const rowsTop = topY + repH * pxToMm;
+      const availPx = (bottomY - rowsTop) / pxToMm;
+
       const limit = cursor + availPx;
       // آخر نقطة قطع مسموحة جوه المساحة المتاحة
       let cut = 0;
-      for(const s of stopsPx){ if(s > cursor + MIN_SLICE_PX && s + BLEED <= limit) cut = s + BLEED; }
+      for(const v of stopsPx){ if(v.y > cursor + MIN_SLICE_PX && v.y + BLEED <= limit) cut = v.y + BLEED; }
       // كتلة أطول من صفحة كاملة (نادر) — نقطعها بالمساحة عشان ما ندخلش في لوب
       if(!cut) cut = Math.min(limit, contentEnd);
       // الباقي بعد القطع ضئيل؟ خده مع الصفحة دي بدل ما نفتحله صفحة لوحده
@@ -3168,7 +3182,11 @@ async function generatePdf(includeMonthly, includeSector, opts){
       first = false;
       const h = cut - cursor;
       pdf.addImage(headData, 'PNG', PDF_MARGIN, PDF_MARGIN, contentW, headHmm);
-      pdf.addImage(sliceCanvas(canvas, cursor, h), 'JPEG', PDF_MARGIN, topY, contentW, h * pxToMm);
+      if(rep){
+        pdf.addImage(sliceCanvas(canvas, rep.top, repH), 'PNG',
+          PDF_MARGIN, topY, contentW, repH * pxToMm);
+      }
+      pdf.addImage(sliceCanvas(canvas, cursor, h), 'JPEG', PDF_MARGIN, rowsTop, contentW, h * pxToMm);
       // العلامة المائية بتترسم فوق المحتوى بشفافية. لو رسمناها تحته، شريحة
       // المحتوى بخلفيتها البيضاء بتغطيها تمامًا وميظهرش منها حاجة.
       drawWatermark(pdf, pageW, pageH, contentW);
