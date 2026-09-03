@@ -202,6 +202,17 @@
     </div>
   </div>
   <div class="sub">كل صنف أخده أي عميل، وأنهي قطاع بيتحسب عليه دلوقتي. لو عايز صنف معين يتحسب على قطاع مختلف عن قسمه الأصلي، غيّره هنا وهيتطبق على كل الشهور فورًا.</div>
+
+  <div class="row" style="margin-top:10px;padding:10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;gap:8px">
+    <span class="badge">تصنيف جماعي:</span>
+    <span id="bulkCount" style="font-size:13px">حوّل الأصناف الظاهرة تحت لقطاع:</span>
+    <select id="bulkSector" style="min-width:170px"></select>
+    <button id="bulkApplyBtn">طبّق على المعروض</button>
+  </div>
+  <div class="sub" style="margin-top:6px">
+    ابحث عن جزء من الاسم (مثلًا <b>70</b>) عشان تفلتر، وبعدين حوّلهم كلهم مرة واحدة —
+    بدل ما تغيّر كل صنف لوحده.
+  </div>
   <div id="itemsList" class="tbl-wrap" style="margin-top:10px"></div>
 </div>
 
@@ -376,7 +387,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v31';
+const APP_VERSION = 'v32';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -994,13 +1005,27 @@ function itemSector(itemName){
   return guessSector(itemName);
 }
 
-// القطاع الفعلي لكل جزء من صافي مبيعات صنف معين، بعد تطبيق ترحيل المخازن الإجباري (شتر وبلسيه / مصنع الأبواب).
+// القطاع الفعلي لكل جزء من صافي مبيعات صنف معين، بعد تطبيق ترحيل المخازن الإجباري.
 // بيرجع array من {sector, amt} — عادة عنصر واحد، وممكن أكتر لو الصنف اتباع من أكتر من مخزن في نفس الشهر.
+//
+// مهم: ترحيل المخزن غرضه يضمن إن المبيعات تروح للشيت الصح (شيت الأبواب /
+// شيت شتر)، مش إنه يلغي تفنيطة الصنف. فلو الصنف متصنّف على قطاع تابع لنفس
+// شيت المخزن (مثلًا "ابواب 70" ومخزن الأبواب)، تصنيف الصنف الأدق هو اللي
+// يتحسب. من غير كده كل مبيعات مصنع الأبواب كانت بترجع "ابواب WPC" العام
+// وأعمدة التفنيطات تفضل فاضية مهما صنّفت الأصناف.
+function resolveForcedSector(base, warehouse){
+  const forced = FORCED_SECTOR_BY_WAREHOUSE[warehouse];
+  if(!forced) return base;
+  const baseSheet = sheetOf(base), forcedSheet = sheetOf(forced);
+  if(baseSheet && forcedSheet && baseSheet === forcedSheet) return base; // التفنيطة أدق
+  return forced;
+}
+
 function itemEffectiveSectors(item, entry){
   const base = itemSector(item);
   const whKeys = entry.wh ? Object.keys(entry.wh) : [];
   if(!whKeys.length) return [{sector: base, amt: entry.net}];
-  return whKeys.map(w => ({ sector: FORCED_SECTOR_BY_WAREHOUSE[w] || base, amt: entry.wh[w] }));
+  return whKeys.map(w => ({ sector: resolveForcedSector(base, w), amt: entry.wh[w] }));
 }
 
 $('fileInput').addEventListener('change', ()=>{
@@ -2448,6 +2473,8 @@ function renderItemsList(){
         </select>
       </td>
     </tr>`).join('');
+  bulkVisibleItems = matched.map(o => o.item);
+  renderBulkSectorOptions();
   const shownTotal = matched.reduce((a,o)=> a + o.total, 0);
   $('itemsList').innerHTML =
     `<div class="badge" style="padding:4px 2px">ظاهر ${matched.length} من ${items.length} صنف — إجمالي المعروض ${shownTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</div>` +
@@ -2473,6 +2500,47 @@ $('manageItemsBtn').addEventListener('click', ()=>{
   renderItemsList();
 });
 $('closeItemsBtn').addEventListener('click', ()=> $('itemsPanel').style.display='none');
+// ---- تصنيف جماعي ----
+// توزيع مئات الأصناف على التفنيطات (ابواب 70/80/90...) واحد واحد مش عملي.
+// دي بتحوّل كل الأصناف الظاهرة بعد البحث/الفلتر لقطاع واحد دفعة واحدة.
+let bulkVisibleItems = [];
+
+function renderBulkSectorOptions(){
+  const sel = $('bulkSector');
+  const prev = sel.value;
+  sel.innerHTML = `<option value="">— اختار القطاع —</option>` +
+    SECTORS.map(sc=>`<option value="${esc(sc)}">${esc(sc)}</option>`).join('');
+  if(prev && SECTORS.includes(prev)) sel.value = prev;
+}
+
+$('bulkApplyBtn').addEventListener('click', async ()=>{
+  const target = $('bulkSector').value;
+  if(!target){ alert('اختار القطاع اللي هتحوّلهم ليه.'); return; }
+  const items = bulkVisibleItems.filter(it => itemOverride[it] !== target);
+  if(!items.length){ alert('كل الأصناف المعروضة على القطاع ده خلاص.'); return; }
+  if(!confirm(`تحوّل ${items.length} صنف لقطاع "${target}"؟ ده هيطبّق على كل الشهور.`)) return;
+
+  const backup = {};
+  items.forEach(it => { backup[it] = itemOverride[it]; itemOverride[it] = target; });
+  const btn = $('bulkApplyBtn');
+  btn.disabled = true; btn.textContent = 'بيحفظ...';
+  try{
+    await saveItemOverride();
+  }catch(e){
+    Object.keys(backup).forEach(it => {
+      if(backup[it] === undefined) delete itemOverride[it]; else itemOverride[it] = backup[it];
+    });
+    alert('الحفظ فشل: ' + e.message + ' — رجّعنا كل حاجة زي ما كانت.');
+    btn.disabled = false; btn.textContent = 'طبّق على المعروض';
+    return;
+  }
+  btn.disabled = false; btn.textContent = 'طبّق على المعروض';
+  updateLocalCache(true);
+  renderItemsList();
+  renderReport();
+  alert(`تم: ${items.length} صنف اتحولوا لقطاع "${target}".`);
+});
+
 $('itemSearch').addEventListener('input', ()=> renderItemsList());
 $('itemSectorFilter').addEventListener('change', ()=> renderItemsList());
 
