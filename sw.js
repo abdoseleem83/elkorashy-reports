@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v25';
+const CACHE_VERSION = 'v26';
 const CACHE_NAME = 'elkorashy-reports-' + CACHE_VERSION;
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
@@ -29,9 +29,11 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
 
-  // طلبات الـApps Script (بيانات حيّة) لازم تروح للشبكة دايمًا ومتتخزّنش أبدًا
+  // أي طلب خارج موقعنا (الباك إند، أي API) بيروح للشبكة دايمًا ومبيتخزّنش أبدًا.
+  // كان الاستثناء مربوط باسم script.google.com بالاسم، فأي باك إند على دومين
+  // تاني كان بيتكاش وبيرجّع بيانات قديمة — وده أخطر نوع باج لأنه صامت.
   const url = new URL(req.url);
-  if (url.hostname.endsWith('script.google.com') || url.hostname.endsWith('script.googleusercontent.com')) return;
+  if (url.origin !== self.location.origin) return;
 
   if (isPageRequest(req)) {
     e.respondWith(
