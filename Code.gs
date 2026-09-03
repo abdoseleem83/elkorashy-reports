@@ -145,38 +145,69 @@ function jsonOut_(obj){
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
-function doGet(e){
-  try{
-    if(!checkToken_(e.parameter.token)) return jsonOut_({ok:false, error:'unauthorized'});
-    var action = e.parameter.action;
-    if(action === 'get'){
-      var v = kvGet_(e.parameter.key);
-      if(v === null) return jsonOut_({ok:false, error:'not found'});
-      return jsonOut_({ok:true, key:e.parameter.key, value:v});
-    }
-    if(action === 'list'){
-      return jsonOut_({ok:true, keys: kvList_(e.parameter.prefix || '')});
-    }
-    return jsonOut_({ok:false, error:'unknown action'});
-  }catch(err){
-    return jsonOut_({ok:false, error:String(err)});
+// الطلب ممكن يوصل بجسم JSON (POST عادي) أو كباراميترات في الرابط.
+// Apps Script بيعمل redirect للـPOST، والـredirect ده أحيانًا بيحوّل الطلب لـGET
+// من غير جسم — وساعتها كان الرد "unknown action" من غير أي تفسير. عشان كده
+// بنقرا الطلب من الاتنين، والرد بيقول بالظبط إيه اللي وصل لما نفشل.
+function readRequest_(e){
+  var req = {};
+  if(e && e.parameter){
+    for(var k in e.parameter) req[k] = e.parameter[k];
   }
+  if(e && e.postData && e.postData.contents){
+    try{
+      var body = JSON.parse(e.postData.contents);
+      for(var k2 in body) req[k2] = body[k2];
+    }catch(err){
+      req._parseError = String(err);
+    }
+  }
+  return req;
+}
+
+function handle_(e, method){
+  var req = readRequest_(e);
+  if(req._parseError){
+    return jsonOut_({ok:false, error:'الجسم مش JSON صالح: ' + req._parseError});
+  }
+  if(!checkToken_(req.token)) return jsonOut_({ok:false, error:'unauthorized'});
+
+  var action = req.action;
+  if(action === 'get'){
+    var v = kvGet_(req.key);
+    if(v === null) return jsonOut_({ok:false, error:'not found'});
+    return jsonOut_({ok:true, key:req.key, value:v});
+  }
+  if(action === 'list'){
+    return jsonOut_({ok:true, keys: kvList_(req.prefix || '')});
+  }
+  if(action === 'set'){
+    if(!req.key) return jsonOut_({ok:false, error:'الحفظ وصل من غير مفتاح'});
+    kvSet_(req.key, req.value == null ? '' : req.value);
+    return jsonOut_({ok:true, key:req.key});
+  }
+  if(action === 'delete'){
+    if(!req.key) return jsonOut_({ok:false, error:'المسح وصل من غير مفتاح'});
+    kvDelete_(req.key);
+    return jsonOut_({ok:true, key:req.key});
+  }
+  // رسالة تشخيصية: بتقول الطلب وصل إزاي وكان فيه إيه، بدل "unknown action" الجافة
+  return jsonOut_({
+    ok: false,
+    error: 'unknown action',
+    detail: 'وصل طلب ' + method + ' وفيه action=' + (action === undefined ? '(مفيش)' : action) +
+            '. لو ده حصل مع حفظ، غالبًا الطلب اتحوّل من POST لـGET وضاع جسمه — التطبيق بيعيد المحاولة تلقائي.',
+    hadBody: !!(e && e.postData && e.postData.contents),
+    keys: Object.keys(req).join(',')
+  });
+}
+
+function doGet(e){
+  try{ return handle_(e, 'GET'); }
+  catch(err){ return jsonOut_({ok:false, error:String(err)}); }
 }
 
 function doPost(e){
-  try{
-    var body = JSON.parse(e.postData.contents);
-    if(!checkToken_(body.token)) return jsonOut_({ok:false, error:'unauthorized'});
-    if(body.action === 'set'){
-      kvSet_(body.key, body.value);
-      return jsonOut_({ok:true});
-    }
-    if(body.action === 'delete'){
-      kvDelete_(body.key);
-      return jsonOut_({ok:true});
-    }
-    return jsonOut_({ok:false, error:'unknown action'});
-  }catch(err){
-    return jsonOut_({ok:false, error:String(err)});
-  }
+  try{ return handle_(e, 'POST'); }
+  catch(err){ return jsonOut_({ok:false, error:String(err)}); }
 }
