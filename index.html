@@ -365,7 +365,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v28';
+const APP_VERSION = 'v29';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2014,7 +2014,9 @@ function generateExcel(includeMonthly, includeSector, opts){
   groups.forEach(g=>{
     const rows = groupRows(g, columns);
     if(!rows.length) return;
-    if(includeMonthly){
+    // نفس منطق الـPDF: القطاع الخاص مالوش تفصيل قطاعي، فـ"بالقطاع" ليه = الشهري
+    const wantMonthlySheet = includeMonthly || (includeSector && g.kind !== 'class');
+    if(wantMonthlySheet){
       const sorted = sortRowsForTable('monthly', rows);
       const aoa = monthlyAoa(sorted, columns, null, withGrowthCols, withShowClass);
       XLSX.utils.book_append_sheet(wbOut,
@@ -2341,18 +2343,38 @@ const PDF_GROUPS = [
   {id:'shutter',  kind:'special', key:'شتر وبلسيه',              title:'شيت شتر وبلسيه',           agg:true},
 ];
 
+// اختيارات المستخدم بتتحفظ طول الجلسة — قبل كده كل ما تفتح اللوحة كانت
+// المجموعات والشهور بترجع "الكل"، فتصدّر PDF بمجموعة واحدة وتفتح اللوحة
+// للإكسل فتلاقي كل المجموعات اترجعت ويطلع تصدير مش اللي طلبته.
+let pdfGroupsChoice = null;   // null = لسه مااختارش (يبقى الكل)
+let pdfMonthsChoice = null;   // نفس الفكرة للشهور
+
 function renderPdfGroupsList(){
-  $('pdfGroupsList').innerHTML = PDF_GROUPS.map(g=>`
-    <label class="chk"><input type="checkbox" class="pdfGroupChk" value="${g.id}" checked> ${esc(g.title)}</label>
-  `).join('');
+  $('pdfGroupsList').innerHTML = PDF_GROUPS.map(g=>{
+    const on = !pdfGroupsChoice || pdfGroupsChoice.includes(g.id);
+    return `<label class="chk"><input type="checkbox" class="pdfGroupChk" value="${g.id}" ${on?'checked':''}> ${esc(g.title)}</label>`;
+  }).join('');
+  document.querySelectorAll('.pdfGroupChk').forEach(chk=>{
+    chk.addEventListener('change', ()=>{
+      pdfGroupsChoice = Array.from(document.querySelectorAll('.pdfGroupChk:checked')).map(e=>e.value);
+    });
+  });
 }
 
 function renderPdfMonthsList(){
   const months = activeMonths();
-  $('pdfMonthsList').innerHTML = months.map(m => `
-    <label class="chk" style="font-size:12.5px;padding:5px 9px">
-      <input type="checkbox" class="pdfMonthChk" value="${m}" checked style="width:14px;height:14px"> ${monthLabel(m)}
-    </label>`).join('') || '<span class="badge">مفيش شهور محفوظة</span>';
+  $('pdfMonthsList').innerHTML = months.map(m => {
+    const on = !pdfMonthsChoice || pdfMonthsChoice.includes(m);
+    return `<label class="chk" style="font-size:12.5px;padding:5px 9px">
+      <input type="checkbox" class="pdfMonthChk" value="${m}" ${on?'checked':''} style="width:14px;height:14px"> ${esc(monthLabel(m))}
+    </label>`;
+  }).join('') || '<span class="badge">مفيش شهور محفوظة</span>';
+  document.querySelectorAll('.pdfMonthChk').forEach(chk=>{
+    chk.addEventListener('change', ()=>{
+      pdfMonthsChoice = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(e=>e.value);
+      updateGrowthHint();
+    });
+  });
 }
 // لوحة واحدة بتخدم الـPDF والإكسل بنفس الاختيارات
 function updateExportNote(){
@@ -2388,15 +2410,20 @@ $('exportPdfBtn').addEventListener('click', ()=> openExportPanel());
 $('closePdfBtn').addEventListener('click', ()=> $('pdfPanel').style.display='none');
 $('pdfMonthsAll').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfMonthChk').forEach(el=> el.checked = true);
+  pdfMonthsChoice = null; // الكل
+  updateGrowthHint();
 });
 $('pdfMonthsNone').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfMonthChk').forEach(el=> el.checked = false);
+  pdfMonthsChoice = [];
 });
 $('pdfGroupsAll').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfGroupChk').forEach(el=> el.checked = true);
+  pdfGroupsChoice = null;
 });
 $('pdfGroupsNone').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfGroupChk').forEach(el=> el.checked = false);
+  pdfGroupsChoice = [];
 });
 
 // ================== بناء الـPDF ==================
@@ -2615,7 +2642,11 @@ async function generatePdf(includeMonthly, includeSector, opts){
         });
       };
 
-      if(includeMonthly) addTable('monthly', 'مقارنة المبيعات (من الأكبر للأصغر)');
+      // "شيت ابواب WPC" و"شتر وبلسيه" كلهم قطاع واحد أصلًا، فمفيش تفصيل قطاعي ليهم.
+      // لو المستخدم اختار "مقارنة بالقطاع" بس، لازم برضه يشوف جدولهم الشهري —
+      // قبل كده كانوا بيطلعوا شارت لوحده من غير أي جدول.
+      const wantMonthly = includeMonthly || (includeSector && !canSector);
+      if(wantMonthly) addTable('monthly', 'مقارنة المبيعات (من الأكبر للأصغر)');
       if(includeSector && canSector) addTable('sector', 'مقارنة المبيعات بالقطاع (من الأكبر للأصغر)');
 
       // جدول النمو للمجموعة دي بالفترتين المختارتين
@@ -2646,10 +2677,13 @@ async function generatePdf(includeMonthly, includeSector, opts){
           const chartH = 46 + totals.length * 26;
           const img = await chartImage(totals.map(o=>o.label), totals.map(o=>o.total),
             '#3b5fe0', PDF_RENDER_W, chartH);
-          body += `<div class="blk">
+          // لو مفيش جدول اتضاف للمجموعة، العنوان لسه في head — الشارت ياخده
+          // بدل ما يطلع من غير عنوان ومحدش يعرف بتاع مين.
+          body += `<div class="blk">${head}
             <div class="chart-cap">${esc(`أعلى ${totals.length} في ${g.title}`)}</div>
             <img src="${img}" style="width:100%;display:block">
           </div>`;
+          head = '';
         }
       }
       body += `<div style="height:12px"></div>`;
