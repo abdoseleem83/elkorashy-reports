@@ -376,7 +376,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v30';
+const APP_VERSION = 'v31';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1313,22 +1313,46 @@ function computeAggregatedClassRow(cls, label, columns){
   return {label, cls:`${label} (${customers.length} عميل)`, months: colTotals, sectors: sectorsSum};
 }
 // نفس computeSpecialSectorRows بس بالأعمدة المختارة
+// بيرجع توزيع مبيعات عميل على قطاعات معيّنة (للشيت الخاص: قطاعاته الفرعية)
+function customerSectorBreakdown(c, sectors, months){
+  const want = asSectorSet(sectors);
+  const out = {}; sectors.forEach(s=> out[s] = 0);
+  months.forEach(m=>{
+    const cd = monthsData[m] && monthsData[m][c];
+    if(!cd) return;
+    Object.keys(cd).forEach(item=>{
+      itemEffectiveSectors(item, cd[item]).forEach(({sector:sec, amt})=>{
+        if(want.has(sec)) out[sec] += amt;
+      });
+    });
+  });
+  return out;
+}
+
 function computeSpecialSectorRowsColumns(sector, columns){
   const customers = allCustomers().filter(c => classification[c] !== 'مستبعد');
+  const sectors = Array.isArray(sector) ? sector : [sector];
+  const flatMonths = columns.flatMap(col => col.months);
   const rows = customers
-    .map(c => ({ label:c, cls: classification[c] || 'غير محدد', months: customerSectorColumnSeries(c, sector, columns) }))
+    .map(c => ({
+      label: c,
+      cls: classification[c] || 'غير محدد',
+      months: customerSectorColumnSeries(c, sectors, columns),
+      // التوزيع على القطاعات الفرعية عشان "مقارنة بالقطاع" تشتغل للشيت كمان
+      sectors: customerSectorBreakdown(c, sectors, flatMonths),
+    }))
     .filter(r => r.months.some(v => v !== 0));
   return {columns, rows};
 }
 
-function rowGrandTotal(tabType, r){
+function rowGrandTotal(tabType, r, sectorCols){
   return tabType==='monthly'
     ? r.months.reduce((x,y)=>x+y,0)
-    : mainSectors().reduce((s,sec)=> s + ((r.sectors||{})[sec]||0), 0);
+    : (sectorCols || mainSectors()).reduce((s,sec)=> s + ((r.sectors||{})[sec]||0), 0);
 }
 // الترتيب اتفصل عن الرسم عشان الـPDF يقدر يرتّب مرة واحدة وبعدين يقسّم الصفوف على صفحات.
-function sortRowsForTable(tabType, rows){
-  return rows.slice().sort((a,b)=> rowGrandTotal(tabType,b) - rowGrandTotal(tabType,a));
+function sortRowsForTable(tabType, rows, sectorCols){
+  return rows.slice().sort((a,b)=> rowGrandTotal(tabType,b,sectorCols) - rowGrandTotal(tabType,a,sectorCols));
 }
 
 // opts (اختياري، للـPDF): startIndex = رقم أول صف في الترقيم،
@@ -1347,6 +1371,16 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
   const clsHead = showClass ? '<th>التصنيف</th>' : '';
   const clsCell = (r)=> showClass ? `<td>${esc(r.cls)}</td>` : '';
   const labelSpan = showClass ? 3 : 2; // عدد الأعمدة اللي صف الإجمالي بيغطيها
+  // الخط بيتظبط حسب عدد الأعمدة. من غير كده مع 8 شهور + الفرق + النمو الأرقام
+  // كانت بتطلع بره خليتها وتتداخل مع العمود اللي جنبها.
+  const fitStyle = (n)=>{
+    const total = n + (showClass ? 4 : 3);
+    if(total <= 8)  return 'font-size:13px';
+    if(total <= 11) return 'font-size:11.5px';
+    if(total <= 14) return 'font-size:10px';
+    return 'font-size:8.8px';
+  };
+  const monthlyCols = months.length + (growthCols ? 2 : 0);
   const gLabel = (m)=> typeof m === 'string' ? monthLabel(m) : m.label;
   const sortAttr = (key)=> sortable ? ` data-sort="${key}"` : '';
   const arrow = (key)=> sortable && String(reportView.sortKey) === String(key)
@@ -1367,10 +1401,10 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
       if(vals.length < 2) return null;
       return { max: Math.max(...vals), min: Math.min(...vals) };
     });
-    let html = `<div class="tbl-wrap"><table><thead><tr>
+    let html = `<div class="tbl-wrap"><table style="${fitStyle(monthlyCols)}"><thead><tr>
       <th>م</th><th${sortAttr('label')}>بيان${arrow('label')}</th>${clsHead}<th${sortAttr('total')}>الإجمالي${arrow('total')}</th>
       ${months.map((m,mi)=> `<th${sortAttr(mi)}>${esc(typeof m === 'string' ? monthLabel(m) : m.label)}${arrow(mi)}</th>`).join('')}
-      ${growthCols ? `<th>الفرق<br><span style="font-weight:400;font-size:9px">${esc(gLabel(months[months.length-1]))} − ${esc(gLabel(months[0]))}</span></th><th>النمو %</th>` : ''}
+      ${growthCols ? `<th title="${esc(gLabel(months[months.length-1]))} − ${esc(gLabel(months[0]))}">الفرق</th><th>النمو %</th>` : ''}
     </tr></thead><tbody>`;
     let grandTotals = months.map(()=>0);
     totalsRows.forEach(r => r.months.forEach((v,mi)=> grandTotals[mi]+=v));
@@ -1409,9 +1443,12 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
     // القطاعات اللي مفيهاش أي مبيعات في الصفوف دي مبتظهرش خالص — كانت بتاخد
     // عرض من الأعمدة اللي فيها أرقام وتخلي الخط يتزنق.
     const totalsSrc = opts.totalsFrom || rows;
-    const cols = mainSectors().filter(sec =>
+    // الشيت الخاص (أبواب/شتر) بيتقارن بقطاعاته الفرعية — ابواب 70/80/90...
+    // مش بالقطاعات العادية اللي هو أصلًا مستبعد منها.
+    const baseCols = opts.sectorCols || mainSectors();
+    const cols = baseCols.filter(sec =>
       totalsSrc.some(r => ((r.sectors||{})[sec]||0) !== 0));
-    let html = `<div class="tbl-wrap"><table><thead><tr>
+    let html = `<div class="tbl-wrap"><table style="${fitStyle(cols.length + 1)}"><thead><tr>
       <th>م</th><th${sortAttr('label')}>العميل / المجموعة${arrow('label')}</th>${clsHead}
       ${cols.map((s,si)=>`<th${sortAttr(si)}>${esc(s)}${arrow(si)}</th>`).join('')}<th${sortAttr('total')}>الإجمالي${arrow('total')}</th>
     </tr></thead><tbody>`;
@@ -2078,8 +2115,10 @@ function generateExcel(includeMonthly, includeSector, opts){
   groups.forEach(g=>{
     const rows = groupRows(g, columns);
     if(!rows.length) return;
-    // نفس منطق الـPDF: القطاع الخاص مالوش تفصيل قطاعي، فـ"بالقطاع" ليه = الشهري
-    const wantMonthlySheet = includeMonthly || (includeSector && g.kind !== 'class');
+    const sheetCols = g.kind === 'special' ? sectorsOfSheet(g.sheet) : null;
+    const canSectorSheet = g.kind === 'class' || (sheetCols && sheetCols.length > 1);
+    // شيت قطاعه واحد بس مالوش تفصيل قطاعي، فـ"بالقطاع" ليه = الشهري
+    const wantMonthlySheet = includeMonthly || (includeSector && !canSectorSheet);
     if(wantMonthlySheet){
       const sorted = sortRowsForTable('monthly', rows);
       const aoa = monthlyAoa(sorted, columns, null, withGrowthCols, withShowClass);
@@ -2087,10 +2126,10 @@ function generateExcel(includeMonthly, includeSector, opts){
         sheetWithHeader(aoa, g.title, period, aoa[0].length),
         safeSheetName('شهري-' + g.title, used));
     }
-    // القطاعات الخاصة كلها قطاع واحد أصلًا، فمفيش تفصيل قطاعي ليها
-    if(includeSector && g.kind === 'class'){
-      const sorted = sortRowsForTable('sector', rows);
-      const aoa = sectorAoa(sorted, secCols, null, withShowClass);
+    if(includeSector && canSectorSheet){
+      const cols = sheetCols && sheetCols.length ? sheetCols : secCols;
+      const sorted = sortRowsForTable('sector', rows, cols);
+      const aoa = sectorAoa(sorted, cols, null, withShowClass);
       XLSX.utils.book_append_sheet(wbOut,
         sheetWithHeader(aoa, g.title, period, aoa[0].length),
         safeSheetName('قطاع-' + g.title, used));
@@ -2623,8 +2662,11 @@ const PDF_STYLE = `
     font-family:Arial,Helvetica,sans-serif;font-weight:700}
   th,td{border:1px solid #999;padding:5px 6px;text-align:center;word-wrap:break-word;overflow-wrap:break-word}
   th{background:#eee;font-weight:700;font-size:12px}
-  td.num{font-weight:700;direction:ltr;font-family:Arial,Helvetica,sans-serif;white-space:nowrap;font-size:13.5px}
-  td:nth-child(2),th:nth-child(2){width:210px;text-align:right}
+  /* الأرقام: مايطلعش منها حاجة بره الخلية. الخط بيتحدد من fitStyle حسب عدد
+     الأعمدة، والـoverflow ضمانة أخيرة لو رقم طلع أطول من المتوقع. */
+  td.num{font-weight:700;direction:ltr;font-family:Arial,Helvetica,sans-serif;white-space:nowrap}
+  th,td{overflow:hidden}
+  td:nth-child(2),th:nth-child(2){width:190px;text-align:right}
   .total-row td{background:#ddd;font-weight:700}
   .grp-title{font-size:15px;font-weight:700;padding:8px 0 5px;border-bottom:1.5px solid #777;margin-bottom:5px}
   .sub-title{font-size:12px;font-weight:700;color:#333;padding:5px 0 3px}
@@ -2743,8 +2785,8 @@ async function generatePdf(includeMonthly, includeSector, opts){
       let head = `<div class="grp-title">${esc(g.title)}</div>`;
       const canSector = g.kind === 'class'; // القطاعات الخاصة كلها قطاع واحد أصلًا
 
-      const addTable = (tabType, subTitle) => {
-        const sorted = sortRowsForTable(tabType, rows);
+      const addTable = (tabType, subTitle, sectorCols) => {
+        const sorted = sortRowsForTable(tabType, rows, sectorCols);
         const chunks = chunkRows(sorted, PDF_ROWS_PER_CHUNK);
         chunks.forEach((ch, ci)=>{
           const tbl = buildTableHtml(tabType, columns, ch, null, {
@@ -2752,6 +2794,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
             totalsFrom: ci === chunks.length-1 ? sorted : null,
             growthCols: withGrowthCols,
             showClass: withShowClass,
+            sectorCols,
           });
           const sub = ci === 0 ? `<div class="sub-title">${esc(subTitle)}</div>` : '';
           body += `<div class="blk">${head}${sub}${tbl}</div>`;
@@ -2759,12 +2802,17 @@ async function generatePdf(includeMonthly, includeSector, opts){
         });
       };
 
-      // "شيت ابواب WPC" و"شتر وبلسيه" كلهم قطاع واحد أصلًا، فمفيش تفصيل قطاعي ليهم.
-      // لو المستخدم اختار "مقارنة بالقطاع" بس، لازم برضه يشوف جدولهم الشهري —
-      // قبل كده كانوا بيطلعوا شارت لوحده من غير أي جدول.
-      const wantMonthly = includeMonthly || (includeSector && !canSector);
-      if(wantMonthly) addTable('monthly', 'مقارنة المبيعات (من الأكبر للأصغر)');
-      if(includeSector && canSector) addTable('sector', 'مقارنة المبيعات بالقطاع (من الأكبر للأصغر)');
+      // الشيت الخاص (أبواب/شتر) بيتقارن بقطاعاته الفرعية — ابواب 70/80/90...
+      const sheetCols = g.kind === 'special' ? sectorsOfSheet(g.sheet) : null;
+      const canSectorHere = canSector || (sheetCols && sheetCols.length > 1);
+      if(includeMonthly) addTable('monthly', 'مقارنة المبيعات (من الأكبر للأصغر)');
+      if(includeSector && canSectorHere){
+        addTable('sector', 'مقارنة المبيعات بالقطاع (من الأكبر للأصغر)', sheetCols);
+      } else if(includeSector && !includeMonthly){
+        // شيت قطاعه واحد بس: مفيش تفصيل قطاعي ليه، فنعرض جدوله الشهري
+        // بدل ما يطلع شارت لوحده من غير أي جدول.
+        addTable('monthly', 'مقارنة المبيعات (من الأكبر للأصغر)');
+      }
 
       // جدول النمو للمجموعة دي بالفترتين المختارتين
       if(growthOk){
