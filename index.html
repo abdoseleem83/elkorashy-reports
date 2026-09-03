@@ -311,11 +311,20 @@ function isTransientError(msg){
   return /unknown action|not found|HTTP 5\d\d|Service invoked too many|Exceeded maximum|timed out|وقت أطول/i.test(msg || '');
 }
 
+// لما نتأكد إن مفيش اتصال خالص، مفيش داعي نعيد المحاولة لكل مفتاح.
+// من غير ده فتح الصفحة أوفلاين كان بياخد 20+ ثانية (كل مفتاح × 3 محاولات
+// × تباعد متزايد) والمستخدم قاعد يستنى والبيانات قدامه من الكاش أصلًا.
+let networkDown = false;
+function looksOffline(err){
+  return err instanceof TypeError || /Failed to fetch|NetworkError|ERR_INTERNET|ERR_NETWORK/i.test(err && err.message || '');
+}
+
 // أي طلب شبكة بيتعاد لحد مرتين لو فشل بسبب الشبكة/مهلة/رد عابر —
 // الشبكة على الموبايل بتقطع كتير.
 async function apiFetch(url, options, opts){
   opts = opts || {};
-  const retries = opts.retries == null ? NET_RETRIES : opts.retries;
+  const offline = networkDown || (typeof navigator !== 'undefined' && navigator.onLine === false);
+  const retries = offline ? 0 : (opts.retries == null ? NET_RETRIES : opts.retries);
   let lastErr;
   for(let attempt = 0; attempt <= retries; attempt++){
     const ctrl = new AbortController();
@@ -324,6 +333,7 @@ async function apiFetch(url, options, opts){
       const res = await fetch(url, Object.assign({signal: ctrl.signal}, options||{}));
       if(!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
+      networkDown = false; // وصلنا للسيرفر، يبقى فيه اتصال
       // رد وصل بس السيرفر رفضه لسبب عابر — نعيد المحاولة بدل ما نفشّل العملية
       if(data && data.ok === false && isTransientError(data.error) && attempt < retries){
         throw new Error(data.error);
@@ -331,6 +341,7 @@ async function apiFetch(url, options, opts){
       return data;
     }catch(e){
       lastErr = e.name === 'AbortError' ? new Error('الطلب أخد وقت أطول من اللازم') : e;
+      if(looksOffline(lastErr)) networkDown = true;
       if(attempt < retries) await new Promise(r=> setTimeout(r, 800 * Math.pow(2, attempt)));
     }finally{ clearTimeout(timer); }
   }
@@ -365,14 +376,36 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v29';
+const APP_VERSION = 'v30';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
 // عمود "مقارنة المبيعات بالقطاع" العادي عشان جملة/موزعين ميتخلطوش بيها.
 let SECTORS = ["قطاعات PVC كومبن","قطاعات كرافت لاين","نيو لاين","اكسسوارات","مكن","حشوات","تصنيع","ابواب WPC","شتر وبلسيه"];
-const SPECIAL_SECTORS = ["ابواب WPC","شتر وبلسيه"];
-function mainSectors(){ return SECTORS.filter(s => !SPECIAL_SECTORS.includes(s)); }
+// ---- الشيتات الخاصة ----
+// شيت الأبواب مش قطاع واحد — تحته كذا قطاع فرعي (ابواب 70/80/90/100، ابواب
+// خاصة، اكسسوارات ابواب، حلوق وبرور...). عشان كده بقى فيه خريطة بتقول كل
+// قطاع تابع لأنهي شيت، والمستخدم بيتحكم فيها من لوحة "القطاعات".
+const SPECIAL_SHEETS = [
+  {id:'doors',   title:'ابواب WPC'},
+  {id:'shutter', title:'شتر وبلسيه'},
+];
+let sectorSheet = {}; // اسم القطاع -> 'doors' | 'shutter'
+
+function sheetOf(sector){ return sectorSheet[sector] || null; }
+function sectorsOfSheet(sheetId){ return SECTORS.filter(s => sectorSheet[s] === sheetId); }
+function isSpecialSector(s){ return !!sectorSheet[s]; }
+// القطاعات العادية: اللي مش تابعة لأي شيت خاص
+function mainSectors(){ return SECTORS.filter(s => !sectorSheet[s]); }
+
+// تخمين أولي لأي قطاع لسه متصنّفش — بيوفّر على المستخدم إنه يحدد كل واحد بإيده.
+// بيتطبق مرة واحدة على القطاعات الجديدة بس، ومش بيلمس اللي هو حدده.
+function guessSheetForSector(name){
+  const n = (name||'');
+  if(/شتر|بل[يى]?سيه/.test(n)) return 'shutter';
+  if(/ابواب|أبواب|حلوق|برور/.test(n)) return 'doors';
+  return null;
+}
 
 // أي صنف أو مخزن يترحّل إجباريًا لقطاع معيّن بغض النظر عن تصنيف العميل — من بيانات المحاسبة الحقيقية:
 // "مخزن شتر وبلسيه" و"بلسيه" -> شتر وبلسيه. "مخزن منتج تام مصنع انشاص" -> ابواب WPC.
@@ -532,6 +565,8 @@ async function loadStorage(){
       else if(cachedItems) itemOverride = JSON.parse(cachedItems);
       const cachedSectors = localStorage.getItem('cache:sectorsList');
       if(cachedSectors) SECTORS = JSON.parse(cachedSectors);
+      const cachedSheets = localStorage.getItem('cache:sectorSheets');
+      if(cachedSheets) sectorSheet = JSON.parse(cachedSheets);
       const cachedArchive = localStorage.getItem('cache:archivedYears');
       if(cachedArchive) archivedYears = JSON.parse(cachedArchive);
       $('appVersionBadge').textContent = APP_VERSION;
@@ -656,6 +691,21 @@ async function loadStorage(){
   }catch(e){
     await trySave(saveSectors);
   }
+  // توزيع القطاعات على الشيتات الخاصة
+  try{
+    const ss = await window.storage.get('sectorSheets');
+    sectorSheet = JSON.parse(ss.value) || {};
+  }catch(e){ if(!Object.keys(sectorSheet).length) sectorSheet = {}; }
+  // أي قطاع لسه متصنّفش: تخمين أولي بالاسم (ابواب/حلوق/برور -> شيت الأبواب،
+  // شتر/بلسيه -> شيت شتر). المستخدم يقدر يعدّل أي واحد من لوحة القطاعات.
+  let sheetsChanged = false;
+  SECTORS.forEach(sec=>{
+    if(sec in sectorSheet) return;
+    const g = guessSheetForSector(sec);
+    if(g){ sectorSheet[sec] = g; sheetsChanged = true; }
+  });
+  if(sheetsChanged) await trySave(saveSectorSheets);
+
   // ترحيل: لو المستخدم كان عنده نسخة قديمة من القطاعات من غير مكن/حشوات/تصنيع/شتر وبلسيه، ضيفهم
   let sectorsChanged = false;
   ["قطاعات PVC كومبن","قطاعات كرافت لاين","نيو لاين","اكسسوارات","مكن","حشوات","تصنيع","ابواب WPC","شتر وبلسيه"].forEach(s=>{
@@ -714,6 +764,7 @@ function writeLocalCache(){
     localStorage.setItem('cache:classificationDiff', JSON.stringify(diffFromSeed(classification, seedClassificationMap())));
     localStorage.setItem('cache:itemOverrideDiff', JSON.stringify(diffFromSeed(itemOverride, ITEM_SECTOR_SEED)));
     localStorage.setItem('cache:sectorsList', JSON.stringify(SECTORS));
+    localStorage.setItem('cache:sectorSheets', JSON.stringify(sectorSheet));
     localStorage.setItem('cache:archivedYears', JSON.stringify(archivedYears));
   }catch(e){}
 }
@@ -875,6 +926,9 @@ async function saveItemOverride(){
 }
 async function saveSectors(){
   await window.storage.set('sectorsList', JSON.stringify(SECTORS));
+}
+async function saveSectorSheets(){
+  await window.storage.set('sectorSheets', JSON.stringify(sectorSheet));
 }
 async function saveClassification(){
   await window.storage.set('classificationDiff', JSON.stringify(diffFromSeed(classification, seedClassificationMap())));
@@ -1182,13 +1236,19 @@ function customerSectorTotals(c, months){
   return out;
 }
 // مبيعات عميل معين في قطاع خاص واحد بس (ابواب WPC / شتر وبلسيه)، شهر بشهر.
+// بيقبل اسم قطاع واحد أو مجموعة قطاعات (شيت كامل)
+function asSectorSet(sectorOrList){
+  const list = Array.isArray(sectorOrList) ? sectorOrList : [sectorOrList];
+  return new Set(list);
+}
 function customerSectorMonthlySeries(c, sector, months){
+  const want = asSectorSet(sector);
   return months.map(m=>{
     const cd = monthsData[m] && monthsData[m][c];
     if(!cd) return 0;
     let t = 0;
     Object.keys(cd).forEach(item=>{
-      itemEffectiveSectors(item, cd[item]).forEach(({sector:s, amt})=>{ if(s===sector) t += amt; });
+      itemEffectiveSectors(item, cd[item]).forEach(({sector:s, amt})=>{ if(want.has(s)) t += amt; });
     });
     return t;
   });
@@ -1215,12 +1275,13 @@ function customerColumnSeries(c, columns){
   return columns.map(col => col.months.reduce((s,m)=> s + (monthsData[m] && monthsData[m][c] ? customerTotal(monthsData[m][c]) : 0), 0));
 }
 function customerSectorColumnSeries(c, sector, columns){
+  const want = asSectorSet(sector);
   return columns.map(col => col.months.reduce((s,m)=>{
     const cd = monthsData[m] && monthsData[m][c];
     if(!cd) return s;
     let t = 0;
     Object.keys(cd).forEach(item=>{
-      itemEffectiveSectors(item, cd[item]).forEach(({sector:sec, amt})=>{ if(sec===sector) t += amt; });
+      itemEffectiveSectors(item, cd[item]).forEach(({sector:sec, amt})=>{ if(want.has(sec)) t += amt; });
     });
     return s + t;
   }, 0));
@@ -1934,10 +1995,13 @@ function groupRows(g, columns){
         .filter(r => r.months.some(v => v !== 0));
     }
   } else {
-    const sr = computeSpecialSectorRowsColumns(g.key, columns).rows;
+    // الشيت الخاص = كل القطاعات التابعة له مع بعض (شيت الأبواب تحته كذا قطاع فرعي)
+    const sectors = sectorsOfSheet(g.sheet);
+    const sr = sectors.length ? computeSpecialSectorRowsColumns(sectors, columns).rows : [];
     if(g.agg && sr.length){
       const totals = columns.map((_,i)=> sr.reduce((s,r)=> s + (r.months[i]||0), 0));
-      rows = [{label:`مبيعات ${g.key}`, cls:`${sr.length} عميل`, months: totals}];
+      const sheetTitle = (SPECIAL_SHEETS.find(x=>x.id===g.sheet)||{}).title || g.title;
+      rows = [{label:`مبيعات ${sheetTitle}`, cls:`${sr.length} عميل`, months: totals}];
     } else {
       rows = sr;
     }
@@ -2203,11 +2267,51 @@ $('custClassFilter').addEventListener('change', ()=> renderCustomersList());
 
 // ---- Sectors panel ----
 function renderOwnSectorsList(){
-  $('sectorsOwnList').innerHTML = SECTORS.map(s=>`
-    <span class="pill done" style="display:inline-flex;align-items:center;gap:6px">
-      ${esc(s)}${SPECIAL_SECTORS.includes(s) ? ' <span class="badge">(شيت لوحده)</span>' : ''}
-      <span class="ghost" style="cursor:pointer" data-del-sector="${encodeURIComponent(s)}">✕</span>
-    </span>`).join('') || '<span class="badge">مفيش قطاعات لسه</span>';
+  // جدول: كل قطاع وجنبه اختيار الشيت اللي بيندرج تحته.
+  // شيت الأبواب تحته كذا قطاع (ابواب 70/80/90/100، ابواب خاصة، اكسسوارات
+  // ابواب، حلوق وبرور...) وكلهم بيتجمعوا في نفس التقرير.
+  const rows = SECTORS.map(sec=>`
+    <tr>
+      <td style="text-align:right">${esc(sec)}</td>
+      <td>
+        <select class="sectorSheetSelect" data-sector="${encodeURIComponent(sec)}">
+          <option value="">قطاع عادي</option>
+          ${SPECIAL_SHEETS.map(sh=>`<option value="${sh.id}" ${sectorSheet[sec]===sh.id?'selected':''}>شيت ${esc(sh.title)}</option>`).join('')}
+        </select>
+      </td>
+      <td><button class="ghost" data-del-sector="${encodeURIComponent(sec)}" style="padding:3px 9px">حذف ✕</button></td>
+    </tr>`).join('');
+
+  const counts = SPECIAL_SHEETS.map(sh=>{
+    const list = sectorsOfSheet(sh.id);
+    return `<span class="pill done">شيت ${esc(sh.title)}: ${list.length} قطاع${list.length?' — '+esc(list.join('، ')):''}</span>`;
+  }).join(' ');
+
+  $('sectorsOwnList').innerHTML = SECTORS.length
+    ? `<div class="row" style="margin-bottom:10px">${counts}</div>
+       <div class="tbl-wrap" style="max-height:420px">
+         <table><thead><tr><th>القطاع</th><th>بيندرج تحت</th><th></th></tr></thead>
+         <tbody>${rows}</tbody></table>
+       </div>`
+    : '<span class="badge">مفيش قطاعات لسه</span>';
+
+  document.querySelectorAll('.sectorSheetSelect').forEach(sel=>{
+    sel.addEventListener('change', async ()=>{
+      const sec = decodeURIComponent(sel.getAttribute('data-sector'));
+      const prev = sectorSheet[sec];
+      if(sel.value) sectorSheet[sec] = sel.value; else delete sectorSheet[sec];
+      try{ await saveSectorSheets(); }
+      catch(e){
+        if(prev) sectorSheet[sec] = prev; else delete sectorSheet[sec];
+        alert('الحفظ فشل: ' + e.message);
+        sel.value = prev || '';
+        return;
+      }
+      updateLocalCache();
+      renderOwnSectorsList();
+      renderReport();
+    });
+  });
   document.querySelectorAll('[data-del-sector]').forEach(el=>{
     el.addEventListener('click', async ()=>{
       const s = decodeURIComponent(el.getAttribute('data-del-sector'));
@@ -2217,8 +2321,11 @@ function renderOwnSectorsList(){
       if(!confirm(`تحذف قطاع "${s}"؟ ${affected.length} صنف متحسب عليه دلوقتي هيتنقلوا لقطاع "${fallback}" وتقدر تعدّلهم من لوحة الأصناف.`)) return;
       SECTORS = SECTORS.filter(x=>x!==s);
       affected.forEach(it => { itemOverride[it] = fallback; });
+      const hadSheet = sectorSheet[s];
+      delete sectorSheet[s]; // ما نسيبش قطاع محذوف في خريطة الشيتات
       try{
         await saveSectors();
+        if(hadSheet) await saveSectorSheets();
         if(affected.length) await saveItemOverride();
       }catch(err){ alert('الحفظ فشل: ' + err.message); return; }
       updateLocalCache();
@@ -2232,8 +2339,18 @@ $('addSectorBtn').addEventListener('click', async ()=>{
   if(!name) return;
   if(SECTORS.includes(name)){ alert('القطاع ده موجود بالفعل'); return; }
   SECTORS.push(name);
-  try{ await saveSectors(); }
-  catch(e){ SECTORS = SECTORS.filter(x=>x!==name); alert('حفظ القطاع فشل: ' + e.message); return; }
+  // تخمين أولي: قطاع اسمه فيه "ابواب"/"حلوق"/"برور" بيتحط تحت شيت الأبواب
+  const guess = guessSheetForSector(name);
+  if(guess) sectorSheet[name] = guess;
+  try{
+    await saveSectors();
+    if(guess) await saveSectorSheets();
+  }
+  catch(e){
+    SECTORS = SECTORS.filter(x=>x!==name);
+    delete sectorSheet[name];
+    alert('حفظ القطاع فشل: ' + e.message); return;
+  }
   updateLocalCache();
   $('newSectorName').value = '';
   renderOwnSectorsList();
@@ -2339,8 +2456,8 @@ const PDF_GROUPS = [
   {id:'dist',     kind:'class',   key:'موزع',                    title:'الموزعين',                 agg:false,
    withAggClasses:['مبيعات جملة الاسكندرية','مبيعات جملة طنطا']},
   {id:'private',  kind:'class',   key:'مبيعات خاصة',             title:'عملاء مبيعات خاصة',        agg:false},
-  {id:'doors',    kind:'special', key:'ابواب WPC',               title:'شيت ابواب WPC',            agg:false},
-  {id:'shutter',  kind:'special', key:'شتر وبلسيه',              title:'شيت شتر وبلسيه',           agg:true},
+  {id:'doors',    kind:'special', sheet:'doors',   title:'شيت ابواب WPC',  agg:false},
+  {id:'shutter',  kind:'special', sheet:'shutter', title:'شيت شتر وبلسيه', agg:true},
 ];
 
 // اختيارات المستخدم بتتحفظ طول الجلسة — قبل كده كل ما تفتح اللوحة كانت
@@ -2857,7 +2974,12 @@ document.addEventListener('visibilitychange', ()=>{
     loadStorage().catch(()=>{});
   }
 });
-window.addEventListener('online', ()=>{ checkForUpdates(); });
+window.addEventListener('online', ()=>{
+  networkDown = false; // النت رجع — نسمح بإعادة المحاولة تاني
+  checkForUpdates();
+  if(failedMonths.length) retryFailedMonths().catch(()=>{});
+  flushSaves();
+});
 $('updateBtn').addEventListener('click', async ()=>{
   $('updateBtn').textContent = 'بيدور على تحديث...';
   reloadingForUpdate = true; // الريلود اليدوي تحت هو اللي هيحصل، مش بتاع controllerchange
