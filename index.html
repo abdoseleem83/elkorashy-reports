@@ -144,6 +144,7 @@
     </div>
   </div>
   <div id="monthsPills" class="row"></div>
+  <div id="monthsNote" style="margin-top:10px"></div>
 </div>
 
 <div class="card" id="archivePanel" style="display:none">
@@ -235,6 +236,7 @@
     </div>
   </div>
   <div id="pdfMonthsList" class="row" style="margin-top:8px"></div>
+  <div id="pdfMonthsNote" style="margin-top:10px"></div>
 
   <div class="row" style="margin-top:16px">
     <button id="pdfGenerateBtn">تصدير PDF</button>
@@ -355,7 +357,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v25';
+const APP_VERSION = 'v26';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -381,6 +383,8 @@ let pendingNewItems = []; // items first seen this upload, for the info message
 let duplicateMonths = []; // شهور موجودة بالفعل في الرفعة الحالية — بتحتاج قرار استبدال/إضافة
 let replaceExisting = false;
 let lastSyncAt = 0; // آخر مزامنة ناجحة مع التخزين المركزي
+let failedMonths = [];  // شهور موجودة في الفهرس بس تحميلها فشل — بياناتها لسه على السيرفر
+let indexedMonths = []; // كل الشهور اللي الفهرس بيقول إنها متخزنة
 
 const $ = (id) => document.getElementById(id);
 
@@ -540,12 +544,28 @@ async function loadStorage(){
   try{
     const idx = await window.storage.get('monthsIndex');
     const months = JSON.parse(idx.value);
-    const results = await Promise.all(months.map(async m=>{
-      try{ const r = await window.storage.get('month:' + m); return [m, JSON.parse(r.value)]; }
-      catch(e){ return null; }
+    indexedMonths = months.slice();
+    const loadMonth = async (m)=>{
+      const r = await window.storage.get('month:' + m);
+      return [m, JSON.parse(r.value)];
+    };
+    let results = await Promise.all(months.map(async m=>{
+      try{ return await loadMonth(m); }catch(e){ return null; }
     }));
+    // محاولة تانية للشهور اللي فشلت — الشبكة بتقطع، والفشل هنا كان بيضيّع الشهر
+    // من غير أي رسالة، والمستخدم يلاقي 8 شهور محفوظة و5 بس في التقارير.
+    const retryIdx = results.map((r,i)=> r === null ? i : -1).filter(i => i >= 0);
+    if(retryIdx.length){
+      const retried = await Promise.all(retryIdx.map(async i=>{
+        try{ return await loadMonth(months[i]); }catch(e){ return null; }
+      }));
+      retryIdx.forEach((idxPos, k)=>{ if(retried[k]) results[idxPos] = retried[k]; });
+    }
     if(months.length && results.every(x => x === null)) throw new Error('كل الشهور فشلت');
     results.forEach(pair => { if(pair) fetched[pair[0]] = pair[1]; });
+    // الشهور اللي فضلت فاشلة: بتتسجل هنا عشان (1) تتعرض للمستخدم بوضوح
+    // و(2) ما تتشالش من الفهرس عند أي حفظ جاي فتضيع للأبد.
+    failedMonths = months.filter(m => !(m in fetched));
     monthsData = fetched;
     loadedFromIndex = true;
   }catch(e){ netFailed = true; monthsData = cachedSnapshot; }
@@ -642,6 +662,26 @@ async function loadStorage(){
   renderReport();
 }
 
+// إعادة تحميل الشهور اللي فشلت — من غير ما نعيد تحميل الصفحة كلها
+async function retryFailedMonths(){
+  if(!failedMonths.length) return;
+  const still = [];
+  for(const m of failedMonths){
+    try{
+      const r = await window.storage.get('month:' + m);
+      monthsData[m] = JSON.parse(r.value);
+    }catch(e){ still.push(m); }
+  }
+  failedMonths = still;
+  updateLocalCache(true);
+  renderMonthPills();
+  renderReport();
+  if($('pdfPanel').style.display !== 'none'){ renderPdfMonthsList(); updateGrowthHint(); }
+  alert(still.length
+    ? `لسه ${still.length} شهر مش راضي يتحمّل (${still.map(monthLabel).join('، ')}). جرّب تاني وانت على نت أحسن.`
+    : 'تمام — كل الشهور اتحمّلت.');
+}
+
 // نسخة محلية سريعة عشان الصفحة تفتح فورًا في المرات الجاية — مش بديل للتخزين المركزي.
 // بتتأجّل شوية: كل تغيير كان بيعمل JSON.stringify لكل البيانات (ممكن تبقى ميجابايت)،
 // فلما تظبط عشرين صنف ورا بعض كانت الواجهة بتتلج.
@@ -670,6 +710,61 @@ async function saveArchivedYears(){
   await window.storage.set('archivedYears', JSON.stringify(archivedYears));
 }
 function yearOf(m){ return (m||'').split('-')[0]; }
+
+// الشهور اللي مش داخلة في التقارير عشان سنتها مؤرشفة.
+// من غير التوضيح ده المستخدم بيشوف 8 شهور محفوظة و5 بس في المقارنة ومش عارف ليه.
+function archivedMonthsList(){
+  return Object.keys(monthsData).filter(m => archivedYears.includes(yearOf(m))).sort();
+}
+// تنبيه بيشرح أي شهور ناقصة ومن فين ترجّعها. hiddenCount = شهور المستخدم خفاها بنفسه.
+function excludedMonthsNote(opts){
+  opts = opts || {};
+  const archived = archivedMonthsList();
+  const parts = [];
+  if(failedMonths.length){
+    parts.push(`<b style="color:var(--danger)">${failedMonths.length} شهر محفوظ بس تحميله فشل</b>
+      (${esc(failedMonths.map(monthLabel).join('، '))}) — بياناتهم لسه موجودة، بس مش داخلين
+      في التقارير دلوقتي.
+      <button class="ghost" data-reload-months="1" style="padding:2px 8px;margin-right:6px">حمّلهم تاني</button>`);
+  }
+  if(archived.length){
+    const years = Array.from(new Set(archived.map(yearOf))).sort();
+    parts.push(`<b>${archived.length} شهر</b> مش داخلين في الحسابات عشان سنة ${years.join(' و')} مؤرشفة
+      (${esc(archived.map(monthLabel).join('، '))})
+      <button class="ghost" data-open-archive="1" style="padding:2px 8px;margin-right:6px">افتح الأرشيف</button>`);
+  }
+  if(opts.hiddenMonths && opts.hiddenMonths.length){
+    parts.push(`<b>${opts.hiddenMonths.length} شهر</b> إنت خفيتهم من "الشهور المعروضة"
+      (${esc(opts.hiddenMonths.map(monthLabel).join('، '))})
+      <button class="ghost" data-show-all-months="1" style="padding:2px 8px;margin-right:6px">رجّعهم</button>`);
+  }
+  if(!parts.length) return '';
+  return `<div class="msg warn" style="margin-top:0">${parts.join('<br>')}</div>`;
+}
+// بيربط زراير التنبيه في أي مكان اتعرض فيه
+function bindExcludedNote(root){
+  (root || document).querySelectorAll('[data-reload-months]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      btn.textContent = 'بيحمّل...';
+      btn.disabled = true;
+      await retryFailedMonths();
+    });
+  });
+  (root || document).querySelectorAll('[data-open-archive]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      $('pdfPanel').style.display = 'none';
+      $('archiveBtn').click();
+      $('archivePanel').scrollIntoView({behavior:'smooth', block:'nearest'});
+    });
+  });
+  (root || document).querySelectorAll('[data-show-all-months]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      reportView.hiddenMonths = [];
+      renderReport();
+      if($('pdfPanel').style.display !== 'none'){ renderPdfMonthsList(); updateExportNote(); }
+    });
+  });
+}
 // الشهور اللي التقارير بتشتغل عليها فعليًا (من غير السنين المؤرشفة)
 function activeMonths(){
   return Object.keys(monthsData).filter(m => !archivedYears.includes(yearOf(m))).sort();
@@ -725,7 +820,9 @@ $('closeArchiveBtn').addEventListener('click', ()=> $('archivePanel').style.disp
 // الشهور بتتحفظ كل واحد في مفتاح لوحده (month:YYYY-MM) مع مفتاح فهرس بأسماء الشهور،
 // بدل مفتاح عملاق واحد كان بيوصل لملايين الحروف ويفشل الطلب كله.
 async function saveMonths(changedMonths){
-  const months = Object.keys(monthsData).sort();
+  // مهم: الفهرس بيشمل الشهور اللي فشل تحميلها كمان. من غير كده أول حفظ بعد
+  // فشل تحميل شهر كان بيشيله من الفهرس نهائي وبياناته تبقى يتيمة على السيرفر.
+  const months = Array.from(new Set(Object.keys(monthsData).concat(failedMonths))).sort();
   const toSave = changedMonths && changedMonths.length ? changedMonths : months;
   for(const m of toSave){
     if(monthsData[m]) await window.storage.set('month:' + m, JSON.stringify(monthsData[m]));
@@ -978,6 +1075,11 @@ async function commitAll(){
 
 function renderMonthPills(){
   const months = Object.keys(monthsData).sort();
+  const note = $('monthsNote');
+  if(note){
+    note.innerHTML = excludedMonthsNote({hiddenMonths: reportView.hiddenMonths});
+    bindExcludedNote(note);
+  }
   $('monthsPills').innerHTML = months.length
     ? months.map(m=>{
         const archived = archivedYears.includes(yearOf(m));
@@ -994,8 +1096,10 @@ async function deleteMonth(m){
   delete monthsData[m];
   try{
     await window.storage.delete('month:' + m);
+    failedMonths = failedMonths.filter(x => x !== m);
     // تحديث الفهرس بس. قبل كده saveMonths([]) كانت بتعيد رفع كل الشهور من أول وجديد.
-    await window.storage.set('monthsIndex', JSON.stringify(Object.keys(monthsData).sort()));
+    await window.storage.set('monthsIndex',
+      JSON.stringify(Array.from(new Set(Object.keys(monthsData).concat(failedMonths))).sort()));
   }catch(e){
     monthsData[m] = backup;
     alert('المسح فشل: ' + e.message + ' — الشهر لسه موجود.');
@@ -1523,13 +1627,16 @@ function bindGrowthPicker(months){
 
 function renderGrowthTab(months){
   if(!ensureGrowthPeriods(months)){
-    $('reportArea').innerHTML = '<div class="msg warn">محتاج شهرين على الأقل معروضين عشان نقارن. افتح "الشهور المعروضة" واختار كمان شهر.</div>';
+    $('reportArea').innerHTML = excludedMonthsNote({hiddenMonths: reportView.hiddenMonths}) +
+      '<div class="msg warn">محتاج شهرين على الأقل عشان نقارن.</div>';
     $('reportCount').textContent = '';
+    bindExcludedNote($('reportArea'));
     return;
   }
   const prevM = growthView.prevMonths, curM = growthView.curMonths;
   const warnings = growthWarnings(prevM, curM);
-  const picker = renderGrowthPicker(months);
+  const excluded = excludedMonthsNote({hiddenMonths: reportView.hiddenMonths});
+  const picker = excluded + renderGrowthPicker(months);
 
   const rows = growthRowsFrom(reportRows(months), prevM, curM);
   const totalPrev = rows.reduce((a,r)=>a+r.prev,0);
@@ -1577,6 +1684,7 @@ function renderGrowthTab(months){
 
     ${growthTableHtml(rows, prevM, curM)}`;
   bindGrowthPicker(months);
+  bindExcludedNote($('reportArea'));
   renderCharts();
 }
 
@@ -2062,6 +2170,13 @@ function renderPdfMonthsList(){
     </label>`).join('') || '<span class="badge">مفيش شهور محفوظة</span>';
 }
 // لوحة واحدة بتخدم الـPDF والإكسل بنفس الاختيارات
+function updateExportNote(){
+  const el = $('pdfMonthsNote');
+  if(!el) return;
+  el.innerHTML = excludedMonthsNote({hiddenMonths: reportView.hiddenMonths});
+  bindExcludedNote(el);
+}
+
 function updateGrowthHint(){
   const el = $('growthPeriodHint');
   if(!el) return;
@@ -2080,6 +2195,7 @@ function openExportPanel(){
   $('pdfPanel').style.display = 'block';
   renderPdfMonthsList();
   renderPdfGroupsList();
+  updateExportNote();
   updateGrowthHint();
   $('pdfPanel').scrollIntoView({behavior:'smooth', block:'nearest'});
 }
