@@ -214,6 +214,7 @@
     <label class="chk"><input type="checkbox" id="pdfMonthly" checked> مقارنة المبيعات الشهرية</label>
     <label class="chk"><input type="checkbox" id="pdfSector" checked> مقارنة المبيعات بالقطاع</label>
     <label class="chk"><input type="checkbox" id="pdfGrowthCols" checked> عمودَي الفرق والنمو % في جدول المبيعات</label>
+    <label class="chk"><input type="checkbox" id="pdfShowClass"> عمود التصنيف</label>
     <label class="chk"><input type="checkbox" id="pdfGrowth"> تقرير النمو المفصّل (جدول منفصل)</label>
     <label class="chk"><input type="checkbox" id="pdfCharts" checked> رسم بياني تحت كل مجموعة <span class="badge">(PDF بس)</span></label>
     <label class="chk"><input type="checkbox" id="pdfWatermark" checked> لوجو الشركة خلفية <span class="badge">(PDF بس)</span></label>
@@ -280,6 +281,7 @@
     <select id="reportClassFilter" title="فلتر بالتصنيف"></select>
     <label class="chk"><input type="checkbox" id="reportAggWholesale" checked> اجمع الجملة في صف واحد</label>
     <label class="chk"><input type="checkbox" id="reportGrowthCols" checked> عمود الفرق والنمو %</label>
+    <label class="chk"><input type="checkbox" id="reportShowClass"> عمود التصنيف</label>
     <button class="ghost" id="reportMonthsBtn">الشهور المعروضة</button>
     <span class="badge" id="reportCount"></span>
   </div>
@@ -363,7 +365,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v27';
+const APP_VERSION = 'v28';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1278,6 +1280,12 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
   // عمودين زيادة في آخر الجدول الشهري: الفرق ونسبة النمو بين أول عمود وآخر عمود
   // في الفترة المعروضة. ده بيدي صورة النمو جوه نفس التقرير من غير جدول منفصل.
   const growthCols = !!opts.growthCols && tabType === 'monthly' && months.length >= 2;
+  // عمود التصنيف بقى اختياري (مقفول افتراضي) — بياخد عرض من غير فايدة كبيرة،
+  // والصفوف المجمّعة بتوضّح نفسها في عمود "بيان".
+  const showClass = !!opts.showClass;
+  const clsHead = showClass ? '<th>التصنيف</th>' : '';
+  const clsCell = (r)=> showClass ? `<td>${esc(r.cls)}</td>` : '';
+  const labelSpan = showClass ? 3 : 2; // عدد الأعمدة اللي صف الإجمالي بيغطيها
   const gLabel = (m)=> typeof m === 'string' ? monthLabel(m) : m.label;
   const sortAttr = (key)=> sortable ? ` data-sort="${key}"` : '';
   const arrow = (key)=> sortable && String(reportView.sortKey) === String(key)
@@ -1299,7 +1307,7 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
       return { max: Math.max(...vals), min: Math.min(...vals) };
     });
     let html = `<div class="tbl-wrap"><table><thead><tr>
-      <th>م</th><th${sortAttr('label')}>بيان${arrow('label')}</th><th>التصنيف</th><th${sortAttr('total')}>الإجمالي${arrow('total')}</th>
+      <th>م</th><th${sortAttr('label')}>بيان${arrow('label')}</th>${clsHead}<th${sortAttr('total')}>الإجمالي${arrow('total')}</th>
       ${months.map((m,mi)=> `<th${sortAttr(mi)}>${esc(typeof m === 'string' ? monthLabel(m) : m.label)}${arrow(mi)}</th>`).join('')}
       ${growthCols ? `<th>الفرق<br><span style="font-weight:400;font-size:9px">${esc(gLabel(months[months.length-1]))} − ${esc(gLabel(months[0]))}</span></th><th>النمو %</th>` : ''}
     </tr></thead><tbody>`;
@@ -1323,7 +1331,7 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
         gCells = `<td class="num" style="color:${d>0?'#0a7a4a':(d<0?'#c0392b':'#666')}">${d>=0?'+':''}${d.toLocaleString('en-US',{maximumFractionDigits:0})}</td>` +
                  `<td class="num" style="color:${pc===null?'#0a7a4a':(pc>0?'#0a7a4a':(pc<0?'#c0392b':'#666'))};font-weight:700">${pctText(pc)}</td>`;
       }
-      html += `<tr><td>${startIndex+i+1}</td><td style="text-align:right">${esc(r.label)}</td><td>${esc(r.cls)}</td><td class="num">${rowTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</td>${cells}${gCells}</tr>`;
+      html += `<tr><td>${startIndex+i+1}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}<td class="num">${rowTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</td>${cells}${gCells}</tr>`;
     });
     if(showTotals){
       let gTotal = '';
@@ -1332,14 +1340,18 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
         const d = l - f, pc = pctChange(f, l);
         gTotal = `<td class="num">${d>=0?'+':''}${d.toLocaleString('en-US',{maximumFractionDigits:0})}</td><td class="num">${pctText(pc)}</td>`;
       }
-      html += `<tr class="total-row"><td colspan="3">الإجمالي</td><td class="num">${grandTotals.reduce((a,b)=>a+b,0).toLocaleString('en-US',{maximumFractionDigits:0})}</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}${gTotal}</tr>`;
+      html += `<tr class="total-row"><td colspan="${labelSpan}">الإجمالي</td><td class="num">${grandTotals.reduce((a,b)=>a+b,0).toLocaleString('en-US',{maximumFractionDigits:0})}</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}${gTotal}</tr>`;
     }
     html += '</tbody></table></div>';
     return html;
   } else {
-    const cols = mainSectors();
+    // القطاعات اللي مفيهاش أي مبيعات في الصفوف دي مبتظهرش خالص — كانت بتاخد
+    // عرض من الأعمدة اللي فيها أرقام وتخلي الخط يتزنق.
+    const totalsSrc = opts.totalsFrom || rows;
+    const cols = mainSectors().filter(sec =>
+      totalsSrc.some(r => ((r.sectors||{})[sec]||0) !== 0));
     let html = `<div class="tbl-wrap"><table><thead><tr>
-      <th>م</th><th${sortAttr('label')}>العميل / المجموعة${arrow('label')}</th><th>التصنيف</th>
+      <th>م</th><th${sortAttr('label')}>العميل / المجموعة${arrow('label')}</th>${clsHead}
       ${cols.map((s,si)=>`<th${sortAttr(si)}>${esc(s)}${arrow(si)}</th>`).join('')}<th${sortAttr('total')}>الإجمالي${arrow('total')}</th>
     </tr></thead><tbody>`;
     let grandTotals = cols.map(()=>0);
@@ -1347,11 +1359,11 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
     rows.forEach((r,i)=>{
       const sums = cols.map(s => (r.sectors||{})[s]||0);
       const total = sums.reduce((a,b)=>a+b,0);
-      html += `<tr><td>${startIndex+i+1}</td><td style="text-align:right">${esc(r.label)}</td><td>${esc(r.cls)}</td>${sums.map(v=>`<td class="num">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`).join('')}<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
+      html += `<tr><td>${startIndex+i+1}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}${sums.map(v=>`<td class="num">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`).join('')}<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
     });
     if(showTotals){
       const gt = grandTotals.reduce((a,b)=>a+b,0);
-      html += `<tr class="total-row"><td colspan="3">الإجمالي</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}<td class="num">${gt.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
+      html += `<tr class="total-row"><td colspan="${labelSpan}">الإجمالي</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}<td class="num">${gt.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
     }
     html += '</tbody></table></div>';
     return html;
@@ -1367,6 +1379,7 @@ const reportView = {
   sortKey: 'total',   // 'total' | 'label' | رقم عمود
   sortDir: 'desc',
   growthCols: true,   // عمودَي الفرق والنمو % جوه جدول المبيعات
+  showClass: false,   // عمود التصنيف — مقفول افتراضي
 };
 
 // الشهور اللي التقرير بيعرضها فعلًا (النشطة ناقص اللي المستخدم خفاها)
@@ -1491,7 +1504,8 @@ function renderReport(){
     ? `${rows.length} صف — إجمالي ${total.toLocaleString('en-US',{maximumFractionDigits:0})}`
     : '';
   $('reportArea').innerHTML = rows.length
-    ? buildTableHtml(activeTab, months, rows, null, {sortable:true, growthCols: reportView.growthCols})
+    ? buildTableHtml(activeTab, months, rows, null,
+        {sortable:true, growthCols: reportView.growthCols, showClass: reportView.showClass})
     : '<div class="sub">مفيش نتائج مطابقة للبحث أو الفلتر.</div>';
   bindSortHeaders();
   renderCharts();
@@ -1748,25 +1762,29 @@ function renderGrowthTab(months){
 function growthTableHtml(rows, prevM, curM, opts){
   opts = opts || {};
   const startIndex = opts.startIndex || 0;
+  const showClass = !!opts.showClass;
+  const clsHead = showClass ? '<th>التصنيف</th>' : '';
+  const clsCell = (r)=> showClass ? `<td>${esc(r.cls)}</td>` : '';
+  const labelSpan = showClass ? 3 : 2;
   const totalsRows = opts.totalsFrom || rows;
   const showTotals = !('totalsFrom' in opts) || opts.totalsFrom;
   const tPrev = totalsRows.reduce((a,r)=>a+r.prev,0);
   const tCur  = totalsRows.reduce((a,r)=>a+r.cur,0);
   return `<div class="tbl-wrap"><table><thead><tr>
-      <th>م</th><th>بيان</th><th>التصنيف</th>
+      <th>م</th><th>بيان</th>${clsHead}
       <th>${esc(periodName(prevM))}</th><th>${esc(periodName(curM))}</th><th>الفرق</th><th>النمو</th>
     </tr></thead><tbody>
       ${rows.map((r,i)=>`<tr>
         <td>${startIndex+i+1}</td>
         <td style="text-align:right">${esc(r.label)}</td>
-        <td>${esc(r.cls)}</td>
+        ${clsCell(r)}
         <td class="num">${fmtNum(r.prev)}</td>
         <td class="num">${fmtNum(r.cur)}</td>
         <td class="num" style="color:${r.diff>0?'var(--accent2)':(r.diff<0?'var(--danger)':'var(--muted)')}">${r.diff>=0?'+':''}${fmtNum(r.diff)}</td>
         <td>${fmtPct(r.pct)}</td>
       </tr>`).join('')}
       ${showTotals ? `<tr class="total-row">
-        <td colspan="3">الإجمالي</td>
+        <td colspan="${labelSpan}">الإجمالي</td>
         <td class="num">${fmtNum(tPrev)}</td>
         <td class="num">${fmtNum(tCur)}</td>
         <td class="num">${tCur-tPrev>=0?'+':''}${fmtNum(tCur-tPrev)}</td>
@@ -1797,6 +1815,7 @@ $('reportSearch').addEventListener('input', (e)=>{ reportView.search = e.target.
 $('reportClassFilter').addEventListener('change', (e)=>{ reportView.cls = e.target.value; renderReport(); });
 $('reportAggWholesale').addEventListener('change', (e)=>{ reportView.aggWholesale = e.target.checked; renderReport(); });
 $('reportGrowthCols').addEventListener('change', (e)=>{ reportView.growthCols = e.target.checked; renderReport(); });
+$('reportShowClass').addEventListener('change', (e)=>{ reportView.showClass = e.target.checked; renderReport(); });
 $('reportMonthsBtn').addEventListener('click', ()=>{
   const panel = $('reportMonthsPanel');
   const showing = panel.style.display !== 'none';
@@ -1857,35 +1876,37 @@ function renderCharts(){
 // ---- Export ----
 // ---- تصدير Excel: بنفس اختيارات وتنسيق الـPDF ----
 // نفس المجموعات المختارة، نفس الأعمدة (شهور/كوارترات)، ونفس الترتيب من الأكبر للأصغر.
-function monthlyAoa(rows, columns, totalsRows, withGrowth){
+function monthlyAoa(rows, columns, totalsRows, withGrowth, showClass){
   const g = withGrowth && columns.length >= 2;
   const lbl = (c)=> typeof c === 'string' ? monthLabel(c) : c.label;
-  const header = ['م','بيان','التصنيف','الإجمالي', ...columns.map(lbl)];
+  const header = ['م','بيان', ...(showClass ? ['التصنيف'] : []), 'الإجمالي', ...columns.map(lbl)];
   if(g) header.push(`الفرق (${lbl(columns[columns.length-1])} − ${lbl(columns[0])})`, 'النمو %');
   const growthCells = (arr)=>{
     const f = arr[0]||0, l = arr[arr.length-1]||0, pc = pctChange(f, l);
     return [l - f, pc === null ? 'جديد' : Number(pc.toFixed(1))];
   };
   const body = rows.map((r,i)=>{
-    const row = [i+1, r.label, r.cls, r.months.reduce((a,b)=>a+b,0), ...r.months];
+    const row = [i+1, r.label, ...(showClass ? [r.cls] : []), r.months.reduce((a,b)=>a+b,0), ...r.months];
     if(g) row.push(...growthCells(r.months));
     return row;
   });
   const src = totalsRows || rows;
   const colTotals = columns.map((_,ci)=> src.reduce((a,r)=> a + (r.months[ci]||0), 0));
-  const totalRow = ['', 'الإجمالي', '', colTotals.reduce((a,b)=>a+b,0), ...colTotals];
+  const totalRow = ['', 'الإجمالي', ...(showClass ? [''] : []), colTotals.reduce((a,b)=>a+b,0), ...colTotals];
   if(g) totalRow.push(...growthCells(colTotals));
   return [header, ...body, totalRow];
 }
-function sectorAoa(rows, cols, totalsRows){
-  const header = ['م','العميل / المجموعة','التصنيف', ...cols, 'الإجمالي'];
+function sectorAoa(rows, allCols, totalsRows, showClass){
+  const src = totalsRows || rows;
+  // نفس منطق الشاشة: القطاع اللي مفيهوش أي مبيعات مبيظهرش عمود
+  const cols = allCols.filter(sc => src.some(r => ((r.sectors||{})[sc]||0) !== 0));
+  const header = ['م','العميل / المجموعة', ...(showClass ? ['التصنيف'] : []), ...cols, 'الإجمالي'];
   const body = rows.map((r,i)=>{
     const sums = cols.map(sc=> (r.sectors||{})[sc]||0);
-    return [i+1, r.label, r.cls, ...sums, sums.reduce((a,b)=>a+b,0)];
+    return [i+1, r.label, ...(showClass ? [r.cls] : []), ...sums, sums.reduce((a,b)=>a+b,0)];
   });
-  const src = totalsRows || rows;
   const colTotals = cols.map(sc=> src.reduce((a,r)=> a + ((r.sectors||{})[sc]||0), 0));
-  const totalRow = ['', 'الإجمالي', '', ...colTotals, colTotals.reduce((a,b)=>a+b,0)];
+  const totalRow = ['', 'الإجمالي', ...(showClass ? [''] : []), ...colTotals, colTotals.reduce((a,b)=>a+b,0)];
   return [header, ...body, totalRow];
 }
 
@@ -1951,14 +1972,14 @@ function sheetWithHeader(aoa, title, period, width){
 }
 
 // صفوف جدول النمو كمصفوفة للإكسل
-function growthAoa(rows, prevM, curM){
-  const header = ['م','بيان','التصنيف', periodName(prevM), periodName(curM), 'الفرق', 'النمو %'];
-  const body = rows.map((r,i)=>[i+1, r.label, r.cls, r.prev, r.cur, r.diff,
+function growthAoa(rows, prevM, curM, showClass){
+  const header = ['م','بيان', ...(showClass ? ['التصنيف'] : []), periodName(prevM), periodName(curM), 'الفرق', 'النمو %'];
+  const body = rows.map((r,i)=>[i+1, r.label, ...(showClass ? [r.cls] : []), r.prev, r.cur, r.diff,
     r.pct === null ? 'جديد' : Number(r.pct.toFixed(1))]);
   const tPrev = rows.reduce((a,r)=>a+r.prev,0);
   const tCur  = rows.reduce((a,r)=>a+r.cur,0);
   const tPct  = pctChange(tPrev, tCur);
-  return [header, ...body, ['', 'الإجمالي', '', tPrev, tCur, tCur - tPrev,
+  return [header, ...body, ['', 'الإجمالي', ...(showClass ? [''] : []), tPrev, tCur, tCur - tPrev,
     tPct === null ? 'جديد' : Number(tPct.toFixed(1))]];
 }
 
@@ -1968,6 +1989,7 @@ function generateExcel(includeMonthly, includeSector, opts){
   if(!allMonths.length){ alert('مفيش بيانات لسه'); return; }
   const includeGrowth = opts.allGroups ? true : $('pdfGrowth').checked;
   const withGrowthCols = opts.allGroups ? true : $('pdfGrowthCols').checked;
+  const withShowClass = $('pdfShowClass') ? $('pdfShowClass').checked : false;
   if(!includeMonthly && !includeSector && !includeGrowth){ alert('اختار تقرير واحد على الأقل (شهري أو قطاعي أو نمو)'); return; }
   if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
 
@@ -1994,7 +2016,7 @@ function generateExcel(includeMonthly, includeSector, opts){
     if(!rows.length) return;
     if(includeMonthly){
       const sorted = sortRowsForTable('monthly', rows);
-      const aoa = monthlyAoa(sorted, columns, null, withGrowthCols);
+      const aoa = monthlyAoa(sorted, columns, null, withGrowthCols, withShowClass);
       XLSX.utils.book_append_sheet(wbOut,
         sheetWithHeader(aoa, g.title, period, aoa[0].length),
         safeSheetName('شهري-' + g.title, used));
@@ -2002,7 +2024,7 @@ function generateExcel(includeMonthly, includeSector, opts){
     // القطاعات الخاصة كلها قطاع واحد أصلًا، فمفيش تفصيل قطاعي ليها
     if(includeSector && g.kind === 'class'){
       const sorted = sortRowsForTable('sector', rows);
-      const aoa = sectorAoa(sorted, secCols);
+      const aoa = sectorAoa(sorted, secCols, null, withShowClass);
       XLSX.utils.book_append_sheet(wbOut,
         sheetWithHeader(aoa, g.title, period, aoa[0].length),
         safeSheetName('قطاع-' + g.title, used));
@@ -2010,7 +2032,7 @@ function generateExcel(includeMonthly, includeSector, opts){
     if(growthOk){
       const gRows = growthRowsFrom(rows, growthView.prevMonths, growthView.curMonths);
       if(gRows.length){
-        const aoa = growthAoa(gRows, growthView.prevMonths, growthView.curMonths);
+        const aoa = growthAoa(gRows, growthView.prevMonths, growthView.curMonths, withShowClass);
         const gPeriod = `${periodName(growthView.curMonths)} مقابل ${periodName(growthView.prevMonths)}`;
         XLSX.utils.book_append_sheet(wbOut,
           sheetWithHeader(aoa, g.title + ' — النمو', gPeriod, aoa[0].length),
@@ -2025,6 +2047,96 @@ function generateExcel(includeMonthly, includeSector, opts){
 
 // زرار الإكسل بيفتح نفس لوحة التصدير بتاعة الـPDF عشان الاختيارات تبقى واحدة
 $('exportBtn').addEventListener('click', ()=> openExportPanel());
+
+// ---- دمج عميل في عميل تاني ----
+// لما اسم العميل يتغيّر في برنامج المحاسبة، بيظهر كعميل جديد وتاريخه بيتقسم
+// على اسمين. الدمج بيجمع بيانات الاسم القديم على الجديد في كل الشهور.
+async function mergeCustomers(fromName, toName){
+  if(fromName === toName) return;
+  const touched = [];
+  Object.keys(monthsData).forEach(m=>{
+    const md = monthsData[m];
+    if(!md || !md[fromName]) return;
+    if(!md[toName]) md[toName] = {};
+    Object.keys(md[fromName]).forEach(item=>{
+      const src = md[fromName][item];
+      if(!md[toName][item]) md[toName][item] = {cat: src.cat, net: 0, wh: {}};
+      const dst = md[toName][item];
+      dst.net += src.net;
+      if(!dst.wh) dst.wh = {};
+      Object.keys(src.wh||{}).forEach(w=>{ dst.wh[w] = (dst.wh[w]||0) + src.wh[w]; });
+    });
+    delete md[fromName];
+    touched.push(m);
+  });
+
+  // العميل الهدف بياخد تصنيف المصدر لو مكانش متصنّف
+  if(!classification[toName] && classification[fromName]) classification[toName] = classification[fromName];
+  delete classification[fromName];
+
+  return {touched};
+}
+
+// بيربط زراير الدمج: بيفتح صف اختيار العميل الهدف تحت الصف نفسه
+function bindMergeButtons(){
+  document.querySelectorAll('[data-merge-from]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const name = decodeURIComponent(btn.getAttribute('data-merge-from'));
+      const tr = btn.closest('tr');
+      // لو الصف مفتوح خلاص، اقفله
+      const open = tr.nextElementSibling;
+      if(open && open.classList.contains('merge-row')){ open.remove(); return; }
+      document.querySelectorAll('.merge-row').forEach(el=>el.remove());
+      const row = document.createElement('tr');
+      row.className = 'merge-row';
+      row.innerHTML = `<td colspan="3" style="background:var(--panel2);text-align:right;padding:10px">
+        <div class="row" style="gap:8px">
+          <span style="font-size:13px">ادمج <b>${esc(name)}</b> في:</span>
+          <select class="mergeTarget" style="min-width:220px">${renderMergeUI(name)}</select>
+          <button class="mergeGo">ادمج</button>
+          <button class="ghost mergeCancel">إلغاء</button>
+        </div>
+        <div class="sub" style="margin:6px 0 0">
+          كل مبيعات <b>${esc(name)}</b> في كل الشهور هتتنقل للعميل التاني، والاسم ده هيختفي. ده مش بيترجع.
+        </div>
+      </td>`;
+      tr.after(row);
+      row.querySelector('.mergeCancel').addEventListener('click', ()=> row.remove());
+      row.querySelector('.mergeGo').addEventListener('click', async ()=>{
+        const target = row.querySelector('.mergeTarget').value;
+        if(!target){ alert('اختار العميل اللي هتدمج فيه.'); return; }
+        if(!confirm(`تدمج "${name}" في "${target}"؟ مبيعاته كلها هتتنقل والاسم هيختفي.`)) return;
+        const go = row.querySelector('.mergeGo');
+        go.disabled = true; go.textContent = 'بيدمج...';
+        // نسخة احتياطية عشان لو الحفظ فشل نرجّع كل حاجة زي ما كانت
+        const backup = JSON.parse(JSON.stringify(monthsData));
+        const clsBackup = Object.assign({}, classification);
+        const res = await mergeCustomers(name, target);
+        try{
+          if(res && res.touched.length) await saveMonths(res.touched);
+          await saveClassification();
+        }catch(e){
+          monthsData = backup; classification = clsBackup;
+          alert('الدمج فشل في الحفظ: ' + e.message + ' — رجّعنا كل حاجة زي ما كانت.');
+          go.disabled = false; go.textContent = 'ادمج';
+          return;
+        }
+        updateLocalCache(true);
+        renderCustomersList();
+        renderMonthPills();
+        renderReport();
+        alert(`تم: "${name}" اتدمج في "${target}".`);
+      });
+    });
+  });
+}
+
+function renderMergeUI(name){
+  const others = Array.from(new Set([...Object.keys(classification), ...allCustomers()]))
+    .filter(n => n !== name).sort();
+  return `<option value="">— ادمجه في —</option>` +
+    others.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+}
 
 // ---- Customers panel ----
 // فلتر التصنيف: '' = الكل، 'غير محدد' = عملاء لسه من غير تصنيف
@@ -2056,10 +2168,12 @@ function renderCustomersList(){
           ${CLASS_OPTIONS.map(o=>`<option value="${esc(o)}" ${classification[n]===o?'selected':''}>${esc(o)}</option>`).join('')}
         </select>
       </td>
+      <td><button class="ghost" data-merge-from="${encodeURIComponent(n)}" style="padding:3px 9px">دمج</button></td>
     </tr>`).join('');
   $('customersList').innerHTML =
     `<div class="badge" style="padding:4px 2px">ظاهر ${matched.length} من ${names.length} عميل</div>` +
-    `<table><thead><tr><th>العميل</th><th>التصنيف</th></tr></thead><tbody>${rows || '<tr><td colspan=2>مفيش نتائج</td></tr>'}</tbody></table>`;
+    `<table><thead><tr><th>العميل</th><th>التصنيف</th><th>دمج</th></tr></thead><tbody>${rows || '<tr><td colspan=3>مفيش نتائج</td></tr>'}</tbody></table>`;
+  bindMergeButtons();
   document.querySelectorAll('.custClassSelect').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
       const name = decodeURIComponent(sel.getAttribute('data-cust'));
@@ -2359,11 +2473,14 @@ function periodLabel(columns){
 
 const PDF_STYLE = `
   .tbl-wrap{overflow:visible !important;max-height:none !important}
-  table{border-collapse:collapse;width:100%;font-size:10.5px;table-layout:fixed;margin:0}
-  th,td{border:1px solid #999;padding:4px 5px;text-align:center;word-wrap:break-word;overflow-wrap:break-word}
-  th{background:#eee;font-weight:700;font-size:10px}
-  td.num{font-weight:700;direction:ltr;font-family:Arial,sans-serif;white-space:nowrap}
-  td:nth-child(2),th:nth-child(2){width:190px;text-align:right}
+  /* خط أكبر وبولد Arial — بعد ما اتشال عمود التصنيف والأعمدة الفاضية بقى فيه
+     مساحة تستحمل، والأرقام بقت تتقرا من غير تدقيق. */
+  table{border-collapse:collapse;width:100%;font-size:13px;table-layout:fixed;margin:0;
+    font-family:Arial,Helvetica,sans-serif;font-weight:700}
+  th,td{border:1px solid #999;padding:5px 6px;text-align:center;word-wrap:break-word;overflow-wrap:break-word}
+  th{background:#eee;font-weight:700;font-size:12px}
+  td.num{font-weight:700;direction:ltr;font-family:Arial,Helvetica,sans-serif;white-space:nowrap;font-size:13.5px}
+  td:nth-child(2),th:nth-child(2){width:210px;text-align:right}
   .total-row td{background:#ddd;font-weight:700}
   .grp-title{font-size:15px;font-weight:700;padding:8px 0 5px;border-bottom:1.5px solid #777;margin-bottom:5px}
   .sub-title{font-size:12px;font-weight:700;color:#333;padding:5px 0 3px}
@@ -2441,6 +2558,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
   if(!allMonths.length){ alert('مفيش بيانات لسه'); return; }
   const includeGrowth = opts.allGroups ? true : $('pdfGrowth').checked;
   const withGrowthCols = opts.allGroups ? true : $('pdfGrowthCols').checked;
+  const withShowClass = $('pdfShowClass') ? $('pdfShowClass').checked : false;
   const withWatermark = $('pdfWatermark') ? $('pdfWatermark').checked : true;
   if(!includeMonthly && !includeSector && !includeGrowth){ alert('اختار تقرير واحد على الأقل (شهري أو قطاعي أو نمو)'); return; }
 
@@ -2489,6 +2607,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
             startIndex: ci*PDF_ROWS_PER_CHUNK,
             totalsFrom: ci === chunks.length-1 ? sorted : null,
             growthCols: withGrowthCols,
+            showClass: withShowClass,
           });
           const sub = ci === 0 ? `<div class="sub-title">${esc(subTitle)}</div>` : '';
           body += `<div class="blk">${head}${sub}${tbl}</div>`;
@@ -2508,6 +2627,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
             const tbl = growthTableHtml(ch, growthView.prevMonths, growthView.curMonths, {
               startIndex: ci*PDF_ROWS_PER_CHUNK,
               totalsFrom: ci === gChunks.length-1 ? gRows : null,
+              showClass: withShowClass,
             });
             const sub = ci === 0
               ? `<div class="sub-title">النمو: ${esc(periodName(growthView.curMonths))} مقابل ${esc(periodName(growthView.prevMonths))}</div>`
