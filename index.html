@@ -209,6 +209,7 @@
   <div class="row" style="margin-top:8px">
     <label class="chk"><input type="checkbox" id="pdfMonthly" checked> مقارنة المبيعات الشهرية</label>
     <label class="chk"><input type="checkbox" id="pdfSector" checked> مقارنة المبيعات بالقطاع</label>
+    <label class="chk"><input type="checkbox" id="pdfGrowth"> تقرير النمو والمقارنة</label>
     <label class="chk"><input type="checkbox" id="pdfCharts" checked> رسم بياني تحت كل مجموعة <span class="badge">(PDF بس)</span></label>
   </div>
 
@@ -243,6 +244,7 @@
   </div>
   <div class="sub" style="margin-top:8px">
     الإكسل بينزل بنفس المجموعات والأعمدة والترتيب اللي فوق — كل مجموعة في شيت لوحدها.
+    <br><span id="growthPeriodHint"></span>
   </div>
 </div>
 
@@ -353,7 +355,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v24';
+const APP_VERSION = 'v25';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1356,7 +1358,10 @@ function renderReport(){
 
 // ---- تبويب النمو والمقارنة ----
 // بيقارن فترتين: إما آخر شهر مقابل اللي قبله، أو سنة مقابل نفس شهورها في السنة اللي قبلها.
-const growthView = { mode: 'month' }; // 'month' | 'year'
+// الفترتين اللي بيتقارنوا. المستخدم بيحددهم بنفسه — ممكن شهر مقابل شهر، أو
+// 3 شهور مقابل 3، أو كوارتر مقابل كوارتر، أو أي مزيج. لو فاضيين بيتحسبوا
+// تلقائي (آخر شهر مقابل اللي قبله) عشان التبويب والتصدير يشتغلوا على طول.
+const growthView = { prevMonths: [], curMonths: [] };
 
 function pctChange(prev, cur){
   if(prev === 0) return cur === 0 ? 0 : null; // null = جديد (مفيش أساس نقارن عليه)
@@ -1369,77 +1374,164 @@ function fmtPct(p){
   const sign = p > 0 ? '+' : '';
   return `<span class="num" style="color:${color};font-weight:700">${sign}${v}%</span>`;
 }
+function pctText(p){
+  if(p === null) return 'جديد';
+  return (p > 0 ? '+' : '') + p.toFixed(1) + '%';
+}
 function fmtNum(v){ return (v||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
 
-// بيرجع {curLabel, prevLabel, curMonths, prevMonths} حسب وضع المقارنة
-function growthPeriods(months){
-  if(growthView.mode === 'year'){
-    const years = Array.from(new Set(months.map(yearOf))).sort();
+// اسم مختصر لمجموعة شهور: شهر واحد باسمه، ومجموعة بأول وآخر شهر فيها
+function periodName(list){
+  if(!list.length) return '—';
+  const sorted = list.slice().sort();
+  if(sorted.length === 1) return monthLabel(sorted[0]);
+  return `${monthLabel(sorted[0])} — ${monthLabel(sorted[sorted.length-1])} (${sorted.length} شهر)`;
+}
+
+// الاختيارات السريعة: بتملا الفترتين تلقائي من الشهور المتاحة
+function growthPreset(kind, months){
+  const ms = months.slice().sort();
+  if(kind === 'month'){
+    if(ms.length < 2) return null;
+    return {prev:[ms[ms.length-2]], cur:[ms[ms.length-1]]};
+  }
+  if(kind === 'quarter'){
+    // آخر 3 شهور مقابل الـ3 اللي قبلهم
+    if(ms.length < 6) return null;
+    return {prev: ms.slice(-6,-3), cur: ms.slice(-3)};
+  }
+  if(kind === 'year'){
+    const years = Array.from(new Set(ms.map(yearOf))).sort();
     if(years.length < 2) return null;
     const curY = years[years.length-1], prevY = years[years.length-2];
-    const curMonths = months.filter(m => yearOf(m) === curY);
-    // نقارن بنفس شهور السنة الحالية بس من السنة اللي قبلها — عشان المقارنة تبقى عادلة
-    const sameMonths = curMonths.map(m => `${prevY}-${m.split('-')[1]}`);
-    const prevMonths = sameMonths.filter(m => months.includes(m));
-    if(!prevMonths.length) return null;
-    return {
-      curLabel: `${curY} (${curMonths.length} شهر)`,
-      prevLabel: `${prevY} (نفس الشهور)`,
-      curMonths, prevMonths,
-      note: `المقارنة بنفس شهور السنة الحالية من ${prevY}، مش السنة كلها — عشان تبقى عادلة.`,
-    };
+    const cur = ms.filter(m => yearOf(m) === curY);
+    // الأفضل: نفس شهور السنة الحالية من السنة اللي قبلها — مقارنة عادلة موسميًا
+    const same = cur.map(m => `${prevY}-${m.split('-')[1]}`).filter(m => ms.includes(m));
+    if(same.length) return {prev: same, cur};
+    // مفيش شهور مشتركة (مثلًا عندك النص التاني من 2025 والنص الأول من 2026) —
+    // نقارن بكل شهور السنة السابقة، والتحذير تحت بيوضّح إن الشهور مش متطابقة.
+    const allPrev = ms.filter(m => yearOf(m) === prevY);
+    if(!allPrev.length) return null;
+    return {prev: allPrev, cur};
   }
-  if(months.length < 2) return null;
-  const cur = months[months.length-1], prev = months[months.length-2];
-  return {
-    curLabel: monthLabel(cur), prevLabel: monthLabel(prev),
-    curMonths:[cur], prevMonths:[prev],
-    note: 'مقارنة آخر شهرين معروضين.',
-  };
+  return null;
+}
+
+// تحذيرات المقارنة: عدد شهور مختلف أو شهور مش متطابقة موسميًا بتخلي المقارنة مضلّلة
+function growthWarnings(prevM, curM){
+  const w = [];
+  const overlap = curM.filter(m => prevM.includes(m));
+  if(overlap.length){
+    w.push(`فيه ${overlap.length} شهر مشترك بين الفترتين (${overlap.map(monthLabel).join('، ')}) — المقارنة هتبقى مضلّلة.`);
+  }
+  if(prevM.length !== curM.length){
+    w.push(`الفترتين مش بنفس عدد الشهور (${prevM.length} مقابل ${curM.length}) — الفرق ونسبة النمو مش هيبقوا عادلين.`);
+  } else {
+    const mo = (list) => list.map(m => m.split('-')[1]).sort().join(',');
+    if(mo(prevM) !== mo(curM)){
+      w.push('الفترتين نفس عدد الشهور بس مش نفس شهور السنة — لو مبيعاتك موسمية خُد بالك.');
+    }
+  }
+  return w;
+}
+
+// بيضمن إن فيه فترتين صالحتين قبل العرض أو التصدير
+function ensureGrowthPeriods(months){
+  const valid = (list) => list.filter(m => months.includes(m));
+  growthView.prevMonths = valid(growthView.prevMonths);
+  growthView.curMonths  = valid(growthView.curMonths);
+  if(growthView.prevMonths.length && growthView.curMonths.length) return true;
+  const preset = growthPreset('month', months);
+  if(!preset) return false;
+  growthView.prevMonths = preset.prev;
+  growthView.curMonths  = preset.cur;
+  return true;
 }
 
 function customerSum(c, months){
   return months.reduce((a,m)=> a + (monthsData[m] && monthsData[m][c] ? customerTotal(monthsData[m][c]) : 0), 0);
 }
 
-function renderGrowthTab(months){
-  const per = growthPeriods(months);
-  const modeBar = `
-    <div class="row" style="margin-bottom:12px">
-      <label class="chk"><input type="radio" name="growthMode" value="month" ${growthView.mode==='month'?'checked':''}> آخر شهر مقابل اللي قبله</label>
-      <label class="chk"><input type="radio" name="growthMode" value="year" ${growthView.mode==='year'?'checked':''}> سنة مقابل السنة اللي قبلها</label>
-    </div>`;
-  const bindMode = ()=>{
-    document.querySelectorAll('input[name="growthMode"]').forEach(r=>{
-      r.addEventListener('change', ()=>{ growthView.mode = r.value; renderReport(); });
-    });
-  };
-  if(!per){
-    $('reportArea').innerHTML = modeBar + `<div class="msg warn">${growthView.mode==='year'
-      ? 'محتاج بيانات سنتين على الأقل (وشهور مشتركة بينهم) عشان المقارنة السنوية تشتغل.'
-      : 'محتاج شهرين على الأقل معروضين عشان نقارن.'}</div>`;
-    $('reportCount').textContent = '';
-    bindMode();
-    return;
-  }
-
-  // نفس صفوف التقرير (بنفس البحث والفلتر وتجميع الجملة)، بس بأرقام الفترتين
-  const base = reportRows(months);
-  const rows = base.map(r=>{
+// بيحوّل صفوف التقرير العادية لصفوف نمو بالفترتين المحددتين
+function growthRowsFrom(baseRows, prevMonths, curMonths){
+  return baseRows.map(r=>{
     let cur, prev;
     if(r.isGroup){
       const wcls = Object.keys(AGG_CLASS_TITLES).find(k => AGG_CLASS_TITLES[k] === r.label) || r.label;
       const group = allCustomers().filter(c => classification[c] === wcls);
-      cur = group.reduce((a,c)=> a + customerSum(c, per.curMonths), 0);
-      prev = group.reduce((a,c)=> a + customerSum(c, per.prevMonths), 0);
+      cur  = group.reduce((a,c)=> a + customerSum(c, curMonths), 0);
+      prev = group.reduce((a,c)=> a + customerSum(c, prevMonths), 0);
     } else {
-      cur = customerSum(r.label, per.curMonths);
-      prev = customerSum(r.label, per.prevMonths);
+      cur  = customerSum(r.label, curMonths);
+      prev = customerSum(r.label, prevMonths);
     }
     return {label:r.label, cls:r.cls, prev, cur, diff: cur - prev, pct: pctChange(prev, cur)};
-  }).filter(r => r.prev !== 0 || r.cur !== 0);
+  }).filter(r => r.prev !== 0 || r.cur !== 0)
+    .sort((a,b)=> b.diff - a.diff);
+}
 
-  rows.sort((a,b)=> b.diff - a.diff);
+// لوحة اختيار الفترتين
+function renderGrowthPicker(months){
+  const chk = (list, m, group) => `
+    <label class="chk" style="font-size:12px;padding:4px 8px">
+      <input type="checkbox" class="growthChk" data-group="${group}" value="${m}"
+        ${list.includes(m)?'checked':''} style="width:13px;height:13px"> ${esc(monthLabel(m))}
+    </label>`;
+  return `
+    <div class="row" style="margin-bottom:10px;gap:6px">
+      <span class="badge">اختيار سريع:</span>
+      <button class="ghost" data-preset="month">شهر مقابل اللي قبله</button>
+      <button class="ghost" data-preset="quarter">3 شهور مقابل 3</button>
+      <button class="ghost" data-preset="year">سنة مقابل سنة</button>
+    </div>
+    <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:14px">
+      <div style="margin-bottom:8px">
+        <div class="badge" style="margin-bottom:4px">فترة الأساس (بنقارن عليها) — ${esc(periodName(growthView.prevMonths))}</div>
+        <div class="row" style="gap:5px">${months.map(m=>chk(growthView.prevMonths,m,'prev')).join('')}</div>
+      </div>
+      <div>
+        <div class="badge" style="margin-bottom:4px">الفترة الحالية — ${esc(periodName(growthView.curMonths))}</div>
+        <div class="row" style="gap:5px">${months.map(m=>chk(growthView.curMonths,m,'cur')).join('')}</div>
+      </div>
+    </div>`;
+}
+
+function bindGrowthPicker(months){
+  document.querySelectorAll('#reportArea [data-preset]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const preset = growthPreset(btn.getAttribute('data-preset'), months);
+      if(!preset){
+        alert('مفيش شهور كفاية للاختيار ده. جرّب اختيار تاني أو افتح شهور أكتر من "الشهور المعروضة".');
+        return;
+      }
+      growthView.prevMonths = preset.prev;
+      growthView.curMonths = preset.cur;
+      renderReport();
+    });
+  });
+  document.querySelectorAll('#reportArea .growthChk').forEach(chk=>{
+    chk.addEventListener('change', ()=>{
+      const group = chk.getAttribute('data-group') === 'prev' ? 'prevMonths' : 'curMonths';
+      const m = chk.value;
+      growthView[group] = chk.checked
+        ? growthView[group].concat([m])
+        : growthView[group].filter(x => x !== m);
+      renderReport();
+    });
+  });
+}
+
+function renderGrowthTab(months){
+  if(!ensureGrowthPeriods(months)){
+    $('reportArea').innerHTML = '<div class="msg warn">محتاج شهرين على الأقل معروضين عشان نقارن. افتح "الشهور المعروضة" واختار كمان شهر.</div>';
+    $('reportCount').textContent = '';
+    return;
+  }
+  const prevM = growthView.prevMonths, curM = growthView.curMonths;
+  const warnings = growthWarnings(prevM, curM);
+  const picker = renderGrowthPicker(months);
+
+  const rows = growthRowsFrom(reportRows(months), prevM, curM);
   const totalPrev = rows.reduce((a,r)=>a+r.prev,0);
   const totalCur  = rows.reduce((a,r)=>a+r.cur,0);
 
@@ -1457,15 +1549,15 @@ function renderGrowthTab(months){
     </div>`;
 
   $('reportCount').textContent = `${rows.length} صف`;
-  $('reportArea').innerHTML = modeBar + `
-    <div class="sub" style="margin-bottom:10px">${esc(per.note)}</div>
+  $('reportArea').innerHTML = picker +
+    warnings.map(t=>`<div class="msg warn">${esc(t)}</div>`).join('') + `
     <div class="row" style="margin-bottom:16px;gap:14px">
       <div class="card" style="flex:1;min-width:150px;margin:0;padding:12px">
-        <div class="badge">${esc(per.prevLabel)}</div>
+        <div class="badge">${esc(periodName(prevM))}</div>
         <div class="num" style="font-size:19px;font-weight:700">${fmtNum(totalPrev)}</div>
       </div>
       <div class="card" style="flex:1;min-width:150px;margin:0;padding:12px">
-        <div class="badge">${esc(per.curLabel)}</div>
+        <div class="badge">${esc(periodName(curM))}</div>
         <div class="num" style="font-size:19px;font-weight:700">${fmtNum(totalCur)}</div>
       </div>
       <div class="card" style="flex:1;min-width:150px;margin:0;padding:12px">
@@ -1483,12 +1575,25 @@ function renderGrowthTab(months){
       ${card('عملاء جدد', fresh.slice(0,5), 'var(--accent)', r=>`<span class="num">${fmtNum(r.cur)}</span>`)}
     </div>
 
-    <div class="tbl-wrap"><table><thead><tr>
+    ${growthTableHtml(rows, prevM, curM)}`;
+  bindGrowthPicker(months);
+  renderCharts();
+}
+
+// جدول النمو — مستخدم على الشاشة وفي تصدير الـPDF بنفس الشكل
+function growthTableHtml(rows, prevM, curM, opts){
+  opts = opts || {};
+  const startIndex = opts.startIndex || 0;
+  const totalsRows = opts.totalsFrom || rows;
+  const showTotals = !('totalsFrom' in opts) || opts.totalsFrom;
+  const tPrev = totalsRows.reduce((a,r)=>a+r.prev,0);
+  const tCur  = totalsRows.reduce((a,r)=>a+r.cur,0);
+  return `<div class="tbl-wrap"><table><thead><tr>
       <th>م</th><th>بيان</th><th>التصنيف</th>
-      <th>${esc(per.prevLabel)}</th><th>${esc(per.curLabel)}</th><th>الفرق</th><th>النمو</th>
+      <th>${esc(periodName(prevM))}</th><th>${esc(periodName(curM))}</th><th>الفرق</th><th>النمو</th>
     </tr></thead><tbody>
       ${rows.map((r,i)=>`<tr>
-        <td>${i+1}</td>
+        <td>${startIndex+i+1}</td>
         <td style="text-align:right">${esc(r.label)}</td>
         <td>${esc(r.cls)}</td>
         <td class="num">${fmtNum(r.prev)}</td>
@@ -1496,16 +1601,14 @@ function renderGrowthTab(months){
         <td class="num" style="color:${r.diff>0?'var(--accent2)':(r.diff<0?'var(--danger)':'var(--muted)')}">${r.diff>=0?'+':''}${fmtNum(r.diff)}</td>
         <td>${fmtPct(r.pct)}</td>
       </tr>`).join('')}
-      <tr class="total-row">
+      ${showTotals ? `<tr class="total-row">
         <td colspan="3">الإجمالي</td>
-        <td class="num">${fmtNum(totalPrev)}</td>
-        <td class="num">${fmtNum(totalCur)}</td>
-        <td class="num">${totalCur-totalPrev>=0?'+':''}${fmtNum(totalCur-totalPrev)}</td>
-        <td>${fmtPct(pctChange(totalPrev, totalCur))}</td>
-      </tr>
+        <td class="num">${fmtNum(tPrev)}</td>
+        <td class="num">${fmtNum(tCur)}</td>
+        <td class="num">${tCur-tPrev>=0?'+':''}${fmtNum(tCur-tPrev)}</td>
+        <td>${fmtPct(pctChange(tPrev, tCur))}</td>
+      </tr>` : ''}
     </tbody></table></div>`;
-  bindMode();
-  renderCharts();
 }
 
 // الضغط على رأس العمود بيرتّب بيه، والضغط تاني بيعكس الاتجاه
@@ -1670,11 +1773,27 @@ function sheetWithHeader(aoa, title, period, width){
   return ws;
 }
 
+// صفوف جدول النمو كمصفوفة للإكسل
+function growthAoa(rows, prevM, curM){
+  const header = ['م','بيان','التصنيف', periodName(prevM), periodName(curM), 'الفرق', 'النمو %'];
+  const body = rows.map((r,i)=>[i+1, r.label, r.cls, r.prev, r.cur, r.diff,
+    r.pct === null ? 'جديد' : Number(r.pct.toFixed(1))]);
+  const tPrev = rows.reduce((a,r)=>a+r.prev,0);
+  const tCur  = rows.reduce((a,r)=>a+r.cur,0);
+  const tPct  = pctChange(tPrev, tCur);
+  return [header, ...body, ['', 'الإجمالي', '', tPrev, tCur, tCur - tPrev,
+    tPct === null ? 'جديد' : Number(tPct.toFixed(1))]];
+}
+
 function generateExcel(includeMonthly, includeSector, opts){
   opts = opts || {};
   const allMonths = activeMonths();
   if(!allMonths.length){ alert('مفيش بيانات لسه'); return; }
-  if(!includeMonthly && !includeSector){ alert('اختار تقرير واحد على الأقل (شهري أو قطاعي)'); return; }
+  const includeGrowth = opts.allGroups ? true : $('pdfGrowth').checked;
+  if(!includeMonthly && !includeSector && !includeGrowth){ alert('اختار تقرير واحد على الأقل (شهري أو قطاعي أو نمو)'); return; }
+  const growthOk = includeGrowth && ensureGrowthPeriods(allMonths);
+  if(includeGrowth && !growthOk){ alert('تقرير النمو محتاج شهرين على الأقل.'); return; }
+  if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
 
   const checked = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(el=>el.value);
   const selectedMonths = checked.length ? checked : allMonths;
@@ -1708,6 +1827,16 @@ function generateExcel(includeMonthly, includeSector, opts){
       XLSX.utils.book_append_sheet(wbOut,
         sheetWithHeader(aoa, g.title, period, aoa[0].length),
         safeSheetName('قطاع-' + g.title, used));
+    }
+    if(growthOk){
+      const gRows = growthRowsFrom(rows, growthView.prevMonths, growthView.curMonths);
+      if(gRows.length){
+        const aoa = growthAoa(gRows, growthView.prevMonths, growthView.curMonths);
+        const gPeriod = `${periodName(growthView.curMonths)} مقابل ${periodName(growthView.prevMonths)}`;
+        XLSX.utils.book_append_sheet(wbOut,
+          sheetWithHeader(aoa, g.title + ' — النمو', gPeriod, aoa[0].length),
+          safeSheetName('نمو-' + g.title, used));
+      }
     }
   });
 
@@ -1933,6 +2062,15 @@ function renderPdfMonthsList(){
     </label>`).join('') || '<span class="badge">مفيش شهور محفوظة</span>';
 }
 // لوحة واحدة بتخدم الـPDF والإكسل بنفس الاختيارات
+function updateGrowthHint(){
+  const el = $('growthPeriodHint');
+  if(!el) return;
+  const ok = ensureGrowthPeriods(activeMonths());
+  el.innerHTML = ok
+    ? `تقرير النمو هيقارن <b>${esc(periodName(growthView.curMonths))}</b> بـ <b>${esc(periodName(growthView.prevMonths))}</b> — غيّر الفترتين من تبويب "النمو والمقارنة".`
+    : 'تقرير النمو محتاج شهرين على الأقل.';
+}
+
 function openExportPanel(){
   flushSaves(); // أي تعديل لسه مستني يتبعت قبل ما نصدّر
   $('customersPanel').style.display = 'none';
@@ -1942,6 +2080,7 @@ function openExportPanel(){
   $('pdfPanel').style.display = 'block';
   renderPdfMonthsList();
   renderPdfGroupsList();
+  updateGrowthHint();
   $('pdfPanel').scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 $('exportPdfBtn').addEventListener('click', ()=> openExportPanel());
@@ -1964,6 +2103,15 @@ $('pdfGroupsNone').addEventListener('click', ()=>{
 // فالصفوف كانت بتتقطع في نصها ومفيش رأس على الصفحات اللي بعد الأولى.
 // دلوقتي: كل جدول بيتقسّم لمجموعات صفوف، كل مجموعة بتتصوّر لوحدها ومبتتقسمش،
 // ورأس التقرير بيتحط فوق كل صفحة.
+
+// تصدير واحد في المرة — الـPDF بياخد وقت وممكن المستخدم يدوس الإكسل وهو شغال
+let exportBusy = false;
+function setExportButtons(enabled){
+  ['pdfGenerateBtn','pdfAllBtn','xlsGenerateBtn','xlsAllBtn','exportBtn','exportPdfBtn'].forEach(id=>{
+    const el = $(id);
+    if(el) el.disabled = !enabled;
+  });
+}
 
 const PDF_MARGIN = 10;            // مم — هامش الصفحة
 const PDF_ROWS_PER_CHUNK = 10;    // صفوف الجدول في كل كتلة غير قابلة للقطع.
@@ -2083,7 +2231,11 @@ async function generatePdf(includeMonthly, includeSector, opts){
   opts = opts || {};
   const allMonths = activeMonths();
   if(!allMonths.length){ alert('مفيش بيانات لسه'); return; }
-  if(!includeMonthly && !includeSector){ alert('اختار تقرير واحد على الأقل (شهري أو قطاعي)'); return; }
+  const includeGrowth = opts.allGroups ? true : $('pdfGrowth').checked;
+  if(!includeMonthly && !includeSector && !includeGrowth){ alert('اختار تقرير واحد على الأقل (شهري أو قطاعي أو نمو)'); return; }
+  // تقرير النمو بيستخدم الفترتين المختارتين من تبويب "النمو والمقارنة"
+  const growthOk = includeGrowth && ensureGrowthPeriods(allMonths);
+  if(includeGrowth && !growthOk){ alert('تقرير النمو محتاج شهرين على الأقل.'); return; }
 
   const checked = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(el=>el.value);
   const selectedMonths = checked.length ? checked : allMonths;
@@ -2097,9 +2249,13 @@ async function generatePdf(includeMonthly, includeSector, opts){
   const groups = PDF_GROUPS.filter(g => wantedIds.includes(g.id));
   const withCharts = opts.allGroups ? true : $('pdfCharts').checked;
 
+  // قفل: تصدير واحد في المرة. من غيره لو المستخدم دوس "تصدير Excel" والـPDF لسه
+  // بيتجهّز، الاتنين بيشتغلوا فوق بعض والنتيجة بتطلع ناقصة.
+  if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
+  exportBusy = true;
+  setExportButtons(false);
   const btn = $('pdfGenerateBtn');
   const btnLabel = btn.textContent;
-  btn.disabled = true; $('pdfAllBtn').disabled = true;
   btn.textContent = 'بيجهّز التقرير...';
   await new Promise(r=>setTimeout(r,30)); // يدي المتصفح فرصة يرسم حالة الزرار
 
@@ -2130,6 +2286,25 @@ async function generatePdf(includeMonthly, includeSector, opts){
 
       if(includeMonthly) addTable('monthly', 'مقارنة المبيعات (من الأكبر للأصغر)');
       if(includeSector && canSector) addTable('sector', 'مقارنة المبيعات بالقطاع (من الأكبر للأصغر)');
+
+      // جدول النمو للمجموعة دي بالفترتين المختارتين
+      if(growthOk){
+        const gRows = growthRowsFrom(rows, growthView.prevMonths, growthView.curMonths);
+        if(gRows.length){
+          const gChunks = chunkRows(gRows, PDF_ROWS_PER_CHUNK);
+          gChunks.forEach((ch, ci)=>{
+            const tbl = growthTableHtml(ch, growthView.prevMonths, growthView.curMonths, {
+              startIndex: ci*PDF_ROWS_PER_CHUNK,
+              totalsFrom: ci === gChunks.length-1 ? gRows : null,
+            });
+            const sub = ci === 0
+              ? `<div class="sub-title">النمو: ${esc(periodName(growthView.curMonths))} مقابل ${esc(periodName(growthView.prevMonths))}</div>`
+              : '';
+            body += `<div class="blk">${head}${sub}${tbl}</div>`;
+            head = '';
+          });
+        }
+      }
 
       // شارت المجموعة دي تحتها مباشرة
       if(withCharts){
@@ -2223,7 +2398,8 @@ async function generatePdf(includeMonthly, includeSector, opts){
   }catch(e){
     alert('حصل خطأ في إنشاء الـ PDF: ' + e.message);
   }finally{
-    btn.disabled = false; $('pdfAllBtn').disabled = false;
+    exportBusy = false;
+    setExportButtons(true);
     btn.textContent = btnLabel;
     $('pdfPanel').style.display = 'none';
   }
@@ -2232,6 +2408,8 @@ async function generatePdf(includeMonthly, includeSector, opts){
 $('pdfGenerateBtn').addEventListener('click', ()=>{
   generatePdf($('pdfMonthly').checked, $('pdfSector').checked, {});
 });
+// لو المستخدم فتح تبويب النمو وغيّر الفترتين، اللوحة لازم توضّح الجديد
+$('pdfGrowth').addEventListener('change', updateGrowthHint);
 $('pdfAllBtn').addEventListener('click', ()=> generatePdf(true, true, {allGroups:true}));
 $('xlsGenerateBtn').addEventListener('click', ()=>{
   try{ generateExcel($('pdfMonthly').checked, $('pdfSector').checked, {}); }
