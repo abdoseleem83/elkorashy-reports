@@ -424,7 +424,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v45';
+const APP_VERSION = 'v46';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2437,6 +2437,43 @@ function growthScope(g){
   return g.kind === 'special' ? sectorsOfSheet(g.sheet) : 'main';
 }
 
+// لما مجموعة تطلع فاضية، الرسالة العامة "مفيش بيانات" مش بتفيد بحاجة.
+// الدالة دي بتقول السبب بالظبط والخطوة اللي تحلّه.
+function groupEmptyReason(g, columns){
+  const months = columns.flatMap(c=>c.months);
+  if(g.kind === 'special'){
+    const secs = sectorsOfSheet(g.sheet);
+    if(!secs.length){
+      return `«${g.title}»: مفيش ولا قطاع محدد إنه تابع للشيت ده.\n` +
+        `الحل: افتح تبويب "القطاعات" وقدّام كل قطاع أبواب (ابواب 70/80/90، حلوق وبرور، اكسسوارات ابواب...) اختار "شيت ${g.title}".`;
+    }
+    const items = Object.keys(itemOverride).filter(it => secs.includes(itemOverride[it]));
+    if(!items.length){
+      return `«${g.title}»: قطاعاته موجودة (${secs.join('، ')}) بس مفيش ولا صنف متصنّف عليها.\n` +
+        `الحل: افتح تبويب "الأصناف" وحوّل أصناف الأبواب على القطاعات دي (فيه تصنيف جماعي بيسهّلها).` +
+        (warehouseForcingOn ? '' : `\nملحوظة كمان: "ترحيل المخازن الإجباري" مقفول دلوقتي — شغّله لو مبيعات مخزن المصنع المفروض تتحسب هنا.`);
+    }
+    const sold = months.some(m => monthsData[m] && Object.keys(monthsData[m]).some(c =>
+      Object.keys(monthsData[m][c]).some(it =>
+        itemEffectiveSectors(it, monthsData[m][c][it]).some(o => secs.includes(o.sector) && o.amt !== 0))));
+    if(!sold){
+      return `«${g.title}»: فيه ${items.length} صنف على قطاعاته، بس مفيش عليهم أي مبيعات في الشهور اللي اخترتها.\n` +
+        `الحل: جرّب شهور تانية من "الشهور المطلوبة"، أو اتأكد إن أصناف الأبواب الحقيقية متصنّفة صح.`;
+    }
+    return `«${g.title}»: مفيش بيانات للفترة المختارة.`;
+  }
+  const withCls = allCustomers().filter(c => classification[c] === g.key);
+  if(!withCls.length){
+    return `«${g.title}»: مفيش ولا عميل متصنّف "${g.key}".\n` +
+      `الحل: افتح تبويب "العملاء" وظبّط تصنيفهم.`;
+  }
+  return `«${g.title}»: فيه ${withCls.length} عميل بالتصنيف ده بس مفيش عليهم مبيعات في الشهور اللي اخترتها.`;
+}
+function emptyGroupsMessage(groups, columns){
+  const lines = groups.map(g => groupEmptyReason(g, columns));
+  return 'مفيش بيانات في المجموعات اللي اخترتها للفترة دي:\n\n' + lines.join('\n\n');
+}
+
 function groupRows(g, columns){
   let rows;
   if(g.kind === 'class'){
@@ -2589,7 +2626,7 @@ function generateExcel(includeMonthly, includeSector, opts){
     }
   });
 
-  if(!wbOut.SheetNames.length){ alert('مفيش بيانات في المجموعات اللي اخترتها للفترة دي'); return; }
+  if(!wbOut.SheetNames.length){ alert(emptyGroupsMessage(groups, columns)); return; }
   XLSX.writeFile(wbOut, reportFileName('xlsx'));
 }
 
@@ -3064,9 +3101,19 @@ let pdfGroupsChoice = null;   // null = لسه مااختارش (يبقى الك
 let pdfMonthsChoice = null;   // نفس الفكرة للشهور
 
 function renderPdfGroupsList(){
+  // جنب كل مجموعة عدد صفوفها للفترة المختارة — عشان المستخدم يعرف قبل ما
+  // يضغط "تصدير" إن المجموعة دي فاضية، بدل ما يستنى ويطلعله تحذير.
+  const chosen = pdfMonthsChoice && pdfMonthsChoice.length ? pdfMonthsChoice : activeMonths();
+  const cols = buildColumns(chosen, false);
   $('pdfGroupsList').innerHTML = PDF_GROUPS.map(g=>{
     const on = !pdfGroupsChoice || pdfGroupsChoice.includes(g.id);
-    return `<label class="chk"><input type="checkbox" class="pdfGroupChk" value="${g.id}" ${on?'checked':''}> ${esc(g.title)}</label>`;
+    let badge = '';
+    try{
+      const n = groupRows(g, cols).length;
+      badge = n ? `<span class="badge">(${n} صف)</span>`
+                : `<span class="badge" style="color:var(--danger)">(فاضية)</span>`;
+    }catch(e){}
+    return `<label class="chk"><input type="checkbox" class="pdfGroupChk" value="${g.id}" ${on?'checked':''}> ${esc(g.title)} ${badge}</label>`;
   }).join('');
   document.querySelectorAll('.pdfGroupChk').forEach(chk=>{
     chk.addEventListener('change', ()=>{
@@ -3087,6 +3134,7 @@ function renderPdfMonthsList(){
     chk.addEventListener('change', ()=>{
       pdfMonthsChoice = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(e=>e.value);
       updateGrowthHint();
+      renderPdfGroupsList(); // عدّاد الصفوف جنب كل مجموعة بيتغيّر بتغيّر الشهور
     });
   });
 }
@@ -3475,7 +3523,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
       body += `<div style="height:12px"></div>`;
     }
 
-    if(!body){ alert('مفيش بيانات في المجموعات اللي اخترتها للفترة دي'); return; }
+    if(!body){ alert(emptyGroupsMessage(groups, columns)); return; }
 
     // ---- 2) رأس التقرير — بيتصوّر مع المحتوى وبيتكرر فوق كل صفحة ----
     const period = periodLabel(columns);
