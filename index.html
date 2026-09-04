@@ -332,7 +332,10 @@ const NET_RETRIES = 2;
 // redirect للـPOST، والـredirect ساعات بيحوّل الطلب لـGET من غير جسم فالسيرفر
 // ميعرفش المطلوب. مش عطل دائم — إعادة الطلب بتعدّي عادي.
 function isTransientError(msg){
-  return /unknown action|not found|HTTP 5\d\d|Service invoked too many|Exceeded maximum|timed out|وقت أطول/i.test(msg || '');
+  // "not found" مش خطأ عابر — دي إجابة نهائية إن المفتاح مش موجود. كانت
+  // هنا فبتتعاد 3 مرات بتباعد متزايد لكل مفتاح ناقص، وده كان بيضيف تقريبًا
+  // ٢.٤ ثانية لكل مفتاح على أول فتح للتطبيق.
+  return /unknown action|HTTP 5\d\d|Service invoked too many|Exceeded maximum|timed out|وقت أطول/i.test(msg || '');
 }
 
 // لما نتأكد إن مفيش اتصال خالص، مفيش داعي نعيد المحاولة لكل مفتاح.
@@ -400,7 +403,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v39';
+const APP_VERSION = 'v40';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1054,7 +1057,15 @@ function itemEffectiveSectors(item, entry){
   const base = itemSector(item);
   const whKeys = entry.wh ? Object.keys(entry.wh) : [];
   if(!whKeys.length) return [{sector: base, amt: entry.net}];
-  return whKeys.map(w => ({ sector: resolveForcedSector(base, w), amt: entry.wh[w] }));
+  const out = whKeys.map(w => ({ sector: resolveForcedSector(base, w), amt: entry.wh[w] }));
+  // في ملف المحاسبة ممكن بعض سطور نفس الصنف تيجي من غير اسم مخزن (Inv_Name
+  // فاضي). السطور دي كانت بتتحسب في إجمالي الصنف بس مش في أي قطاع — يعني
+  // فلوس بتختفي من تقارير القطاعات ومن مجموعات التصدير. الباقي بيترحّل
+  // لقطاع الصنف الأصلي.
+  const tagged = out.reduce((a,o)=> a + o.amt, 0);
+  const rest = (entry.net || 0) - tagged;
+  if(Math.abs(rest) > 0.005) out.push({sector: base, amt: rest});
+  return out;
 }
 
 $('fileInput').addEventListener('change', ()=>{
@@ -1282,10 +1293,10 @@ function customerTotal(monthData){
 
 function customerSectorTotals(c, months){
   const out = {};
-  mainSectors().forEach(s => out[s] = 0);
+  SECTORS.forEach(s => out[s] = 0);
   months.forEach(m=>{
     const ss = customerSectorSums(monthsData[m][c]);
-    mainSectors().forEach(s => out[s] += (ss[s]||0));
+    SECTORS.forEach(s => out[s] += (ss[s]||0));
   });
   return out;
 }
@@ -1656,11 +1667,11 @@ function reportRows(months){
       const group = wholesale.filter(c => classification[c] === wcls);
       if(!group.length) return;
       const sums = months.map(()=>0);
-      const sectorsSum = {}; mainSectors().forEach(sc => sectorsSum[sc] = 0);
+      const sectorsSum = {}; SECTORS.forEach(sc => sectorsSum[sc] = 0);
       group.forEach(c=>{
         months.forEach((m,i)=>{ if(monthsData[m] && monthsData[m][c]) sums[i] += customerTotal(monthsData[m][c]); });
         const cs = customerSectorTotals(c, months);
-        mainSectors().forEach(sc => sectorsSum[sc] += (cs[sc]||0));
+        SECTORS.forEach(sc => sectorsSum[sc] += (cs[sc]||0));
       });
       rows.push({
         label: AGG_CLASS_TITLES[wcls] || wcls,
@@ -1682,17 +1693,18 @@ function reportRows(months){
 }
 
 // الترتيب حسب العمود اللي المستخدم ضغط عليه
-function sortReportRows(rows, tabType){
+function sortReportRows(rows, tabType, sectorCols){
   const dir = reportView.sortDir === 'asc' ? 1 : -1;
   const key = reportView.sortKey;
+  const cols = sectorCols || mainSectors();
   return rows.slice().sort((a,b)=>{
     if(key === 'label') return a.label.localeCompare(b.label,'ar') * dir;
     if(typeof key === 'number'){
-      const va = tabType === 'sector' ? ((a.sectors||{})[mainSectors()[key]]||0) : (a.months[key]||0);
-      const vb = tabType === 'sector' ? ((b.sectors||{})[mainSectors()[key]]||0) : (b.months[key]||0);
+      const va = tabType === 'sector' ? ((a.sectors||{})[cols[key]]||0) : (a.months[key]||0);
+      const vb = tabType === 'sector' ? ((b.sectors||{})[cols[key]]||0) : (b.months[key]||0);
       return (va - vb) * dir;
     }
-    return (rowGrandTotal(tabType, a) - rowGrandTotal(tabType, b)) * dir;
+    return (rowGrandTotal(tabType, a, sectorCols) - rowGrandTotal(tabType, b, sectorCols)) * dir;
   });
 }
 
@@ -1714,8 +1726,15 @@ function renderReport(){
 
   if(activeTab === 'growth'){ renderGrowthTab(months); return; }
 
-  const rows = sortReportRows(reportRows(months), activeTab);
-  const total = rows.reduce((a,r)=> a + rowGrandTotal(activeTab, r), 0);
+  const baseRows = reportRows(months);
+  // أعمدة تبويب "بالقطاع" بتتحدد هنا مرة واحدة: كل قطاع فيه مبيعات فعلية.
+  // نفس القايمة بتروح للترتيب وللرسم، عشان الضغط على رأس عمود يرتّب بالعمود
+  // اللي المستخدم ضغط عليه فعلًا.
+  const secCols = activeTab === 'sector'
+    ? SECTORS.filter(sec => baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0))
+    : null;
+  const rows = sortReportRows(baseRows, activeTab, secCols);
+  const total = rows.reduce((a,r)=> a + rowGrandTotal(activeTab, r, secCols), 0);
   const ranksOff = reportView.ranks && !(reportView.sortKey === 'total' && reportView.sortDir === 'desc');
   $('reportCount').textContent = rows.length
     ? `${rows.length} صف — إجمالي ${total.toLocaleString('en-US',{maximumFractionDigits:0})}` +
@@ -1724,6 +1743,7 @@ function renderReport(){
   $('reportArea').innerHTML = rows.length
     ? buildTableHtml(activeTab, months, rows, null, {
         sortable:true, growthCols: reportView.growthCols, showClass: reportView.showClass, allRows: rows,
+        sectorCols: secCols, showAllSectorCols: !!secCols,
         // الميدالية معناها "الأعلى مبيعات" — فمتظهرش لو المستخدم رتّب بعمود تاني
         ranks: reportView.ranks && reportView.sortKey === 'total' && reportView.sortDir === 'desc',
       })
@@ -3364,6 +3384,10 @@ async function checkForUpdates(){
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState !== 'visible') return;
   checkForUpdates();
+  // فيه تعديلات لسه في طابور الحفظ؟ متزامنش دلوقتي. loadStorage بتكتب فوق
+  // الخرايط اللي في الذاكرة بنسخة السيرفر، والحفظ المؤجل بعد كده كان
+  // هيرفع نسخة السيرفر دي — يعني تعديل المستخدم يضيع من غير أي رسالة.
+  if(pendingSaveCount()){ flushSaves(); return; }
   if(Date.now() - lastSyncAt > RESYNC_AFTER_MS){
     lastSyncAt = Date.now();
     // هات آخر بيانات من التخزين المركزي — يمكن حد تاني رفع شهر جديد
