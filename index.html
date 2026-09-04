@@ -17,6 +17,7 @@
     --bg:#f3f4f8; --panel:#ffffff; --panel2:#f0f1f6; --border:#dcdfe8;
     --text:#1c1f2a; --muted:#6b7280; --accent:#3b5fe0; --accent2:#0f9d63;
     --danger:#dc2626; --warn:#b45309;
+    --thead:#1b3a8f; --thead-text:#ffffff;   /* رأس الأعمدة أزرق بخط أبيض */
   }
   *{box-sizing:border-box}
   body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,sans-serif;margin:0;padding:24px;}
@@ -39,7 +40,8 @@
   button:disabled{opacity:.5;cursor:not-allowed}
   table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:10px}
   th,td{border:1px solid var(--border);padding:6px 8px;text-align:center}
-  th{background:var(--panel2);position:sticky;top:0}
+  th{background:var(--thead);color:var(--thead-text);border-color:#2f4fa5;
+     font-weight:700;position:sticky;top:0}
   tr:nth-child(even){background:#f8f9fc}
   .tbl-wrap{overflow:auto;max-height:520px;border-radius:8px}
   .pill{display:inline-block;background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:2px 10px;font-size:12px;margin:2px;color:var(--muted)}
@@ -398,7 +400,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v37';
+const APP_VERSION = 'v38';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2941,7 +2943,7 @@ const PDF_STYLE = `
   table{border-collapse:collapse;width:100%;font-size:13px;table-layout:fixed;margin:0;
     font-family:Arial,Helvetica,sans-serif;font-weight:700}
   th,td{border:1px solid #999;padding:5px 6px;text-align:center;word-wrap:break-word;overflow-wrap:break-word}
-  th{background:#eee;font-weight:700;font-size:12px}
+  th{background:#1b3a8f;color:#fff;border-color:#2f4fa5;font-weight:700;font-size:12px}
   /* الأرقام: مايطلعش منها حاجة بره الخلية. الخط بيتحدد من fitStyle حسب عدد
      الأعمدة، والـoverflow ضمانة أخيرة لو رقم طلع أطول من المتوقع. */
   td.num{font-weight:700;direction:ltr;font-family:Arial,Helvetica,sans-serif;white-space:nowrap}
