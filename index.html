@@ -60,25 +60,25 @@
   .num{font-family:Consolas,monospace}
   .missing{color:var(--warn)}
   .total-row td{background:#e7ebfa;font-weight:700}
-  /* ---- كروت "أعلى 3" فوق التقرير ---- */
-  .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:14px}
+  /* ---- كروت "أعلى 3" فوق التقرير — شكل منصة التتويج ---- */
+  .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:6px}
   .kpi-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;
     box-shadow:0 1px 2px rgba(0,0,0,.04)}
-  .kpi-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
-    border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px}
-  .kpi-title{font-size:13px;font-weight:700;color:var(--thead)}
-  .kpi-sum{font-size:16px;font-weight:700;font-family:Arial,Helvetica,sans-serif;direction:ltr}
-  .kpi-item{display:flex;align-items:center;gap:8px;padding:5px 0}
-  .kpi-item + .kpi-item{border-top:1px dashed var(--border)}
-  .kpi-rank{flex:0 0 auto;width:20px;height:20px;line-height:20px;border-radius:50%;text-align:center;
-    font-size:11.5px;font-weight:700;color:#fff}
-  .kpi-name{flex:1 1 auto;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .kpi-val{flex:0 0 auto;font-size:12.5px;font-weight:700;font-family:Arial,Helvetica,sans-serif;direction:ltr}
-  .kpi-chg{flex:0 0 auto;font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;direction:ltr}
+  .kpi-title{font-size:13px;font-weight:700;color:var(--thead);margin-bottom:9px}
+  .kpi-sum{font-family:Arial,Helvetica,sans-serif;direction:ltr;display:inline-block}
+  .kpi-share{color:var(--muted);font-weight:400}
+  .kpi-pod{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center}
+  .kpi-p{border:1px solid var(--border);border-radius:10px;padding:9px 6px;background:var(--panel2)}
+  .kpi-m{width:24px;height:24px;line-height:24px;border-radius:50%;margin:0 auto 6px;
+    color:#fff;font-weight:700;font-size:12px}
+  .kpi-n{font-size:11.5px;height:31px;overflow:hidden;color:var(--text);line-height:1.3}
+  .kpi-v{font-size:13px;font-weight:700;font-family:Arial,Helvetica,sans-serif;direction:ltr;margin-top:3px}
+  .kpi-chg{font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;direction:ltr;
+    display:inline-block;margin-top:5px}
   .kpi-chg.up{background:#e7f7ef;color:#0a7a4a}
   .kpi-chg.down{background:#fdeaea;color:var(--danger)}
-  .kpi-chg.flat{background:var(--panel2);color:var(--muted)}
-  .kpi-foot{font-size:11.5px;color:var(--muted);margin-top:8px}
+  .kpi-chg.flat{background:var(--panel2);color:var(--muted);border:1px solid var(--border)}
+  .kpi-note{font-size:11.5px;color:var(--muted);margin:0 0 12px}
   label.chk{display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--text);
     background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer}
   label.chk input{width:16px;height:16px;cursor:pointer}
@@ -259,6 +259,7 @@
     <label class="chk"><input type="checkbox" id="pdfRanks" checked> ميداليات لأعلى 10</label>
     <label class="chk"><input type="checkbox" id="pdfGrowth"> تقرير النمو المفصّل (جدول منفصل)</label>
     <label class="chk"><input type="checkbox" id="pdfCharts" checked> رسم بياني تحت كل مجموعة <span class="badge">(PDF بس)</span></label>
+    <label class="chk"><input type="checkbox" id="pdfCards" checked> كروت أعلى ٣ فوق كل مجموعة <span class="badge">(PDF بس)</span></label>
     <label class="chk"><input type="checkbox" id="pdfWatermark" checked> لوجو الشركة خلفية <span class="badge">(PDF بس)</span></label>
   </div>
 
@@ -423,7 +424,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v43';
+const APP_VERSION = 'v44';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1848,92 +1849,143 @@ function renderReport(){
 }
 
 // ---- كروت "أعلى 3" فوق التقرير ----
-// ٣ كروت: أعلى ٣ عملاء، أعلى ٣ قطاعات، أعلى ٣ أصناف — كل كارت فيه الأسماء
-// وأرقامهم وإجماليهم ونسبتهم من إجمالي التقرير، وجنب كل واحد حركته (آخر شهر
-// معروض مقابل اللي قبله).
-function itemTotalsForMonths(months){
+// ٣ كروت: أعلى ٣ عملاء، أعلى ٣ قطاعات، أعلى ٣ أصناف.
+// الأرقام في الكروت = مجموع **كل الشهور** اللي التقرير شغال عليها (مش آخر شهر)،
+// والسهم الصغير جنب كل اسم هو الحركة: آخر شهر مقابل اللي قبله.
+// نفس الكروت بتتبني للشاشة وللـPDF من نفس الدوال.
+function itemTotalsForMonths(months, filter){
   const map = {};
   months.forEach(m=>{
     const md = monthsData[m]; if(!md) return;
     Object.keys(md).forEach(c=>{
       if(classification[c] === 'مستبعد') return;
-      Object.keys(md[c]).forEach(item=>{ map[item] = (map[item]||0) + (Number(md[c][item].net)||0); });
+      if(filter && !filter.customer(c)) return;
+      Object.keys(md[c]).forEach(item=>{
+        if(!filter){ map[item] = (map[item]||0) + (Number(md[c][item].net)||0); return; }
+        // مجموعة معيّنة: الصنف بيتحسب بالجزء اللي قطاعه داخل المجموعة بس
+        itemEffectiveSectors(item, md[c][item]).forEach(({sector, amt})=>{
+          if(filter.sector(sector)) map[item] = (map[item]||0) + amt;
+        });
+      });
     });
   });
   return map;
 }
-function sectorTotalsForMonths(months){ return allSectorTotals(months); }
-function customerTotalsForMonths(months){
+function customerTotalsForMonths(months, filter){
   const map = {};
   months.forEach(m=>{
     const md = monthsData[m]; if(!md) return;
     Object.keys(md).forEach(c=>{
       if(classification[c] === 'مستبعد') return;
-      map[c] = (map[c]||0) + customerTotal(md[c]);
+      if(filter && !filter.customer(c)) return;
+      if(!filter){ map[c] = (map[c]||0) + customerTotal(md[c]); return; }
+      Object.keys(md[c]).forEach(item=>{
+        itemEffectiveSectors(item, md[c][item]).forEach(({sector, amt})=>{
+          if(filter.sector(sector)) map[c] = (map[c]||0) + amt;
+        });
+      });
     });
   });
   return map;
 }
+function sectorTotalsForMonths(months, filter){
+  const all = {};
+  months.forEach(m=>{
+    const md = monthsData[m]; if(!md) return;
+    Object.keys(md).forEach(c=>{
+      if(classification[c] === 'مستبعد') return;
+      if(filter && !filter.customer(c)) return;
+      Object.keys(md[c]).forEach(item=>{
+        itemEffectiveSectors(item, md[c][item]).forEach(({sector, amt})=>{
+          if(!SECTORS.includes(sector)) return;
+          if(filter && !filter.sector(sector)) return;
+          all[sector] = (all[sector]||0) + amt;
+        });
+      });
+    });
+  });
+  return all;
+}
+// فلتر المجموعة في التصدير: مين العملاء اللي بيتحسبوا وأنهي قطاعات
+function groupFilter(g){
+  if(g.kind === 'special'){
+    const secs = new Set(sectorsOfSheet(g.sheet));
+    return { customer: ()=> true, sector: (s)=> secs.has(s) };
+  }
+  const classes = [g.key].concat(g.withAggClasses || []);
+  return { customer: (c)=> classes.includes(classification[c]), sector: (s)=> !isSpecialSector(s) };
+}
+
 const topThree = (map)=> Object.keys(map).map(k=>({name:k, val:map[k]}))
   .filter(o=> o.val > 0).sort((a,b)=> b.val - a.val).slice(0,3);
 
 function kpiChip(prev, cur){
-  if(prev == null) return '';
   const pc = pctChange(prev, cur);
-  if(pc === null) return `<span class="kpi-chg up" title="جديد الشهر ده">جديد</span>`;
+  if(pc === null) return `<span class="kpi-chg up">جديد</span>`;
   const cls = pc > 0.05 ? 'up' : (pc < -0.05 ? 'down' : 'flat');
   const arrow = pc > 0.05 ? '▲' : (pc < -0.05 ? '▼' : '=');
-  return `<span class="kpi-chg ${cls}" title="آخر شهر معروض مقابل اللي قبله">${arrow} ${pctText(pc)}</span>`;
+  return `<span class="kpi-chg ${cls}">${arrow} ${pctText(pc)}</span>`;
 }
 
+// كارت واحد بشكل "منصة التتويج": ٣ مربعات جنب بعض
 function kpiCard(title, list, sum, grand, prevMap, curMap){
-  const items = list.map((o,i)=>{
+  const share = grand > 0 ? Math.round(sum / grand * 100) : 0;
+  const pods = list.map((o,i)=>{
     const st = RANK_STYLES[i+1];
     const chg = prevMap ? kpiChip(prevMap[o.name] || 0, curMap[o.name] || 0) : '';
-    return `<div class="kpi-item">
-      <span class="kpi-rank" style="background:${st.bg};border:1.5px solid ${st.ring}">${i+1}</span>
-      <span class="kpi-name" title="${esc(o.name)}">${esc(o.name)}</span>
-      <span class="kpi-val">${fmtNum(o.val)}</span>${chg}
+    return `<div class="kpi-p">
+      <div class="kpi-m" style="background:${st.bg};border:1.5px solid ${st.ring}">${i+1}</div>
+      <div class="kpi-n" title="${esc(o.name)}">${esc(o.name)}</div>
+      <div class="kpi-v">${fmtNum(o.val)}</div>${chg}
     </div>`;
   }).join('');
-  const share = grand > 0 ? Math.round(sum / grand * 100) : 0;
   return `<div class="kpi-card">
-    <div class="kpi-head"><span class="kpi-title">${esc(title)}</span><span class="kpi-sum">${fmtNum(sum)}</span></div>
-    ${items}
-    <div class="kpi-foot">إجماليهم ${fmtNum(sum)} — ${share}% من إجمالي الفترة</div>
+    <div class="kpi-title">${esc(title)} — إجماليهم <span class="kpi-sum">${fmtNum(sum)}</span>
+      <span class="kpi-share">(${share}% من الفترة)</span></div>
+    <div class="kpi-pod" style="grid-template-columns:repeat(${list.length},1fr)">${pods}</div>
   </div>`;
+}
+
+// بيرجع {html, note} — بيتستخدم للشاشة وللـPDF بنفس الشكل
+function kpiCardsHtml(months, filter){
+  if(!months || !months.length) return {html:'', note:''};
+  const sorted = months.slice().sort();
+  // الحركة: آخر شهر مقابل اللي قبله. الأرقام نفسها بتفضل عن الفترة كلها.
+  const curM = [sorted[sorted.length-1]];
+  const prevM = sorted.length > 1 ? [sorted[sorted.length-2]] : null;
+
+  const custs = customerTotalsForMonths(months, filter);
+  const secs  = sectorTotalsForMonths(months, filter);
+  const items = itemTotalsForMonths(months, filter);
+  const grand = Object.values(custs).reduce((a,b)=>a+b,0);
+  if(grand <= 0) return {html:'', note:''};
+
+  const mk = (title, map, calc)=>{
+    const top = topThree(map);
+    if(!top.length) return '';
+    const sum = top.reduce((a,o)=>a+o.val,0);
+    return kpiCard(title, top, sum, grand, prevM && calc(prevM), prevM && calc(curM));
+  };
+  const cards = [
+    mk('أعلى ٣ عملاء',  custs, (mm)=> customerTotalsForMonths(mm, filter)),
+    mk('أعلى ٣ قطاعات', secs,  (mm)=> sectorTotalsForMonths(mm, filter)),
+    mk('أعلى ٣ أصناف',  items, (mm)=> itemTotalsForMonths(mm, filter)),
+  ].filter(Boolean).join('');
+  if(!cards) return {html:'', note:''};
+
+  const period = sorted.length > 1
+    ? `الأرقام دي مجموع ${sorted.length} شهور: من ${monthLabel(sorted[0])} لـ${monthLabel(sorted[sorted.length-1])}`
+    : `الأرقام دي عن ${monthLabel(sorted[0])}`;
+  const note = period + (prevM
+    ? ` — والسهم جنب كل اسم = ${monthLabel(curM[0])} مقابل ${monthLabel(prevM[0])}` : '');
+  return {html:`<div class="kpi-row">${cards}</div>`, note};
 }
 
 function renderKpiCards(months){
   const box = $('kpiCards');
   if(!box) return;
-  if(!months.length){ box.innerHTML = ''; return; }
-  // الحركة: آخر شهر معروض مقابل اللي قبله. أقل من شهرين يبقى مفيش مقارنة.
-  const sorted = months.slice().sort();
-  const curM = [sorted[sorted.length-1]];
-  const prevM = sorted.length > 1 ? [sorted[sorted.length-2]] : null;
-
-  const custs = customerTotalsForMonths(months);
-  const secs  = sectorTotalsForMonths(months);
-  const items = itemTotalsForMonths(months);
-  const grand = Object.values(custs).reduce((a,b)=>a+b,0);
-  if(grand <= 0){ box.innerHTML = ''; return; }
-
-  const mk = (title, map, prevSrc, curSrc)=>{
-    const top = topThree(map);
-    if(!top.length) return '';
-    const sum = top.reduce((a,o)=>a+o.val,0);
-    return kpiCard(title, top, sum, grand, prevSrc, curSrc);
-  };
-  const cards = [
-    mk('أعلى ٣ عملاء', custs, prevM && customerTotalsForMonths(prevM), prevM && customerTotalsForMonths(curM)),
-    mk('أعلى ٣ قطاعات', secs,  prevM && sectorTotalsForMonths(prevM),  prevM && sectorTotalsForMonths(curM)),
-    mk('أعلى ٣ أصناف', items,  prevM && itemTotalsForMonths(prevM),    prevM && itemTotalsForMonths(curM)),
-  ].filter(Boolean).join('');
-  box.innerHTML = cards
-    ? `<div class="kpi-row">${cards}</div>` +
-      (prevM ? `<div class="sub" style="margin:-6px 0 12px">السهم جنب كل اسم = ${esc(monthLabel(curM[0]))} مقابل ${esc(monthLabel(prevM[0]))}</div>` : '')
-    : '';
+  const {html, note} = kpiCardsHtml(months, null);
+  box.innerHTML = html ? html + `<div class="kpi-note">${esc(note)}</div>` : '';
 }
 
 // ---- تبويب النمو والمقارنة ----
@@ -3185,6 +3237,24 @@ const PDF_STYLE = `
   .sub-title{font-size:12px;font-weight:700;color:#333;padding:5px 0 3px}
   .chart-cap{font-size:11.5px;font-weight:700;color:#333;padding:5px 0 2px}
   .blk{margin-bottom:7px}
+  /* كروت "أعلى 3" — نفس شكل الشاشة */
+  .kpi-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:2px 0 4px}
+  .kpi-card{border:1px solid #bbb;border-radius:8px;padding:7px 9px;background:#fff}
+  .kpi-title{font-size:11px;font-weight:700;color:#1b3a8f;margin-bottom:6px}
+  .kpi-sum{font-family:Arial,Helvetica,sans-serif;direction:ltr;display:inline-block}
+  .kpi-share{color:#555;font-weight:400}
+  .kpi-pod{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;text-align:center}
+  .kpi-p{border:1px solid #ccc;border-radius:7px;padding:6px 3px;background:#fafbff}
+  .kpi-m{width:19px;height:19px;line-height:19px;border-radius:50%;margin:0 auto 4px;
+    color:#fff;font-weight:700;font-size:10.5px}
+  .kpi-n{font-size:9.5px;height:26px;overflow:hidden;color:#222;line-height:1.35}
+  .kpi-v{font-size:11px;font-weight:700;font-family:Arial,Helvetica,sans-serif;direction:ltr;margin-top:2px}
+  .kpi-chg{font-size:9.5px;font-weight:700;border-radius:999px;padding:1px 5px;direction:ltr;
+    display:inline-block;margin-top:3px}
+  .kpi-chg.up{background:#e7f7ef;color:#0a7a4a}
+  .kpi-chg.down{background:#fdeaea;color:#c0392b}
+  .kpi-chg.flat{background:#f0f1f6;color:#555;border:1px solid #ddd}
+  .kpi-note{font-size:10px;color:#555;margin:2px 0 4px}
 `;
 
 // بيبني عنصر مخفي فيه التقرير كله، ويصوّره بـhtml2canvas مرة واحدة.
@@ -3298,6 +3368,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
   if(!wantedIds.length){ alert('اختار مجموعة واحدة على الأقل'); return; }
   const groups = PDF_GROUPS.filter(g => wantedIds.includes(g.id));
   const withCharts = opts.allGroups ? true : $('pdfCharts').checked;
+  const withCards  = opts.allGroups ? true : $('pdfCards').checked;
 
   // قفل: تصدير واحد في المرة. من غيره لو المستخدم دوس "تصدير Excel" والـPDF لسه
   // بيتجهّز، الاتنين بيشتغلوا فوق بعض والنتيجة بتطلع ناقصة.
@@ -3319,6 +3390,15 @@ async function generatePdf(includeMonthly, includeSector, opts){
       // العنوان ملزوق بأول جدول في نفس الكتلة، عشان ميقعش لوحده في آخر صفحة
       let head = `<div class="grp-title">${esc(g.title)}</div>`;
       const canSector = g.kind === 'class'; // القطاعات الخاصة كلها قطاع واحد أصلًا
+
+      // كروت "أعلى ٣" للمجموعة دي فوق جداولها — بأرقام المجموعة نفسها
+      if(withCards){
+        const kc = kpiCardsHtml(selectedMonths, groupFilter(g));
+        if(kc.html){
+          body += `<div class="blk">${head}${kc.html}<div class="kpi-note">${esc(kc.note)}</div></div>`;
+          head = '';
+        }
+      }
 
       // جدول واحد متصل للمجموعة كلها. القطع بيحصل بين صفين والرأس بيتكرر
       // فوق الصفحة الجديدة — من غير ما الجدول يتقسّم جداول منفصلة.
