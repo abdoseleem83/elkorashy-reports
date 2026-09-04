@@ -398,7 +398,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v36';
+const APP_VERSION = 'v37';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1323,9 +1323,6 @@ function buildColumns(selectedMonths, quarterMode){
     return {key, label:`الربع ${qs} ${y}`, months: byQuarter[key].sort()};
   });
 }
-function customerColumnSeries(c, columns){
-  return columns.map(col => col.months.reduce((s,m)=> s + (monthsData[m] && monthsData[m][c] ? customerTotal(monthsData[m][c]) : 0), 0));
-}
 function customerSectorColumnSeries(c, sector, columns){
   const want = asSectorSet(sector);
   return columns.map(col => col.months.reduce((s,m)=>{
@@ -1338,6 +1335,22 @@ function customerSectorColumnSeries(c, sector, columns){
     return s + t;
   }, 0));
 }
+// مبيعات عميل من غير أي حاجة تابعة لشيت خاص (أبواب/شتر). المبيعات دي ليها
+// شيتها الخاص في التقرير، فلو حسبناها هنا كمان تبقى اتعدّت مرتين — والإجمالي
+// الشهري ما كانش بيساوي مجموع أعمدة القطاعات في نفس الجدول.
+function customerMainColumnSeries(c, columns){
+  return columns.map(col => col.months.reduce((s,m)=>{
+    const cd = monthsData[m] && monthsData[m][c];
+    if(!cd) return s;
+    let t = 0;
+    Object.keys(cd).forEach(item=>{
+      itemEffectiveSectors(item, cd[item]).forEach(({sector, amt})=>{
+        if(!isSpecialSector(sector)) t += amt;
+      });
+    });
+    return s + t;
+  }, 0));
+}
 // نفس computeCustomerRowsByClass بس بالأعمدة المختارة (شهور/كوارترات)
 function computeCustomerRowsByClassColumns(cls, columns){
   const flatMonths = columns.flatMap(c=>c.months);
@@ -1345,7 +1358,7 @@ function computeCustomerRowsByClassColumns(cls, columns){
   const rows = customers.map(c => ({
     label: c,
     cls: classification[c] || 'غير محدد',
-    months: customerColumnSeries(c, columns),
+    months: customerMainColumnSeries(c, columns),
     sectors: customerSectorTotals(c, flatMonths)
   }));
   return {columns, rows};
@@ -1358,7 +1371,7 @@ function computeAggregatedClassRow(cls, label, columns){
   const colTotals = columns.map(()=>0);
   const sectorsSum = {}; mainSectors().forEach(s=>sectorsSum[s]=0);
   customers.forEach(c=>{
-    customerColumnSeries(c, columns).forEach((v,i)=> colTotals[i]+=v);
+    customerMainColumnSeries(c, columns).forEach((v,i)=> colTotals[i]+=v);
     const cs = customerSectorTotals(c, flatMonths);
     mainSectors().forEach(s=> sectorsSum[s]+=(cs[s]||0));
   });
@@ -1395,6 +1408,18 @@ function computeSpecialSectorRowsColumns(sector, columns){
     }))
     .filter(r => r.months.some(v => v !== 0));
   return {columns, rows};
+}
+
+// ---- تلوين أعلى/أقل رقم في كل عمود ----
+// الأزرق للأعلى والأحمر للأقل. الأصفار مش داخلة في الحساب — "أقل رقم" يعني
+// أقل مبيعات فعلية، مش عميل مأخدش حاجة.
+const CELL_HI_BG = '#cfe0ff';   // أعلى رقم في العمود
+const CELL_LO_BG = '#fbd6d6';   // أقل رقم في العمود
+function colMinMax(values){
+  const vals = values.filter(v => v > 0);
+  if(vals.length < 2) return null;
+  const max = Math.max(...vals), min = Math.min(...vals);
+  return max === min ? null : {max, min};
 }
 
 // ---- ميداليات الترتيب ----
@@ -1472,13 +1497,9 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
     rows.sort((a,b)=> a.label.localeCompare(b.label,'ar'));
   }
   if(tabType === 'monthly'){
-    // أعلى رقم في كل عمود شهر يتلوّن أخضر، وأقل رقم (من غير الأصفار) يتلوّن أحمر — بمعزل عن صف الإجمالي.
-    const colStats = months.map((_, mi) => {
-      // التلوين على كل صفوف الجدول، مش الجزء الظاهر في الصفحة دي بس
-      const vals = totalsRows.map(r => r.months[mi]).filter(v => v > 0);
-      if(vals.length < 2) return null;
-      return { max: Math.max(...vals), min: Math.min(...vals) };
-    });
+    // أعلى رقم في كل عمود شهر خلفيته زرقا، وأقل رقم (من غير الأصفار) خلفيته
+    // حمرا — بمعزل عن صف الإجمالي.
+    const colStats = months.map((_, mi) => colMinMax(totalsRows.map(r => r.months[mi])));
     let html = `<div class="tbl-wrap"><table style="${fitStyle(monthlyCols)}"><thead><tr>
       <th>م</th><th${sortAttr('label')}>بيان${arrow('label')}</th>${clsHead}<th${sortAttr('total')}>الإجمالي${arrow('total')}</th>
       ${months.map((m,mi)=> `<th${sortAttr(mi)}>${esc(typeof m === 'string' ? monthLabel(m) : m.label)}${arrow(mi)}</th>`).join('')}
@@ -1492,8 +1513,8 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
         const st = colStats[mi];
         let style = '';
         if(st && v > 0){
-          if(v === st.max) style = 'background:#c8f0d8';
-          else if(v === st.min) style = 'background:#fbd6d6';
+          if(v === st.max) style = `background:${CELL_HI_BG}`;
+          else if(v === st.min) style = `background:${CELL_LO_BG}`;
         }
         return `<td class="num" style="${style}">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`;
       }).join('');
@@ -1537,10 +1558,21 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
     </tr></thead><tbody>`;
     let grandTotals = cols.map(()=>0);
     totalsRows.forEach(r => cols.forEach((s,si)=> grandTotals[si] += ((r.sectors||{})[s]||0)));
+    // نفس تلوين الجدول الشهري: أعلى رقم في العمود أزرق وأقل رقم أحمر
+    const colStats = cols.map(sec => colMinMax(totalsRows.map(r => (r.sectors||{})[sec]||0)));
     rows.forEach((r,i)=>{
       const sums = cols.map(s => (r.sectors||{})[s]||0);
       const total = sums.reduce((a,b)=>a+b,0);
-      html += `<tr><td>${rankOf(i)}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}${sums.map(v=>`<td class="num">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`).join('')}<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
+      const cells = sums.map((v,si)=>{
+        const st = colStats[si];
+        let style = '';
+        if(st && v > 0){
+          if(v === st.max) style = `background:${CELL_HI_BG}`;
+          else if(v === st.min) style = `background:${CELL_LO_BG}`;
+        }
+        return `<td class="num" style="${style}">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`;
+      }).join('');
+      html += `<tr><td>${rankOf(i)}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}${cells}<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
     });
     if(showTotals){
       const gt = grandTotals.reduce((a,b)=>a+b,0);
@@ -1810,18 +1842,37 @@ function customerSum(c, months){
   return months.reduce((a,m)=> a + (monthsData[m] && monthsData[m][c] ? customerTotal(monthsData[m][c]) : 0), 0);
 }
 
+// مبيعات عميل في نطاق معيّن: null = كل حاجة، 'main' = من غير الشيتات الخاصة،
+// مصفوفة قطاعات = القطاعات دي بس. لازم النمو يتحسب بنفس نطاق الجدول اللي فوقه،
+// وإلا الشيت الخاص يطلع نموه من مبيعات مالهاش علاقة بيه.
+function customerScopeSum(c, months, scope){
+  if(!scope) return customerSum(c, months);
+  const want = Array.isArray(scope) ? new Set(scope) : null;
+  return months.reduce((a,m)=>{
+    const cd = monthsData[m] && monthsData[m][c];
+    if(!cd) return a;
+    let t = 0;
+    Object.keys(cd).forEach(item=>{
+      itemEffectiveSectors(item, cd[item]).forEach(({sector, amt})=>{
+        if(want ? want.has(sector) : !isSpecialSector(sector)) t += amt;
+      });
+    });
+    return a + t;
+  }, 0);
+}
+
 // بيحوّل صفوف التقرير العادية لصفوف نمو بالفترتين المحددتين
-function growthRowsFrom(baseRows, prevMonths, curMonths){
+function growthRowsFrom(baseRows, prevMonths, curMonths, scope){
   return baseRows.map(r=>{
     let cur, prev;
     if(r.isGroup){
       const wcls = Object.keys(AGG_CLASS_TITLES).find(k => AGG_CLASS_TITLES[k] === r.label) || r.label;
       const group = allCustomers().filter(c => classification[c] === wcls);
-      cur  = group.reduce((a,c)=> a + customerSum(c, curMonths), 0);
-      prev = group.reduce((a,c)=> a + customerSum(c, prevMonths), 0);
+      cur  = group.reduce((a,c)=> a + customerScopeSum(c, curMonths, scope), 0);
+      prev = group.reduce((a,c)=> a + customerScopeSum(c, prevMonths, scope), 0);
     } else {
-      cur  = customerSum(r.label, curMonths);
-      prev = customerSum(r.label, prevMonths);
+      cur  = customerScopeSum(r.label, curMonths, scope);
+      prev = customerScopeSum(r.label, prevMonths, scope);
     }
     return {label:r.label, cls:r.cls, prev, cur, diff: cur - prev, pct: pctChange(prev, cur)};
   }).filter(r => r.prev !== 0 || r.cur !== 0)
@@ -2114,6 +2165,12 @@ function safeSheetName(name, used){
 }
 
 // المصدر الوحيد لحساب صفوف أي مجموعة — الـPDF والإكسل الاتنين بيستخدموه
+// نطاق أرقام المجموعة: الشيت الخاص = قطاعاته هو بس، وأي مجموعة تانية =
+// كل حاجة ما عدا الشيتات الخاصة.
+function growthScope(g){
+  return g.kind === 'special' ? sectorsOfSheet(g.sheet) : 'main';
+}
+
 function groupRows(g, columns){
   let rows;
   if(g.kind === 'class'){
@@ -2228,7 +2285,7 @@ function generateExcel(includeMonthly, includeSector, opts){
         safeSheetName('قطاع-' + g.title, used));
     }
     if(growthOk){
-      const gRows = growthRowsFrom(rows, growthView.prevMonths, growthView.curMonths);
+      const gRows = growthRowsFrom(rows, growthView.prevMonths, growthView.curMonths, growthScope(g));
       if(gRows.length){
         const aoa = growthAoa(gRows, growthView.prevMonths, growthView.curMonths, withShowClass);
         const gPeriod = `${periodName(growthView.curMonths)} مقابل ${periodName(growthView.prevMonths)}`;
@@ -3063,7 +3120,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
 
       // جدول النمو للمجموعة دي بالفترتين المختارتين
       if(growthOk){
-        const gRows = growthRowsFrom(rows, growthView.prevMonths, growthView.curMonths);
+        const gRows = growthRowsFrom(rows, growthView.prevMonths, growthView.curMonths, growthScope(g));
         if(gRows.length){
           const tbl = growthTableHtml(gRows, growthView.prevMonths, growthView.curMonths, {
             totalsFrom: gRows,
