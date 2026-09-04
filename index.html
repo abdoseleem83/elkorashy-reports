@@ -400,7 +400,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v38';
+const APP_VERSION = 'v39';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2212,15 +2212,40 @@ function sheetWithHeader(aoa, title, period, width){
     pad([`${period} — تاريخ التقرير ${new Date().toLocaleDateString('ar-EG')}`]),
     pad([]),
   ];
-  const ws = XLSX.utils.aoa_to_sheet([...head, ...aoa]);
+  const rowsAll = [...head, ...aoa];
+  const ws = XLSX.utils.aoa_to_sheet(rowsAll);
   // دمج سطري العنوان على عرض الجدول عشان يبانوا زي رأس الـPDF
   ws['!merges'] = [
     {s:{r:0,c:0}, e:{r:0,c:Math.max(0,width-1)}},
     {s:{r:1,c:0}, e:{r:1,c:Math.max(0,width-1)}},
   ];
-  // عمود "بيان" أعرض عشان أسماء العملاء تبان
-  ws['!cols'] = new Array(width).fill(null).map((_,i)=> ({wch: i===1 ? 30 : 14}));
-  ws['!freeze'] = {xSplit:0, ySplit:4};
+
+  // تنسيق الأرقام: فاصلة كل ٣ خانات من غير كسور، والنمو بعلامة %.
+  // الأرقام بتفضل أرقام حقيقية — التنسيق شكلي بس، فالمستخدم يقدر يجمع ويفلتر.
+  const headerRow = aoa[0] || [];
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for(let R = range.s.r; R <= range.e.r; R++){
+    for(let C = range.s.c; C <= range.e.c; C++){
+      const cell = ws[XLSX.utils.encode_cell({r:R, c:C})];
+      if(!cell || cell.t !== 'n') continue;
+      cell.z = headerRow[C] === 'النمو %' ? '0.0"%"' : '#,##0';
+    }
+  }
+
+  // عرض كل عمود على قد أطول حاجة فيه (مع حد أدنى وأقصى) بدل عرض ثابت
+  ws['!cols'] = new Array(width).fill(null).map((_, c)=>{
+    let w = 10;
+    rowsAll.forEach((row, ri)=>{
+      if(ri < 3) return;                       // سطور العنوان متدمجة، متحسبش عرضها
+      const v = row[c];
+      if(v === undefined || v === null || v === '') return;
+      const len = typeof v === 'number'
+        ? Math.round(v).toLocaleString('en-US').length + 1
+        : String(v).length + 1;
+      if(len > w) w = len;
+    });
+    return {wch: Math.min(w, 34)};
+  });
   return ws;
 }
 
@@ -2261,6 +2286,8 @@ function generateExcel(includeMonthly, includeSector, opts){
   const groups = PDF_GROUPS.filter(g => wantedIds.includes(g.id));
 
   const wbOut = XLSX.utils.book_new();
+  // الملف كله من اليمين لليسار زي التقرير
+  wbOut.Workbook = {Views:[{RTL:true}]};
   const used = new Set();
   const secCols = mainSectors();
 
