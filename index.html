@@ -403,7 +403,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v41';
+const APP_VERSION = 'v42';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1051,18 +1051,32 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
   if(missing.length){
     throw new Error('الملف ناقصه أعمدة أساسية: ' + missing.join('، ') + '. اتأكد إنه نفس تنسيق تصدير المحاسبة.');
   }
+  // الرقم ممكن ييجي نص ("1,234.5") لو الملف اتفتح واتحفظ من برنامج تاني.
+  // قبل كده السطر ده كان بيتلغي في صمت والمبلغ يختفي من غير أي رسالة.
+  const toNum = (v)=>{
+    if(typeof v === 'number') return isFinite(v) ? v : null;
+    const t = normName(v).replace(/,/g,'');
+    if(t === '') return null;
+    const n = Number(t);
+    return isFinite(n) ? n : null;
+  };
   const byMonth = {}; // month -> customer -> item -> {cat, net, wh}
   const newItems = new Set();
+  let skippedRows = 0, noMonthRows = 0;
   for(let i=headerIdx+1;i<rows.length;i++){
     const r = rows[i];
     const custCell = normName(r[cCustomer]);
     const itemCell = normName(r[cItem]);
-    const vout = r[cVout];
-    if(!custCell || !itemCell || typeof vout !== 'number') continue;
-    const vin = r[cVin];
-    const net = (Number(vout)||0) - (Number(vin)||0);
+    const vout = toNum(r[cVout]);
+    // سطر فاضي تمامًا مش مشكلة — بس سطر فيه بيانات ورقمه مش صالح لازم يتحسب
+    if(!custCell || !itemCell || vout === null){
+      if(custCell || itemCell || normName(r[cVout])) skippedRows++;
+      continue;
+    }
+    const vin = toNum(r[cVin]);
+    const net = vout - (vin || 0);
     const month = excelSerialToMonth(r[cDate]) || fallbackMonth;
-    if(!month) continue;
+    if(!month){ noMonthRows++; continue; }
     const wh = cInv !== -1 ? normName(r[cInv]) : '';
     if(!byMonth[month]) byMonth[month] = {};
     if(!byMonth[month][custCell]) byMonth[month][custCell] = {};
@@ -1071,7 +1085,7 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
     if(wh) byMonth[month][custCell][itemCell].wh[wh] = (byMonth[month][custCell][itemCell].wh[wh]||0) + net;
     if(!(itemCell in itemOverride)) newItems.add(itemCell);
   }
-  return {byMonth, newItems: Array.from(newItems)};
+  return {byMonth, newItems: Array.from(newItems), skippedRows, noMonthRows};
 }
 
 function itemSector(itemName){
@@ -1124,7 +1138,7 @@ $('processBtn').addEventListener('click', async ()=>{
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, {type:'array'});
     const sheetName = wb.SheetNames[0];
-    const {byMonth, newItems} = parseFlatWorkbook(wb, sheetName, fallbackMonth);
+    const {byMonth, newItems, skippedRows, noMonthRows} = parseFlatWorkbook(wb, sheetName, fallbackMonth);
 
     if(!Object.keys(byMonth).length){
       $('uploadMsg').innerHTML = `<div class="msg err">مقدرتش أوصل لشهر لأي صف — الملف مفيهوش تاريخ صالح أو مش بنفس تنسيق ملفات المحاسبة المعروفة، ومحددتش شهر يدوي. جرب اختار الشهر يدوي وأعد المحاولة.</div>`;
@@ -1136,12 +1150,8 @@ $('processBtn').addEventListener('click', async ()=>{
     // أخطر حالة: رفع نفس الملف تاني كان بيضيف الأرقام فوق القديمة ويضاعف المبيعات من غير أي تحذير.
     duplicateMonths = Object.keys(byMonth).filter(m => monthsData[m]);
     replaceExisting = duplicateMonths.length > 0;
-    newItems.forEach(it => { itemOverride[it] = guessSector(it); });
-    let saveWarn = '';
-    if(newItems.length){
-      try{ await saveItemOverride(); }
-      catch(e){ saveWarn = `<div class="msg warn">تعذّر حفظ تخمين الأصناف الجديدة على التخزين المركزي دلوقتي (${e.message}) — راجعهم من "الأصناف" أو جرب التحديث تاني.</div>`; }
-    }
+    // التخمين بيتطبّق ويتحفظ في commitAll مش هنا: لو المستخدم قرا الرسايل
+    // وقرر يلغي الرفعة، مكانش المفروض تكون خريطة الأصناف اتغيّرت خلاص.
 
     const allCustomers = new Set();
     Object.values(byMonth).forEach(cm => Object.keys(cm).forEach(c => allCustomers.add(c)));
@@ -1157,9 +1167,17 @@ $('processBtn').addEventListener('click', async ()=>{
       </div>`;
     }
     if(newItems.length){
-      msg += `<div class="msg warn">${newItems.length} صنف جديد اتحط تلقائي على أقرب قطاع بالتخمين — راجعهم من "الأصناف" لو حابب تظبطهم.</div>`;
+      msg += `<div class="msg warn">${newItems.length} صنف جديد هيتحط تلقائي على أقرب قطاع بالتخمين بعد الحفظ — راجعهم من "الأصناف" لو حابب تظبطهم.</div>`;
     }
-    msg += saveWarn;
+    // سطور اتلغت: لازم تتقال بصراحة، دي فلوس مش داخلة في التقرير
+    if(skippedRows){
+      msg += `<div class="msg err"><b>${skippedRows} سطر</b> فيه بيانات بس رقم المبيعات فيه مش صالح —
+        السطور دي مش داخلة في الحسابات. راجع الملف قبل ما تحفظ.</div>`;
+    }
+    if(noMonthRows){
+      msg += `<div class="msg err"><b>${noMonthRows} سطر</b> مفيش ليه تاريخ صالح ومحددتش شهر يدوي —
+        مش داخلين في الحسابات. اختار الشهر يدوي وأعد الرفع لو دي سطور مهمة.</div>`;
+    }
     $('uploadMsg').innerHTML = msg;
 
     if(unmatched.length){
@@ -1199,7 +1217,13 @@ $('saveClassifBtn').addEventListener('click', async ()=>{
     classification[name] = sel.value;
   });
   try{ await saveClassification(); }
-  catch(e){ alert('حفظ التصنيفات فشل: ' + e.message + ' — جرب تاني قبل ما تحفظ البيانات.'); return; }
+  catch(e){
+    // فشل مؤقت مايوقفش الرفعة: التصنيفات في الذاكرة خلاص، والطابور بيعيد
+    // المحاولة لوحده وبيبيّن حالته فوق. قبل كده كان بيقف ويقول "جرب تاني".
+    scheduleSave('classification', saveClassification, 'تصنيفات العملاء', 300);
+    alert('حفظ التصنيفات على السيرفر مانجحش دلوقتي (' + e.message + ') — '
+      + 'التصنيفات متسجّلة والتطبيق هيعيد المحاولة لوحده. تقدر تكمّل.');
+  }
   $('unmatchedCard').style.display = 'none';
 });
 
@@ -1238,6 +1262,11 @@ async function commitAll(){
       });
     });
   });
+  // دلوقتي بس — بعد التأكيد — الأصناف الجديدة بتاخد تخمينها وتتحفظ
+  if(pendingNewItems.length){
+    pendingNewItems.forEach(it => { if(!(it in itemOverride)) itemOverride[it] = guessSector(it); });
+    await trySave(saveItemOverride);
+  }
   const changed = Object.keys(pendingByMonth);
   const savedMonths = changed.sort().map(monthLabel).join('، ');
   $('uploadMsg').innerHTML = `<div class="msg warn">جاري الحفظ على التخزين المركزي... (ممكن ياخد شوية، متقفلش الصفحة)</div>`;
