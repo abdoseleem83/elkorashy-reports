@@ -424,7 +424,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v44';
+const APP_VERSION = 'v45';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1871,17 +1871,24 @@ function itemTotalsForMonths(months, filter){
   });
   return map;
 }
-function customerTotalsForMonths(months, filter){
+function customerTotalsForMonths(months, filter, agg){
   const map = {};
+  // الجملة بتتجمّع في اسم واحد زي الجدول بالظبط. من غير كده كل عميل جملة
+  // بيتحسب لوحده برقم صغير، فصف الجملة المجمّع — اللي ممكن يكون التاني في
+  // التقرير — ما بيوصلش لأعلى ٣ خالص.
+  const nameOf = (c)=> (agg && WHOLESALE_CLASSES.includes(classification[c]))
+    ? (AGG_CLASS_TITLES[classification[c]] || classification[c])
+    : c;
   months.forEach(m=>{
     const md = monthsData[m]; if(!md) return;
     Object.keys(md).forEach(c=>{
       if(classification[c] === 'مستبعد') return;
       if(filter && !filter.customer(c)) return;
-      if(!filter){ map[c] = (map[c]||0) + customerTotal(md[c]); return; }
+      const key = nameOf(c);
+      if(!filter){ map[key] = (map[key]||0) + customerTotal(md[c]); return; }
       Object.keys(md[c]).forEach(item=>{
         itemEffectiveSectors(item, md[c][item]).forEach(({sector, amt})=>{
-          if(filter.sector(sector)) map[c] = (map[c]||0) + amt;
+          if(filter.sector(sector)) map[key] = (map[key]||0) + amt;
         });
       });
     });
@@ -1947,14 +1954,14 @@ function kpiCard(title, list, sum, grand, prevMap, curMap){
 }
 
 // بيرجع {html, note} — بيتستخدم للشاشة وللـPDF بنفس الشكل
-function kpiCardsHtml(months, filter){
+function kpiCardsHtml(months, filter, agg){
   if(!months || !months.length) return {html:'', note:''};
   const sorted = months.slice().sort();
   // الحركة: آخر شهر مقابل اللي قبله. الأرقام نفسها بتفضل عن الفترة كلها.
   const curM = [sorted[sorted.length-1]];
   const prevM = sorted.length > 1 ? [sorted[sorted.length-2]] : null;
 
-  const custs = customerTotalsForMonths(months, filter);
+  const custs = customerTotalsForMonths(months, filter, agg);
   const secs  = sectorTotalsForMonths(months, filter);
   const items = itemTotalsForMonths(months, filter);
   const grand = Object.values(custs).reduce((a,b)=>a+b,0);
@@ -1967,7 +1974,7 @@ function kpiCardsHtml(months, filter){
     return kpiCard(title, top, sum, grand, prevM && calc(prevM), prevM && calc(curM));
   };
   const cards = [
-    mk('أعلى ٣ عملاء',  custs, (mm)=> customerTotalsForMonths(mm, filter)),
+    mk('أعلى ٣ عملاء',  custs, (mm)=> customerTotalsForMonths(mm, filter, agg)),
     mk('أعلى ٣ قطاعات', secs,  (mm)=> sectorTotalsForMonths(mm, filter)),
     mk('أعلى ٣ أصناف',  items, (mm)=> itemTotalsForMonths(mm, filter)),
   ].filter(Boolean).join('');
@@ -1984,7 +1991,8 @@ function kpiCardsHtml(months, filter){
 function renderKpiCards(months){
   const box = $('kpiCards');
   if(!box) return;
-  const {html, note} = kpiCardsHtml(months, null);
+  // نفس اختيار "اجمع الجملة في صف واحد" اللي فوق الجدول
+  const {html, note} = kpiCardsHtml(months, null, reportView.aggWholesale);
   box.innerHTML = html ? html + `<div class="kpi-note">${esc(note)}</div>` : '';
 }
 
@@ -3393,7 +3401,8 @@ async function generatePdf(includeMonthly, includeSector, opts){
 
       // كروت "أعلى ٣" للمجموعة دي فوق جداولها — بأرقام المجموعة نفسها
       if(withCards){
-        const kc = kpiCardsHtml(selectedMonths, groupFilter(g));
+        // التصدير دايمًا بيجمّع الجملة في صف واحد، فالكروت زيه
+        const kc = kpiCardsHtml(selectedMonths, groupFilter(g), true);
         if(kc.html){
           body += `<div class="blk">${head}${kc.html}<div class="kpi-note">${esc(kc.note)}</div></div>`;
           head = '';
