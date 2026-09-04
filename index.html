@@ -403,7 +403,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v40';
+const APP_VERSION = 'v41';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -457,6 +457,9 @@ let duplicateMonths = []; // شهور موجودة بالفعل في الرفع�
 let replaceExisting = false;
 let lastSyncAt = 0; // آخر مزامنة ناجحة مع التخزين المركزي
 let failedMonths = [];  // شهور موجودة في الفهرس بس تحميلها فشل — بياناتها لسه على السيرفر
+// منهم اللي بنعرضه من النسخة المحلية القديمة: بيتعرض في التقارير، بس ممنوع
+// نرفعه للسيرفر — يمكن يكون فيه نسخة أحدث هناك وإحنا اللي فشلنا نجيبها.
+let staleMonths = [];
 let indexedMonths = []; // كل الشهور اللي الفهرس بيقول إنها متخزنة
 
 const $ = (id) => document.getElementById(id);
@@ -626,9 +629,16 @@ async function loadStorage(){
       const r = await window.storage.get('month:' + m);
       return [m, JSON.parse(r.value)];
     };
-    let results = await Promise.all(months.map(async m=>{
-      try{ return await loadMonth(m); }catch(e){ return null; }
-    }));
+    // على دفعات مش كلهم مرة واحدة: Apps Script بيرفض لو عدد الطلبات المتوازية
+    // كبر، وعدد الشهور بيزيد كل شهر. الدفعة الواحدة بتخلص قبل اللي بعدها.
+    const LOAD_BATCH = 6;
+    let results = [];
+    for(let i=0;i<months.length;i+=LOAD_BATCH){
+      const batch = months.slice(i, i+LOAD_BATCH);
+      results = results.concat(await Promise.all(batch.map(async m=>{
+        try{ return await loadMonth(m); }catch(e){ return null; }
+      })));
+    }
     // محاولة تانية للشهور اللي فشلت — الشبكة بتقطع، والفشل هنا كان بيضيّع الشهر
     // من غير أي رسالة، والمستخدم يلاقي 8 شهور محفوظة و5 بس في التقارير.
     const retryIdx = results.map((r,i)=> r === null ? i : -1).filter(i => i >= 0);
@@ -643,6 +653,13 @@ async function loadStorage(){
     // الشهور اللي فضلت فاشلة: بتتسجل هنا عشان (1) تتعرض للمستخدم بوضوح
     // و(2) ما تتشالش من الفهرس عند أي حفظ جاي فتضيع للأبد.
     failedMonths = months.filter(m => !(m in fetched));
+    // الشهر اللي فشل تحميله وعندنا نسخته في الكاش المحلي: نعرضها بدل ما
+    // يختفي من التقارير. وأهم من كده: من غير كده أول تعديل بعدها كان
+    // بيكتب monthsData الناقصة فوق الكاش وتضيع النسخة المحلية للأبد.
+    staleMonths = [];
+    failedMonths.forEach(m => {
+      if(cachedSnapshot && cachedSnapshot[m]){ fetched[m] = cachedSnapshot[m]; staleMonths.push(m); }
+    });
     monthsData = fetched;
     loadedFromIndex = true;
   }catch(e){ netFailed = true; monthsData = cachedSnapshot; }
@@ -781,6 +798,7 @@ async function retryFailedMonths(){
     }catch(e){ still.push(m); }
   }
   failedMonths = still;
+  staleMonths = staleMonths.filter(m => still.includes(m));
   updateLocalCache(true);
   renderMonthPills();
   renderReport();
@@ -797,7 +815,16 @@ let cacheTimer = null;
 function writeLocalCache(){
   cacheTimer = null;
   try{
-    localStorage.setItem('cache:monthsData', JSON.stringify(monthsData));
+    try{
+      localStorage.setItem('cache:monthsData', JSON.stringify(monthsData));
+    }catch(quota){
+      // البيانات بتكبر كل شهر، ولما تعدّي حد المتصفح كان الكاش بيفشل في صمت
+      // ويفضل قديم للأبد. نجرب من غير الشهور المؤرشفة — هي أصلًا مش داخلة
+      // في التقارير — بدل ما نخسر الكاش كله.
+      const active = {};
+      activeMonths().forEach(m => { if(monthsData[m]) active[m] = monthsData[m]; });
+      localStorage.setItem('cache:monthsData', JSON.stringify(active));
+    }
     // الأصناف والعملاء بيتخزنوا كفروق عن البذرة هنا كمان — أصغر بكتير وأسرع في القراءة
     localStorage.setItem('cache:classificationDiff', JSON.stringify(diffFromSeed(classification, seedClassificationMap())));
     localStorage.setItem('cache:itemOverrideDiff', JSON.stringify(diffFromSeed(itemOverride, ITEM_SECTOR_SEED)));
@@ -831,10 +858,17 @@ function excludedMonthsNote(opts){
   opts = opts || {};
   const archived = archivedMonthsList();
   const parts = [];
-  if(failedMonths.length){
-    parts.push(`<b style="color:var(--danger)">${failedMonths.length} شهر محفوظ بس تحميله فشل</b>
-      (${esc(failedMonths.map(monthLabel).join('، '))}) — بياناتهم لسه موجودة، بس مش داخلين
+  const gone = failedMonths.filter(m => !staleMonths.includes(m));
+  if(gone.length){
+    parts.push(`<b style="color:var(--danger)">${gone.length} شهر محفوظ بس تحميله فشل</b>
+      (${esc(gone.map(monthLabel).join('، '))}) — بياناتهم لسه موجودة على السيرفر، بس مش داخلين
       في التقارير دلوقتي.
+      <button class="ghost" data-reload-months="1" style="padding:2px 8px;margin-right:6px">حمّلهم تاني</button>`);
+  }
+  if(staleMonths.length){
+    parts.push(`<b style="color:var(--warn)">${staleMonths.length} شهر</b> تحميلهم من السيرفر فشل
+      (${esc(staleMonths.map(monthLabel).join('، '))}) — معروضين من النسخة المحلية، يعني ممكن
+      يكونوا قدام لو حد تاني رفع تعديل عليهم. أي تعديل عليهم مش هيترفع لحد ما يتحمّلوا.
       <button class="ghost" data-reload-months="1" style="padding:2px 8px;margin-right:6px">حمّلهم تاني</button>`);
   }
   if(archived.length){
@@ -933,11 +967,20 @@ async function saveMonths(changedMonths){
   // مهم: الفهرس بيشمل الشهور اللي فشل تحميلها كمان. من غير كده أول حفظ بعد
   // فشل تحميل شهر كان بيشيله من الفهرس نهائي وبياناته تبقى يتيمة على السيرفر.
   const months = Array.from(new Set(Object.keys(monthsData).concat(failedMonths))).sort();
-  const toSave = changedMonths && changedMonths.length ? changedMonths : months;
+  const wanted = changedMonths && changedMonths.length ? changedMonths : months;
+  // الشهر اللي معروض من النسخة المحلية (تحميله فشل) مبيترفعش: ممكن يكون فيه
+  // نسخة أحدث على السيرفر من جهاز تاني، ورفع القديمة فوقها بيمسحها.
+  const skipped = wanted.filter(m => staleMonths.includes(m));
+  const toSave = wanted.filter(m => !staleMonths.includes(m));
   for(const m of toSave){
     if(monthsData[m]) await window.storage.set('month:' + m, JSON.stringify(monthsData[m]));
   }
   await window.storage.set('monthsIndex', JSON.stringify(months));
+  if(skipped.length){
+    alert(`التعديل اتحفظ محليًا بس ${skipped.length} شهر (${skipped.map(monthLabel).join('، ')}) `
+      + 'مترفعش للسيرفر عشان تحميلهم فشل ومش مضمون إن اللي عندنا هو الأحدث. '
+      + 'دوس "حمّلهم تاني" لما النت يبقى أحسن وأعد التعديل.');
+  }
 }
 // ---- التخزين التفاضلي ----
 // ITEM_SECTOR_SEED و SEED_CUSTOMERS متخزنين جوه الصفحة نفسها، فمفيش أي داعي
