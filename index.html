@@ -60,6 +60,25 @@
   .num{font-family:Consolas,monospace}
   .missing{color:var(--warn)}
   .total-row td{background:#e7ebfa;font-weight:700}
+  /* ---- كروت "أعلى 3" فوق التقرير ---- */
+  .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:14px}
+  .kpi-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .kpi-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+    border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px}
+  .kpi-title{font-size:13px;font-weight:700;color:var(--thead)}
+  .kpi-sum{font-size:16px;font-weight:700;font-family:Arial,Helvetica,sans-serif;direction:ltr}
+  .kpi-item{display:flex;align-items:center;gap:8px;padding:5px 0}
+  .kpi-item + .kpi-item{border-top:1px dashed var(--border)}
+  .kpi-rank{flex:0 0 auto;width:20px;height:20px;line-height:20px;border-radius:50%;text-align:center;
+    font-size:11.5px;font-weight:700;color:#fff}
+  .kpi-name{flex:1 1 auto;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .kpi-val{flex:0 0 auto;font-size:12.5px;font-weight:700;font-family:Arial,Helvetica,sans-serif;direction:ltr}
+  .kpi-chg{flex:0 0 auto;font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;direction:ltr}
+  .kpi-chg.up{background:#e7f7ef;color:#0a7a4a}
+  .kpi-chg.down{background:#fdeaea;color:var(--danger)}
+  .kpi-chg.flat{background:var(--panel2);color:var(--muted)}
+  .kpi-foot{font-size:11.5px;color:var(--muted);margin-top:8px}
   label.chk{display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--text);
     background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer}
   label.chk input{width:16px;height:16px;cursor:pointer}
@@ -312,6 +331,7 @@
   <div id="reportMonthsPanel" class="row" style="display:none;margin-bottom:12px;padding:10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px">
   </div>
 
+  <div id="kpiCards"></div>
   <div id="reportArea"><div class="sub">ارفع أول ملف عشان يظهر التقرير.</div></div>
 </div>
 
@@ -403,7 +423,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v42';
+const APP_VERSION = 'v43';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1786,16 +1806,19 @@ function renderReport(){
   const anyMonths = activeMonths();
   if(!anyMonths.length){
     $('reportArea').innerHTML = '<div class="sub">ارفع أول ملف عشان يظهر التقرير.</div>';
+    $('kpiCards').innerHTML = '';
     $('reportCount').textContent = '';
     $('chartsArea').style.display = 'none';
     return;
   }
   if(!months.length){
     $('reportArea').innerHTML = '<div class="msg warn">كل الشهور متخفية — افتح "الشهور المعروضة" واختار شهر على الأقل.</div>';
+    $('kpiCards').innerHTML = '';
     $('reportCount').textContent = '';
     return;
   }
 
+  renderKpiCards(months);
   if(activeTab === 'growth'){ renderGrowthTab(months); return; }
 
   const baseRows = reportRows(months);
@@ -1822,6 +1845,95 @@ function renderReport(){
     : '<div class="sub">مفيش نتائج مطابقة للبحث أو الفلتر.</div>';
   bindSortHeaders();
   renderCharts();
+}
+
+// ---- كروت "أعلى 3" فوق التقرير ----
+// ٣ كروت: أعلى ٣ عملاء، أعلى ٣ قطاعات، أعلى ٣ أصناف — كل كارت فيه الأسماء
+// وأرقامهم وإجماليهم ونسبتهم من إجمالي التقرير، وجنب كل واحد حركته (آخر شهر
+// معروض مقابل اللي قبله).
+function itemTotalsForMonths(months){
+  const map = {};
+  months.forEach(m=>{
+    const md = monthsData[m]; if(!md) return;
+    Object.keys(md).forEach(c=>{
+      if(classification[c] === 'مستبعد') return;
+      Object.keys(md[c]).forEach(item=>{ map[item] = (map[item]||0) + (Number(md[c][item].net)||0); });
+    });
+  });
+  return map;
+}
+function sectorTotalsForMonths(months){ return allSectorTotals(months); }
+function customerTotalsForMonths(months){
+  const map = {};
+  months.forEach(m=>{
+    const md = monthsData[m]; if(!md) return;
+    Object.keys(md).forEach(c=>{
+      if(classification[c] === 'مستبعد') return;
+      map[c] = (map[c]||0) + customerTotal(md[c]);
+    });
+  });
+  return map;
+}
+const topThree = (map)=> Object.keys(map).map(k=>({name:k, val:map[k]}))
+  .filter(o=> o.val > 0).sort((a,b)=> b.val - a.val).slice(0,3);
+
+function kpiChip(prev, cur){
+  if(prev == null) return '';
+  const pc = pctChange(prev, cur);
+  if(pc === null) return `<span class="kpi-chg up" title="جديد الشهر ده">جديد</span>`;
+  const cls = pc > 0.05 ? 'up' : (pc < -0.05 ? 'down' : 'flat');
+  const arrow = pc > 0.05 ? '▲' : (pc < -0.05 ? '▼' : '=');
+  return `<span class="kpi-chg ${cls}" title="آخر شهر معروض مقابل اللي قبله">${arrow} ${pctText(pc)}</span>`;
+}
+
+function kpiCard(title, list, sum, grand, prevMap, curMap){
+  const items = list.map((o,i)=>{
+    const st = RANK_STYLES[i+1];
+    const chg = prevMap ? kpiChip(prevMap[o.name] || 0, curMap[o.name] || 0) : '';
+    return `<div class="kpi-item">
+      <span class="kpi-rank" style="background:${st.bg};border:1.5px solid ${st.ring}">${i+1}</span>
+      <span class="kpi-name" title="${esc(o.name)}">${esc(o.name)}</span>
+      <span class="kpi-val">${fmtNum(o.val)}</span>${chg}
+    </div>`;
+  }).join('');
+  const share = grand > 0 ? Math.round(sum / grand * 100) : 0;
+  return `<div class="kpi-card">
+    <div class="kpi-head"><span class="kpi-title">${esc(title)}</span><span class="kpi-sum">${fmtNum(sum)}</span></div>
+    ${items}
+    <div class="kpi-foot">إجماليهم ${fmtNum(sum)} — ${share}% من إجمالي الفترة</div>
+  </div>`;
+}
+
+function renderKpiCards(months){
+  const box = $('kpiCards');
+  if(!box) return;
+  if(!months.length){ box.innerHTML = ''; return; }
+  // الحركة: آخر شهر معروض مقابل اللي قبله. أقل من شهرين يبقى مفيش مقارنة.
+  const sorted = months.slice().sort();
+  const curM = [sorted[sorted.length-1]];
+  const prevM = sorted.length > 1 ? [sorted[sorted.length-2]] : null;
+
+  const custs = customerTotalsForMonths(months);
+  const secs  = sectorTotalsForMonths(months);
+  const items = itemTotalsForMonths(months);
+  const grand = Object.values(custs).reduce((a,b)=>a+b,0);
+  if(grand <= 0){ box.innerHTML = ''; return; }
+
+  const mk = (title, map, prevSrc, curSrc)=>{
+    const top = topThree(map);
+    if(!top.length) return '';
+    const sum = top.reduce((a,o)=>a+o.val,0);
+    return kpiCard(title, top, sum, grand, prevSrc, curSrc);
+  };
+  const cards = [
+    mk('أعلى ٣ عملاء', custs, prevM && customerTotalsForMonths(prevM), prevM && customerTotalsForMonths(curM)),
+    mk('أعلى ٣ قطاعات', secs,  prevM && sectorTotalsForMonths(prevM),  prevM && sectorTotalsForMonths(curM)),
+    mk('أعلى ٣ أصناف', items,  prevM && itemTotalsForMonths(prevM),    prevM && itemTotalsForMonths(curM)),
+  ].filter(Boolean).join('');
+  box.innerHTML = cards
+    ? `<div class="kpi-row">${cards}</div>` +
+      (prevM ? `<div class="sub" style="margin:-6px 0 12px">السهم جنب كل اسم = ${esc(monthLabel(curM[0]))} مقابل ${esc(monthLabel(prevM[0]))}</div>` : '')
+    : '';
 }
 
 // ---- تبويب النمو والمقارنة ----
