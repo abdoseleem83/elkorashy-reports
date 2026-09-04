@@ -132,6 +132,7 @@
     <span class="badge" id="saveStatus" style="display:none;align-items:center"></span>
     <button class="ghost" id="updateBtn" title="تحقق من نسخة أحدث">تحديث</button>
   </div>
+  <div id="settingsWarn"></div>
   <div class="row" style="margin-top:10px">
     <div>
       <label>ملف المحاسبة (.xls)</label><br>
@@ -210,7 +211,19 @@
     <button id="addSectorBtn">إضافة قطاع</button>
   </div>
 
+  <div id="lostSectorsBox" style="margin-top:12px"></div>
+
   <div class="sub" style="margin-top:14px">ملاحظة: تصنيف القطاع بيتحدد لكل <b>صنف</b> من لوحة "الأصناف"، مش من اسم القسم في ملف المحاسبة.</div>
+
+  <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+    <div class="sub">نسخة احتياطية من الإعدادات (القطاعات + الشيتات + تصنيف الأصناف + تصنيف العملاء).
+      نزّلها كل ما تعمل تعديلات كتير — ملف صغير بيرجّع كل حاجة زي ما كانت.</div>
+    <div class="row" style="margin-top:8px">
+      <button class="secondary" id="backupBtn">نزّل نسخة احتياطية</button>
+      <button class="secondary" id="restoreBtn">استرجع من ملف</button>
+      <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
+    </div>
+  </div>
 </div>
 
 <div class="card" id="itemsPanel" style="display:none">
@@ -424,7 +437,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v46';
+const APP_VERSION = 'v47';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -477,6 +490,11 @@ let pendingNewItems = []; // items first seen this upload, for the info message
 let duplicateMonths = []; // شهور موجودة بالفعل في الرفعة الحالية — بتحتاج قرار استبدال/إضافة
 let replaceExisting = false;
 let lastSyncAt = 0; // آخر مزامنة ناجحة مع التخزين المركزي
+// "not found" = المفتاح مش موجود فعلًا على السيرفر (أول تشغيل).
+// أي رسالة تانية = عطل مؤقت، والسيرفر لسه شايل بيانات المستخدم.
+// الفرق ده مهم جدًا: الكتابة الافتراضية فوق مفتاح موجود بتمسح إعدادات المستخدم.
+function isMissingKey(e){ return /not found/i.test((e && e.message) || ''); }
+let settingsStale = false; // فشلنا نقرا إعداد أو أكتر — التطبيق شغال على نسخة محلية
 let failedMonths = [];  // شهور موجودة في الفهرس بس تحميلها فشل — بياناتها لسه على السيرفر
 // منهم اللي بنعرضه من النسخة المحلية القديمة: بيتعرض في التقارير، بس ممنوع
 // نرفعه للسيرفر — يمكن يكون فيه نسخة أحدث هناك وإحنا اللي فشلنا نجيبها.
@@ -699,11 +717,12 @@ async function loadStorage(){
   // تصنيفات العملاء: الفروق عن البذرة. لو لقينا المفتاح القديم الكامل، نرحّله مرة واحدة.
   const clsSeed = seedClassificationMap();
   let clsLoaded = false;
+  let clsMissing = false;
   try{
     const cd = await window.storage.get('classificationDiff');
     classification = mergeWithSeed(clsSeed, JSON.parse(cd.value));
     clsLoaded = true;
-  }catch(e){}
+  }catch(e){ clsMissing = isMissingKey(e); if(!clsMissing) settingsStale = true; }
   if(!clsLoaded){
     try{
       const c = await window.storage.get('classification');
@@ -719,7 +738,7 @@ async function loadStorage(){
       // وكل العملاء يبقوا "غير محدد" والتقارير تطلع فاضية.
       const fromCache = Object.keys(classification).length > Object.keys(clsSeed).length ||
                         Object.keys(clsSeed).some(k => classification[k] !== clsSeed[k]);
-      if(!netFailed && !fromCache){
+      if(!netFailed && !fromCache && clsMissing && isMissingKey(e)){
         classification = Object.assign({}, clsSeed);
         await trySave(saveClassification);
       } else if(!Object.keys(classification).length){
@@ -734,7 +753,7 @@ async function loadStorage(){
     const idf = await window.storage.get('itemOverrideDiff');
     itemOverride = mergeWithSeed(ITEM_SECTOR_SEED, JSON.parse(idf.value));
     itemsLoaded = true;
-  }catch(e){}
+  }catch(e){ if(!isMissingKey(e)) settingsStale = true; }
   if(!itemsLoaded){
     try{
       const io = await window.storage.get('itemOverride');
@@ -745,7 +764,8 @@ async function loadStorage(){
       }
     }catch(e){
       // نفس السبب: مننساش تعديلات المستخدم اللي في الكاش لما الشبكة تفشل
-      if(!netFailed && !Object.keys(itemOverride).length){
+      if(!isMissingKey(e)) settingsStale = true;
+      if(!netFailed && isMissingKey(e) && !Object.keys(itemOverride).length){
         itemOverride = Object.assign({}, ITEM_SECTOR_SEED);
         await trySave(saveItemOverride);
       }
@@ -756,18 +776,30 @@ async function loadStorage(){
   Object.keys(ITEM_SECTOR_SEED).forEach(item=>{
     if(!(item in itemOverride)) itemOverride[item] = ITEM_SECTOR_SEED[item];
   });
+  let sectorsLoaded = false;
   try{
     const sl = await window.storage.get('sectorsList');
     if(sl) SECTORS = JSON.parse(sl.value);
-    else throw new Error();
+    else throw new Error('not found');
+    sectorsLoaded = true;
   }catch(e){
-    await trySave(saveSectors);
+    // كان هنا trySave(saveSectors) على طول — وده كان بيكتب القايمة الافتراضية
+    // فوق قطاعات المستخدم لو القراءة فشلت لأي سبب مؤقت. النتيجة: القطاعات
+    // اللي هو ضايفها (ابواب 70/80، حلوق وبرور...) تختفي من السيرفر خالص.
+    if(isMissingKey(e) && !netFailed){ await trySave(saveSectors); sectorsLoaded = true; }
+    else settingsStale = true;
   }
   // توزيع القطاعات على الشيتات الخاصة
+  let sheetsLoaded = false;
   try{
     const ss = await window.storage.get('sectorSheets');
     sectorSheet = JSON.parse(ss.value) || {};
-  }catch(e){ if(!Object.keys(sectorSheet).length) sectorSheet = {}; }
+    sheetsLoaded = true;
+  }catch(e){
+    // نفس القاعدة: مانمسحش الخريطة اللي في الذاكرة/الكاش لمجرد إن القراءة فشلت
+    if(isMissingKey(e) && !netFailed) sheetsLoaded = true;
+    else settingsStale = true;
+  }
   try{
     const wf = await window.storage.get('warehouseForcing');
     warehouseForcingOn = JSON.parse(wf.value) !== false;
@@ -780,14 +812,16 @@ async function loadStorage(){
     const g = guessSheetForSector(sec);
     if(g){ sectorSheet[sec] = g; sheetsChanged = true; }
   });
-  if(sheetsChanged) await trySave(saveSectorSheets);
+  // التخمين بيتحفظ بس لو إحنا متأكدين من اللي على السيرفر. غير كده هو تخمين
+  // بيتكتب فوق بيانات مش شايفينها — وده اللي كان بيضيّع تصنيف الشيتات.
+  if(sheetsChanged && sheetsLoaded && sectorsLoaded) await trySave(saveSectorSheets);
 
   // ترحيل: لو المستخدم كان عنده نسخة قديمة من القطاعات من غير مكن/حشوات/تصنيع/شتر وبلسيه، ضيفهم
   let sectorsChanged = false;
   ["قطاعات PVC كومبن","قطاعات كرافت لاين","نيو لاين","اكسسوارات","مكن","حشوات","تصنيع","ابواب WPC","شتر وبلسيه"].forEach(s=>{
     if(!SECTORS.includes(s)){ SECTORS.push(s); sectorsChanged = true; }
   });
-  if(sectorsChanged) await trySave(saveSectors);
+  if(sectorsChanged && sectorsLoaded) await trySave(saveSectors);
 
   try{
     const ar = await window.storage.get('archivedYears');
@@ -799,6 +833,17 @@ async function loadStorage(){
     updateLocalCache(true);
     try{ localStorage.removeItem('cache:classification'); localStorage.removeItem('cache:itemOverride'); }catch(e){}
     lastSyncAt = Date.now();
+  }
+  // تحذير ظاهر: التطبيق شغال على إعدادات محلية مش مأكدة من السيرفر.
+  // مهم إن المستخدم يعرف قبل ما يعدّل حاجة أو يصدّر تقرير.
+  const stEl = $('settingsWarn');
+  if(stEl){
+    stEl.innerHTML = settingsStale
+      ? `<div class="msg warn" style="margin-top:10px"><b>تنبيه:</b> مقدرناش نقرا إعدادات
+         (القطاعات / تصنيف الأصناف) من التخزين المركزي دلوقتي، والتطبيق شغال على آخر نسخة
+         محلية. متعدّلش الإعدادات دلوقتي عشان مايتكتبش فوق اللي على السيرفر —
+         دوس "تحديث" لما النت يبقى أحسن.</div>`
+      : '';
   }
   $('loadStatus').textContent = netFailed
     ? 'مفيش اتصال — شغّال على آخر نسخة محفوظة على الجهاز'
@@ -2785,7 +2830,93 @@ $('custSearch').addEventListener('input', ()=> renderCustomersList());
 $('custClassFilter').addEventListener('change', ()=> renderCustomersList());
 
 // ---- Sectors panel ----
+// ---- استرجاع قطاعات ضاعت من القايمة ----
+// لو قايمة القطاعات اترجعت للافتراضي لأي سبب، تصنيف الأصناف بيفضل شايل أسماء
+// القطاعات القديمة (الصنف مكتوب عليه "ابواب 70" مثلًا). فنقدر نرجّع القطاعات
+// دي من تصنيف الأصناف نفسه بضغطة واحدة.
+function lostSectors(){
+  const counts = {};
+  Object.keys(itemOverride).forEach(it=>{
+    const sec = itemOverride[it];
+    if(sec && !SECTORS.includes(sec)) counts[sec] = (counts[sec]||0) + 1;
+  });
+  return Object.keys(counts).sort((a,b)=> counts[b]-counts[a]).map(name=>({name, items:counts[name]}));
+}
+function renderLostSectors(){
+  const box = $('lostSectorsBox');
+  if(!box) return;
+  const lost = lostSectors();
+  if(!lost.length){ box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="msg warn">
+    <b>${lost.length} قطاع مش موجود في القايمة</b> بس لسه فيه أصناف متصنّفة عليه —
+    غالبًا اتشال بالغلط أو ضاع في مزامنة فاشلة. الأصناف دي مش بتظهر في أي تقرير دلوقتي.
+    <div style="margin-top:6px">${lost.map(o=>`${esc(o.name)} <span class="badge">(${o.items} صنف)</span>`).join(' — ')}</div>
+    <button class="ghost" id="restoreLostBtn" style="margin-top:8px">رجّع القطاعات دي (${lost.length})</button>
+  </div>`;
+  const btn = $('restoreLostBtn');
+  if(btn) btn.addEventListener('click', async ()=>{
+    btn.disabled = true; btn.textContent = 'بيرجّع...';
+    const backupSec = SECTORS.slice();
+    const backupSheet = Object.assign({}, sectorSheet);
+    lost.forEach(o=>{
+      if(!SECTORS.includes(o.name)) SECTORS.push(o.name);
+      if(!(o.name in sectorSheet)){
+        const g = guessSheetForSector(o.name);
+        if(g) sectorSheet[o.name] = g;
+      }
+    });
+    try{
+      await saveSectors();
+      await saveSectorSheets();
+    }catch(e){
+      SECTORS = backupSec; sectorSheet = backupSheet;
+      alert('الاسترجاع فشل في الحفظ: ' + e.message + ' — رجّعنا كل حاجة زي ما كانت.');
+      renderLostSectors(); return;
+    }
+    updateLocalCache(true);
+    renderOwnSectorsList();
+    renderReport();
+    alert('تمام — القطاعات رجعت، وأصنافها بقت تظهر في التقارير تاني. راجع "بيندرج تحت" لكل قطاع.');
+  });
+}
+
+// ---- نسخة احتياطية من الإعدادات ----
+function settingsBackupObject(){
+  return {
+    kind: 'elkorashy-settings',
+    version: APP_VERSION,
+    savedAt: new Date().toISOString(),
+    sectors: SECTORS,
+    sectorSheets: sectorSheet,
+    warehouseForcing: warehouseForcingOn,
+    itemOverrideDiff: diffFromSeed(itemOverride, ITEM_SECTOR_SEED),
+    classificationDiff: diffFromSeed(classification, seedClassificationMap()),
+  };
+}
+async function restoreSettingsFrom(obj){
+  if(!obj || obj.kind !== 'elkorashy-settings') throw new Error('الملف ده مش نسخة احتياطية من التطبيق');
+  const backup = settingsBackupObject();
+  if(Array.isArray(obj.sectors) && obj.sectors.length) SECTORS = obj.sectors.slice();
+  if(obj.sectorSheets) sectorSheet = Object.assign({}, obj.sectorSheets);
+  if(typeof obj.warehouseForcing === 'boolean') warehouseForcingOn = obj.warehouseForcing;
+  if(obj.itemOverrideDiff) itemOverride = mergeWithSeed(ITEM_SECTOR_SEED, obj.itemOverrideDiff);
+  if(obj.classificationDiff) classification = mergeWithSeed(seedClassificationMap(), obj.classificationDiff);
+  try{
+    await saveSectors(); await saveSectorSheets(); await saveWarehouseForcing();
+    await saveItemOverride(); await saveClassification();
+  }catch(e){
+    // رجّع اللي كان قبل ما نلمس أي حاجة
+    SECTORS = backup.sectors; sectorSheet = backup.sectorSheets;
+    warehouseForcingOn = backup.warehouseForcing;
+    itemOverride = mergeWithSeed(ITEM_SECTOR_SEED, backup.itemOverrideDiff);
+    classification = mergeWithSeed(seedClassificationMap(), backup.classificationDiff);
+    throw e;
+  }
+  updateLocalCache(true);
+}
+
 function renderOwnSectorsList(){
+  renderLostSectors(); // تنبيه القطاعات الضايعة فوق القايمة
   // جدول: كل قطاع وجنبه اختيار الشيت اللي بيندرج تحته.
   // شيت الأبواب تحته كذا قطاع (ابواب 70/80/90/100، ابواب خاصة، اكسسوارات
   // ابواب، حلوق وبرور...) وكلهم بيتجمعوا في نفس التقرير.
@@ -2883,6 +3014,31 @@ function renderOwnSectorsList(){
     });
   });
 }
+$('backupBtn').addEventListener('click', ()=>{
+  const data = JSON.stringify(settingsBackupObject(), null, 1);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], {type:'application/json'}));
+  a.download = `اعدادات-القرشي-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=> URL.revokeObjectURL(a.href), 2000);
+});
+$('restoreBtn').addEventListener('click', ()=> $('restoreFile').click());
+$('restoreFile').addEventListener('change', async (e)=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  e.target.value = '';
+  if(!confirm('الاسترجاع هيكتب فوق الإعدادات الحالية (القطاعات وتصنيف الأصناف والعملاء). تكمّل؟')) return;
+  try{
+    const obj = JSON.parse(await f.text());
+    await restoreSettingsFrom(obj);
+    renderOwnSectorsList();
+    renderReport();
+    alert(`تم الاسترجاع من نسخة ${obj.savedAt ? new Date(obj.savedAt).toLocaleString('ar-EG') : ''}.`);
+  }catch(err){
+    alert('الاسترجاع فشل: ' + err.message);
+  }
+});
+
 $('addSectorBtn').addEventListener('click', async ()=>{
   const name = normName($('newSectorName').value);
   if(!name) return;
