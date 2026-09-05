@@ -2654,7 +2654,7 @@ function generateExcel(includeMonthly, includeSector, opts){
     if(includeSector && canSectorSheet){
       const cols = sheetCols && sheetCols.length ? sheetCols : secCols;
       const sorted = sortRowsForTable('sector', rows, cols);
-      const aoa = sectorAoa(sorted, cols, null, withShowClass, !!(sheetCols && sheetCols.length));
+      const aoa = sectorAoa(sorted, cols, null, withShowClass, false);
       XLSX.utils.book_append_sheet(wbOut,
         sheetWithHeader(aoa, g.title, period, aoa[0].length),
         safeSheetName('قطاع-' + g.title, used));
@@ -3624,9 +3624,10 @@ async function generatePdf(includeMonthly, includeSector, opts){
           sectorCols,
           ranks: withRanks,
           allRows: sorted,
-          // أعمدة الشيت الخاص بتظهر كلها حتى لو قطاع مأخدش بضاعة —
-          // المستخدم هو اللي حددها فعايز يشوف الصفر مش يدوّر على العمود.
-          showAllSectorCols: !!sectorCols,
+          // القطاع اللي مفيهوش أي مبيعات في الفترة دي مبيظهرش عمود ليه —
+          // حتى لو هو قطاع فرعي تابع لشيت خاص (أبواب/شتر). كان قبل كده
+          // بيظهر دايمًا فاضي (كله "-") لأي شيت خاص، حتى لو مفيش عليه بضاعة خالص.
+          showAllSectorCols: false,
         });
         body += `<div class="blk">${head}<div class="sub-title">${esc(subTitle)}</div>${tbl}</div>`;
         head = ''; // العنوان مرة واحدة بس
