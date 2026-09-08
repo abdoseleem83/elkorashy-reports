@@ -451,7 +451,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v48';
+const APP_VERSION = 'v49';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -852,7 +852,7 @@ async function loadStorage(){
   // مهم إن المستخدم يعرف قبل ما يعدّل حاجة أو يصدّر تقرير.
   const stEl = $('settingsWarn');
   if(stEl){
-    stEl.innerHTML = settingsStale
+    stEl.innerHTML = (settingsStale && !netFailed)
       ? `<div class="msg warn" style="margin-top:10px"><b>تنبيه:</b> مقدرناش نقرا إعدادات
          (القطاعات / تصنيف الأصناف) من التخزين المركزي دلوقتي، والتطبيق شغال على آخر نسخة
          محلية. متعدّلش الإعدادات دلوقتي عشان مايتكتبش فوق اللي على السيرفر —
@@ -1629,7 +1629,20 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
   const sortable = !!opts.sortable;
   // عمودين زيادة في آخر الجدول الشهري: الفرق ونسبة النمو بين أول عمود وآخر عمود
   // في الفترة المعروضة. ده بيدي صورة النمو جوه نفس التقرير من غير جدول منفصل.
-  const growthCols = !!opts.growthCols && tabType === 'monthly' && months.length >= 2;
+  // عمودي "الفرق" و"النمو %" بيقارنوا أول عمود بآخر عمود. ده سليم مع الشهور،
+  // لكن مع الكوارترات ممكن الربع الأخير يكون ناقص شهور (يوليو وأغسطس بس مقابل
+  // ربع كامل) — والمقارنة ساعتها بتطلع -32% وهي مش حقيقية. في الحالة دي
+  // بنخفي العمودين بدل ما نعرض رقم مضلّل.
+  const colSpan = (c)=> (c && Array.isArray(c.months)) ? c.months.length : 1;
+  const spanMismatch = months.length >= 2 &&
+    colSpan(months[0]) !== colSpan(months[months.length-1]);
+  const growthCols = !!opts.growthCols && tabType === 'monthly' && months.length >= 2 && !spanMismatch;
+  const growthHiddenNote = (!!opts.growthCols && tabType === 'monthly' && spanMismatch)
+    ? `<div class="sub-title" style="color:#b45309">عمودي الفرق والنمو مخفيين: `
+      + `«${esc(typeof months[months.length-1] === 'string' ? monthLabel(months[months.length-1]) : months[months.length-1].label)}» `
+      + `فيه ${colSpan(months[months.length-1])} شهر و«${esc(typeof months[0] === 'string' ? monthLabel(months[0]) : months[0].label)}» `
+      + `فيه ${colSpan(months[0])} — المقارنة بينهم مش عادلة.</div>`
+    : '';
   // عمود التصنيف بقى اختياري (مقفول افتراضي) — بياخد عرض من غير فايدة كبيرة،
   // والصفوف المجمّعة بتوضّح نفسها في عمود "بيان".
   const showClass = !!opts.showClass;
@@ -1724,7 +1737,7 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
       html += `<tr class="total-row"><td colspan="${labelSpan}">الإجمالي</td><td class="num">${grandTotals.reduce((a,b)=>a+b,0).toLocaleString('en-US',{maximumFractionDigits:0})}</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}${gTotal}</tr>`;
     }
     html += '</tbody></table></div>';
-    return html;
+    return growthHiddenNote + html;
   } else {
     // القطاعات اللي مفيهاش أي مبيعات في الصفوف دي مبتظهرش خالص — كانت بتاخد
     // عرض من الأعمدة اللي فيها أرقام وتخلي الخط يتزنق.
@@ -2460,7 +2473,9 @@ function renderCharts(){
     .filter(o => o.total > 0)
     .sort((a,b)=> b.total - a.total).slice(0,10);
   const sTotals = allSectorTotals(months);
-  const sectorTotals = SECTORS.map(s => ({ label: s, total: sTotals[s]||0 })).sort((a,b)=> b.total - a.total);
+  const sectorTotals = SECTORS.map(s => ({ label: s, total: sTotals[s]||0 }))
+    .filter(o => o.total > 0)          // قطاع من غير مبيعات = عمود فاضي بيزحم الشارت
+    .sort((a,b)=> b.total - a.total);
   $('chartsArea').style.display = 'block';
   drawBarChart('topCustomersChart', custTotals.map(o=>o.label), custTotals.map(o=>o.total), '#3b5fe0');
   drawBarChart('sectorTotalsChart', sectorTotals.map(o=>o.label), sectorTotals.map(o=>o.total), '#0f9d63');
