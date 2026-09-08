@@ -273,6 +273,20 @@
     <label class="chk"><input type="checkbox" id="pdfGrowth"> تقرير النمو المفصّل (جدول منفصل)</label>
     <label class="chk"><input type="checkbox" id="pdfCharts" checked> رسم بياني تحت كل مجموعة <span class="badge">(PDF بس)</span></label>
     <label class="chk"><input type="checkbox" id="pdfCards" checked> كروت أعلى ٣ فوق كل مجموعة <span class="badge">(PDF بس)</span></label>
+    <label class="chk" style="gap:6px">حجم الخط في الـPDF
+      <select id="pdfFontSize" style="padding:4px 8px">
+        <option value="normal">عادي (صفحات أقل)</option>
+        <option value="large" selected>كبير</option>
+        <option value="xlarge">أكبر (أوضح)</option>
+      </select>
+    </label>
+    <label class="chk" style="gap:6px">اتجاه الورقة
+      <select id="pdfOrient" style="padding:4px 8px">
+        <option value="auto" selected>تلقائي</option>
+        <option value="p">طولي</option>
+        <option value="l">عرضي (أوسع)</option>
+      </select>
+    </label>
     <label class="chk"><input type="checkbox" id="pdfWatermark" checked> لوجو الشركة خلفية <span class="badge">(PDF بس)</span></label>
   </div>
 
@@ -437,7 +451,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v47';
+const APP_VERSION = 'v48';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1622,14 +1636,30 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
   const clsHead = showClass ? '<th>التصنيف</th>' : '';
   const clsCell = (r)=> showClass ? `<td>${esc(r.cls)}</td>` : '';
   const labelSpan = showClass ? 3 : 2; // عدد الأعمدة اللي صف الإجمالي بيغطيها
-  // الخط بيتظبط حسب عدد الأعمدة. من غير كده مع 8 شهور + الفرق + النمو الأرقام
-  // كانت بتطلع بره خليتها وتتداخل مع العمود اللي جنبها.
-  const fitStyle = (n)=>{
-    const total = n + (showClass ? 4 : 3);
-    if(total <= 8)  return 'font-size:13px';
-    if(total <= 11) return 'font-size:11.5px';
-    if(total <= 14) return 'font-size:10px';
-    return 'font-size:8.8px';
+  // ---- مقاس الخط وعرض الأعمدة ----
+  // الطريقة القديمة كانت بتحدد الخط بعدد الأعمدة بالتقريب، فالرقم الطويل كان
+  // بيتقص جوه الخلية (54,224,000 تبان 54,224,0). دلوقتي:
+  //  - في التصدير: الخط ثابت على المقاس اللي المستخدم اختاره، و**عرض الرسم**
+  //    هو اللي بيتوسّع عشان الأرقام كلها تدخل. النتيجة: مفيش قص أبدًا.
+  //  - على الشاشة: نفس الحساب بالعكس (العرض معروف → نجيب أكبر خط يدخل فيه).
+  const numWidth = (v)=> fmtNum(v).length;
+  const NAME_SHARE = showClass ? 0.30 : 0.23;   // نصيب عمود البيان (+التصنيف)
+  const RANK_W = 34;
+  const DIGIT_EM = 0.62;                        // عرض الرقم في Arial بولد تقريبًا
+  const CELL_PAD = 14;                          // حشو الخلية + الحدود
+  const fitStyleFor = (nNumCols, widestDigits)=>{
+    const digits = Math.max(6, widestDigits);
+    if(opts.pdfBaseFont){
+      const size = opts.pdfBaseFont;
+      const colW = Math.max(56, digits * DIGIT_EM * size + CELL_PAD);
+      const needed = (RANK_W + nNumCols * colW) / (1 - NAME_SHARE);
+      pdfNeededW = Math.max(pdfNeededW, needed);
+      return `font-size:${size}px`;
+    }
+    const renderW = opts.renderW || 1080;
+    const perCol = (renderW * (1 - NAME_SHARE) - RANK_W) / Math.max(1, nNumCols);
+    const size = (perCol - CELL_PAD) / (digits * DIGIT_EM);
+    return 'font-size:' + Math.max(8.5, Math.min(15, size)).toFixed(1) + 'px';
   };
   const monthlyCols = months.length + (growthCols ? 2 : 0);
   // الميداليات مالهاش معنى إلا لو الجدول مرتّب بالإجمالي من الأكبر للأصغر
@@ -1651,7 +1681,13 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
     // أعلى رقم في كل عمود شهر خلفيته زرقا، وأقل رقم (من غير الأصفار) خلفيته
     // حمرا — بمعزل عن صف الإجمالي.
     const colStats = months.map((_, mi) => colMinMax(totalsRows.map(r => r.months[mi])));
-    let html = `<div class="tbl-wrap"><table style="${fitStyle(monthlyCols)}"><thead><tr>
+    // أطول رقم هيتكتب في الجدول (الإجمالي غالبًا) هو اللي بيحدد الخط
+    let widest = 6;
+    totalsRows.forEach(r=>{
+      widest = Math.max(widest, numWidth(r.months.reduce((a,b)=>a+b,0)));
+      r.months.forEach(v=> { widest = Math.max(widest, numWidth(v)); });
+    });
+    let html = `<div class="tbl-wrap"><table style="${fitStyleFor(monthlyCols + 1, widest)}"><thead><tr>
       <th>م</th><th${sortAttr('label')}>بيان${arrow('label')}</th>${clsHead}<th${sortAttr('total')}>الإجمالي${arrow('total')}</th>
       ${months.map((m,mi)=> `<th${sortAttr(mi)}>${esc(typeof m === 'string' ? monthLabel(m) : m.label)}${arrow(mi)}</th>`).join('')}
       ${growthCols ? `<th title="${esc(gLabel(months[months.length-1]))} − ${esc(gLabel(months[0]))}">الفرق</th><th>النمو %</th>` : ''}
@@ -1703,7 +1739,13 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
     const cols = opts.showAllSectorCols
       ? baseCols
       : baseCols.filter(sec => colSrc.some(r => ((r.sectors||{})[sec]||0) !== 0));
-    let html = `<div class="tbl-wrap"><table style="${fitStyle(cols.length + 1)}"><thead><tr>
+    let widest = 6;
+    totalsRows.forEach(r=>{
+      let t = 0;
+      cols.forEach(sc=>{ const v = (r.sectors||{})[sc]||0; t += v; widest = Math.max(widest, numWidth(v)); });
+      widest = Math.max(widest, numWidth(t));
+    });
+    let html = `<div class="tbl-wrap"><table style="${fitStyleFor(cols.length + 1, widest)}"><thead><tr>
       <th>م</th><th${sortAttr('label')}>العميل / المجموعة${arrow('label')}</th>${clsHead}
       ${cols.map((s,si)=>`<th${sortAttr(si)}>${esc(s)}${arrow(si)}</th>`).join('')}<th${sortAttr('total')}>الإجمالي${arrow('total')}</th>
     </tr></thead><tbody>`;
@@ -3392,7 +3434,15 @@ function setExportButtons(enabled){
 const PDF_MARGIN = 10;            // مم — هامش الصفحة
                                   // كتل أصغر = فراغ أقل في آخر الصفحة، لأن الكتلة
                                   // اللي مش هتكمّل بتنزل للصفحة اللي بعدها كاملة.
-const PDF_RENDER_W = 920;         // عرض الرسم بالبكسل — أصغر = خط أوضح في الصفحة
+// عرض الرسم بالبكسل. الصفحة عرضها ثابت، فكل ما العرض ده يقل، كل حاجة
+// (الخط والأرقام وارتفاع الصفوف) تطلع أكبر في الـPDF. المستخدم بيختار
+// المقاس من لوحة التصدير.
+// مقاس خط الجداول في التصدير. العرض بيتحسب بعد كده عشان الأرقام تدخل كلها.
+const PDF_FONT_BY_SIZE = {normal: 12, large: 14, xlarge: 16};
+const PDF_WIDTH_BY_SIZE = {normal: 900, large: 800, xlarge: 700}; // أقل عرض مسموح
+let PDF_RENDER_W = PDF_WIDTH_BY_SIZE.large;
+// بيتملى وإحنا بنبني جداول التصدير: أوسع عرض محتاجينه عشان مفيش رقم يتقص
+let pdfNeededW = 0;
 const PDF_SCALE = 2;              // دقة html2canvas
 
 // بيرسم شارت أفقي على canvas مخفي ويرجّع صورته جاهزة كـ data URL.
@@ -3435,20 +3485,23 @@ const PDF_STYLE = `
   .tbl-wrap{overflow:visible !important;max-height:none !important}
   /* خط أكبر وبولد Arial — بعد ما اتشال عمود التصنيف والأعمدة الفاضية بقى فيه
      مساحة تستحمل، والأرقام بقت تتقرا من غير تدقيق. */
-  table{border-collapse:collapse;width:100%;font-size:13px;table-layout:fixed;margin:0;
+  table{border-collapse:collapse;width:100%;font-size:14px;table-layout:fixed;margin:0;
     font-family:Arial,Helvetica,sans-serif;font-weight:700}
-  th,td{border:1px solid #999;padding:5px 6px;text-align:center;word-wrap:break-word;overflow-wrap:break-word}
-  th{background:#1b3a8f;color:#fff;border-color:#2f4fa5;font-weight:700;font-size:12px}
+  /* صفوف أعلى شوية: الورقة كانت مزحومة والأرقام ملزوقة في بعضها */
+  th,td{border:1px solid #999;padding:8px 6px;text-align:center;word-wrap:break-word;overflow-wrap:break-word;
+    line-height:1.35}
+  th{background:#1b3a8f;color:#fff;border-color:#2f4fa5;font-weight:700;font-size:13px;padding:9px 6px}
   /* الأرقام: مايطلعش منها حاجة بره الخلية. الخط بيتحدد من fitStyle حسب عدد
      الأعمدة، والـoverflow ضمانة أخيرة لو رقم طلع أطول من المتوقع. */
   td.num{font-weight:700;direction:ltr;font-family:Arial,Helvetica,sans-serif;white-space:nowrap}
   th,td{overflow:hidden}
-  td:nth-child(2),th:nth-child(2){width:190px;text-align:right}
+  /* عمود الاسم بالنسبة مش بالبكسل — عشان يفضل متزن مع أي مقاس خط */
+  td:nth-child(2),th:nth-child(2){width:21%;text-align:right}
   .total-row td{background:#ddd;font-weight:700}
-  .grp-title{font-size:15px;font-weight:700;padding:8px 0 5px;border-bottom:1.5px solid #777;margin-bottom:5px}
-  .sub-title{font-size:12px;font-weight:700;color:#333;padding:5px 0 3px}
-  .chart-cap{font-size:11.5px;font-weight:700;color:#333;padding:5px 0 2px}
-  .blk{margin-bottom:7px}
+  .grp-title{font-size:17px;font-weight:700;padding:9px 0 6px;border-bottom:1.5px solid #777;margin-bottom:6px}
+  .sub-title{font-size:13px;font-weight:700;color:#333;padding:6px 0 4px}
+  .chart-cap{font-size:12.5px;font-weight:700;color:#333;padding:6px 0 3px}
+  .blk{margin-bottom:8px}
   /* كروت "أعلى 3" — نفس شكل الشاشة */
   .kpi-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:2px 0 4px}
   .kpi-card{border:1px solid #bbb;border-radius:8px;padding:7px 9px;background:#fff}
@@ -3581,6 +3634,10 @@ async function generatePdf(includeMonthly, includeSector, opts){
   const groups = PDF_GROUPS.filter(g => wantedIds.includes(g.id));
   const withCharts = opts.allGroups ? true : $('pdfCharts').checked;
   const withCards  = opts.allGroups ? true : $('pdfCards').checked;
+  const sizeChoice = ($('pdfFontSize') || {}).value || 'large';
+  const pdfFont = PDF_FONT_BY_SIZE[sizeChoice] || PDF_FONT_BY_SIZE.large;
+  pdfNeededW = 0;                       // بيتحسب أثناء بناء الجداول تحت
+  PDF_RENDER_W = PDF_WIDTH_BY_SIZE[sizeChoice] || PDF_WIDTH_BY_SIZE.large;
 
   // قفل: تصدير واحد في المرة. من غيره لو المستخدم دوس "تصدير Excel" والـPDF لسه
   // بيتجهّز، الاتنين بيشتغلوا فوق بعض والنتيجة بتطلع ناقصة.
@@ -3628,6 +3685,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
           // حتى لو هو قطاع فرعي تابع لشيت خاص (أبواب/شتر). كان قبل كده
           // بيظهر دايمًا فاضي (كله "-") لأي شيت خاص، حتى لو مفيش عليه بضاعة خالص.
           showAllSectorCols: false,
+          pdfBaseFont: pdfFont,    // الخط ثابت، والعرض هو اللي بيتظبط
         });
         body += `<div class="blk">${head}<div class="sub-title">${esc(subTitle)}</div>${tbl}</div>`;
         head = ''; // العنوان مرة واحدة بس
@@ -3665,9 +3723,12 @@ async function generatePdf(includeMonthly, includeSector, opts){
         const totals = rows.map(r => ({label:r.label, total:r.months.reduce((a,b)=>a+b,0)}))
           .filter(o => o.total > 0).sort((a,b)=> b.total - a.total).slice(0,10);
         if(totals.length > 1 && window.Chart){
-          const chartH = 46 + totals.length * 26;
+          // الشارت بيتفرد على عرض الصفحة كلها، فاللي بيحدد ارتفاعه في الورقة
+          // هو نسبة العرض للارتفاع مش البكسل. النسبة ثابتة هنا عشان الشارت
+          // ياخد ربع الصفحة تقريبًا ومايتحوّلش لصفحة لوحده.
+          const CHART_W = 1200, CHART_ASPECT = 4.4;
           const img = await chartImage(totals.map(o=>o.label), totals.map(o=>o.total),
-            '#3b5fe0', PDF_RENDER_W, chartH);
+            '#3b5fe0', CHART_W, Math.round(CHART_W / CHART_ASPECT));
           // لو مفيش جدول اتضاف للمجموعة، العنوان لسه في head — الشارت ياخده
           // بدل ما يطلع من غير عنوان ومحدش يعرف بتاع مين.
           body += `<div class="blk">${head}
@@ -3681,6 +3742,11 @@ async function generatePdf(includeMonthly, includeSector, opts){
     }
 
     if(!body){ alert(emptyGroupsMessage(groups, columns)); return; }
+
+    // بعد ما الجداول اتبنت عرفنا أوسع جدول محتاج كام بكسل عشان مفيش رقم يتقص.
+    // العرض ده هو اللي بيتصوّر، وبيتفرد على عرض الصفحة — يعني الجدول الواسع
+    // خطه بيطلع أصغر في الورقة، بس كامل مش مقصوص.
+    PDF_RENDER_W = Math.max(PDF_RENDER_W, Math.ceil(pdfNeededW));
 
     // ---- 2) رأس التقرير — بيتصوّر مع المحتوى وبيتكرر فوق كل صفحة ----
     const period = periodLabel(columns);
@@ -3704,7 +3770,12 @@ async function generatePdf(includeMonthly, includeSector, opts){
 
     // ---- 3) التوزيع على الصفحات عند نقط القطع بس ----
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF('p','mm','a4');
+    // ورقة عرضية للجداول الواسعة: مع ٦ شهور أو أكتر + الإجمالي والفرق والنمو،
+    // الورقة الطولية بتزحم الأعمدة والأرقام تتقص. العرضي بيدي ~40% عرض زيادة.
+    const orientSel = ($('pdfOrient') || {}).value || 'auto';
+    const wideCols = columns.length + (withGrowthCols ? 2 : 0) + 1;
+    const orient = orientSel === 'auto' ? (wideCols >= 8 ? 'l' : 'p') : orientSel;
+    const pdf = new jsPDF(orient,'mm','a4');
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const contentW = pageW - PDF_MARGIN*2;
