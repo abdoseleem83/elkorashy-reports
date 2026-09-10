@@ -273,7 +273,13 @@
   <div class="row" style="margin-top:10px">
     <label class="chk"><input type="checkbox" id="pdfMonthly" checked> مقارنة المبيعات الشهرية</label>
     <label class="chk"><input type="checkbox" id="pdfSector" checked> مقارنة المبيعات بالقطاع</label>
-    <label class="chk"><input type="checkbox" id="pdfItems"> الأصناف بالقطاع (كل صنف وتوزيعه)</label>
+    <label class="chk"><input type="checkbox" id="pdfItems"> الأصناف بالقطاع (كل صنف وتوزيعه)
+      <select id="pdfItemsMetric" style="padding:3px 6px;margin-right:6px" title="جدول الأصناف بيطلع بإيه">
+        <option value="qty" selected>كمية</option>
+        <option value="value">قيمة</option>
+        <option value="both">قيمة وكمية</option>
+      </select>
+    </label>
     <label class="chk"><input type="checkbox" id="pdfGrowthCols" checked> عمودَي الفرق والنمو % في جدول المبيعات</label>
     <label class="chk"><input type="checkbox" id="pdfShowClass"> عمود التصنيف</label>
     <label class="chk"><input type="checkbox" id="pdfRanks" checked> ميداليات لأعلى 10</label>
@@ -478,7 +484,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v54';
+const APP_VERSION = 'v55';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1889,7 +1895,10 @@ const reportView = {
   cls: '',            // '' = كل التصنيفات
   aggWholesale: true, // الجملة في صف واحد زي التصدير
   hiddenMonths: [],   // شهور المستخدم شالها من العرض
-  metric: 'value',    // 'value' | 'qty' | 'both'
+  metric: 'value',      // 'value' | 'qty' | 'both' — لتقارير العملاء
+  // تقرير الأصناف بالقطاع غرضه الكميات (كام باب 70 وكام باب 80)، فبيفتح
+  // على "الكمية" بشكل افتراضي وبيفتكر اختيار المستخدم لوحده.
+  itemsMetric: 'qty',
   sortKey: 'total',   // 'total' | 'label' | رقم عمود
   sortDir: 'desc',
   growthCols: true,   // عمودَي الفرق والنمو % جوه جدول المبيعات
@@ -2083,12 +2092,19 @@ function renderReport(){
   renderKpiCards(months);
   if(activeTab === 'growth'){ renderGrowthTab(months); return; }
 
-  const metric = reportView.metric;
+  // كل تبويب بيفتكر مقياسه: تقارير العملاء بالقيمة، والأصناف بالكمية.
+  const isItems = activeTab === 'items';
+  let metric = isItems ? reportView.itemsMetric : reportView.metric;
+  // مفيش كميات متخزنة أصلًا (شهور اترفعت قبل ما الكمية تتقرا)؟ نرجع للقيمة
+  // بدل ما التقرير يطلع كله شرط.
+  const qtyMissing = (metric === 'qty' || metric === 'both') && !hasQtyData();
+  if(qtyMissing) metric = 'value';
+  const mSel = $('reportMetric');
+  if(mSel && mSel.value !== metric) mSel.value = metric;
 
-  // تبويب "الأصناف بالقطاع": صفوفه أصناف مش عملاء
   const itemsWrap = $('itemsSheetWrap');
-  if(itemsWrap) itemsWrap.style.display = activeTab === 'items' ? '' : 'none';
-  if(activeTab === 'items'){ renderItemsSectorTab(months, metric); return; }
+  if(itemsWrap) itemsWrap.style.display = isItems ? '' : 'none';
+  if(isItems){ renderItemsSectorTab(months, metric, qtyMissing); return; }
 
   const baseRows = rowsForMetric(metric, ()=> reportRows(months));
   // أعمدة تبويب "بالقطاع" بتتحدد هنا مرة واحدة: كل قطاع فيه مبيعات فعلية.
@@ -2267,7 +2283,7 @@ function renderKpiCards(months){
 }
 
 // شاشة تقرير الأصناف بالقطاع
-function renderItemsSectorTab(months, metric){
+function renderItemsSectorTab(months, metric, qtyMissing){
   const sheetSel = $('itemsSheet');
   const sheetId = sheetSel ? sheetSel.value : '';
   const secList = sheetId ? sectorsOfSheet(sheetId) : null;
@@ -2282,14 +2298,19 @@ function renderItemsSectorTab(months, metric){
     : (metric === 'both' ? ' — الرقم الصغير تحت كل قيمة هو الكمية' : '');
   $('reportCount').textContent = rows.length
     ? `${rows.length} صنف — إجمالي ${fmtNum(total)}${note}` : '';
-  $('reportArea').innerHTML = rows.length
+  const warn = qtyMissing
+    ? `<div class="msg warn">التقرير ده بيتعرض بالكمية عادةً، بس مفيش كميات متخزنة في
+       الشهور دي — الملفات دي اترفعت قبل ما التطبيق يقرا عمود الكمية. ارفعها تاني
+       واختار <b>"استبدال"</b> عشان الكميات تدخل. لحد كده الأرقام دي <b>قيمة</b>.</div>`
+    : '';
+  $('reportArea').innerHTML = warn + (rows.length
     ? buildTableHtml('sector', months, rows, null, {
         sortable:true, showClass: reportView.showClass, allRows: rows,
         sectorCols: cols, showAllSectorCols: true, qty: metric === 'both',
         ranks: reportView.ranks && reportView.sortKey === 'total' && reportView.sortDir === 'desc',
         labelHead: 'الصنف',
       })
-    : '<div class="sub">مفيش أصناف عليها مبيعات في الشهور والفلاتر دي.</div>';
+    : '<div class="sub">مفيش أصناف عليها مبيعات في الشهور والفلاتر دي.</div>');
   bindSortHeaders();
   renderCharts();
 }
@@ -2620,7 +2641,12 @@ $('reportAggWholesale').addEventListener('change', (e)=>{ reportView.aggWholesal
 $('reportGrowthCols').addEventListener('change', (e)=>{ reportView.growthCols = e.target.checked; renderReport(); });
 $('reportShowClass').addEventListener('change', (e)=>{ reportView.showClass = e.target.checked; renderReport(); });
 $('reportRanks').addEventListener('change', (e)=>{ reportView.ranks = e.target.checked; renderReport(); });
-$('reportMetric').addEventListener('change', (e)=>{ reportView.metric = e.target.value; renderReport(); });
+$('reportMetric').addEventListener('change', (e)=>{
+  // الاختيار بيتسجّل للتبويب اللي إنت فيه بس
+  if(activeTab === 'items') reportView.itemsMetric = e.target.value;
+  else reportView.metric = e.target.value;
+  renderReport();
+});
 $('itemsSheet').addEventListener('change', ()=> renderReport());
 $('reportMonthsBtn').addEventListener('click', ()=>{
   const panel = $('reportMonthsPanel');
@@ -2912,6 +2938,8 @@ function generateExcel(includeMonthly, includeSector, opts){
   const groups = PDF_GROUPS.filter(g => wantedIds.includes(g.id));
 
   const xlMetric = ($('pdfMetric') || {}).value || 'value';
+  let xlItemsMetric = ($('pdfItemsMetric') || {}).value || 'qty';
+  if((xlItemsMetric === 'qty' || xlItemsMetric === 'both') && !hasQtyData()) xlItemsMetric = 'value';
   const wbOut = XLSX.utils.book_new();
   // الملف كله من اليمين لليسار زي التقرير
   wbOut.Workbook = {Views:[{RTL:true}]};
@@ -2943,12 +2971,12 @@ function generateExcel(includeMonthly, includeSector, opts){
     // شيت "الأصناف بالقطاع": كل صف صنف وكل عمود قطاع
     if(includeItems){
       const secList = sheetCols && sheetCols.length ? sheetCols : secCols;
-      const iRows = rowsForMetric(xlMetric, ()=>
+      const iRows = rowsForMetric(xlItemsMetric, ()=>
         itemSectorRows(selectedMonths, {sectors: secList, filter: groupFilter(g)}));
       const iCols = secList.filter(sec => iRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
       if(iRows.length && iCols.length){
         const sorted = sortRowsForTable('sector', iRows, iCols);
-        const aoa = sectorAoa(sorted, iCols, null, withShowClass, true, xlMetric === 'both');
+        const aoa = sectorAoa(sorted, iCols, null, withShowClass, true, xlItemsMetric === 'both');
         aoa[0][1] = 'الصنف';
         XLSX.utils.book_append_sheet(wbOut,
           sheetWithHeader(aoa, g.title + ' — الأصناف بالقطاع', period, aoa[0].length),
@@ -3916,6 +3944,10 @@ async function generatePdf(includeMonthly, includeSector, opts){
   const withCharts = opts.allGroups ? true : $('pdfCharts').checked;
   const withCards  = opts.allGroups ? true : $('pdfCards').checked;
   const exportMetric = ($('pdfMetric') || {}).value || 'value';
+  // جدول الأصناف ليه مقياسه المستقل (كمية افتراضيًا)، ولو مفيش كميات متخزنة
+  // بيرجع للقيمة لوحده بدل ما يطلع فاضي.
+  let itemsMetric = ($('pdfItemsMetric') || {}).value || 'qty';
+  if((itemsMetric === 'qty' || itemsMetric === 'both') && !hasQtyData()) itemsMetric = 'value';
   const sizeChoice = ($('pdfFontSize') || {}).value || 'large';
   const pdfFont = PDF_FONT_BY_SIZE[sizeChoice] || PDF_FONT_BY_SIZE.large;
   pdfNeededW = 0;                       // بيتحسب أثناء بناء الجداول تحت
@@ -3983,7 +4015,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
       // تقرير الأصناف بالقطاع: كل صف صنف، وكل عمود قطاع من قطاعات المجموعة
       const addItemsTable = ()=>{
         const secList = sheetCols && sheetCols.length ? sheetCols : mainSectors();
-        const iRows = rowsForMetric(exportMetric, ()=>
+        const iRows = rowsForMetric(itemsMetric, ()=>
           itemSectorRows(selectedMonths, {sectors: secList, filter: groupFilter(g)}));
         const iCols = secList.filter(sec => iRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
         if(!iRows.length || !iCols.length) return;
@@ -3991,9 +4023,11 @@ async function generatePdf(includeMonthly, includeSector, opts){
         const tbl = buildTableHtml('sector', columns, sorted, null, {
           totalsFrom: sorted, showClass: withShowClass, sectorCols: iCols,
           ranks: withRanks, allRows: sorted, showAllSectorCols: true,
-          pdfBaseFont: pdfFont, qty: exportMetric === 'both', labelHead: 'الصنف',
+          pdfBaseFont: pdfFont, qty: itemsMetric === 'both', labelHead: 'الصنف',
         });
-        body += `<div class="blk">${head}<div class="sub-title">الأصناف بالقطاع (من الأكبر للأصغر)</div>${tbl}</div>`;
+        const what = itemsMetric === 'qty' ? 'بالكمية'
+          : (itemsMetric === 'both' ? '(القيمة والكمية تحتها)' : 'بالقيمة');
+        body += `<div class="blk">${head}<div class="sub-title">الأصناف بالقطاع ${what} — من الأكبر للأصغر</div>${tbl}</div>`;
         head = '';
       };
 
