@@ -62,6 +62,8 @@
   select[multiple]{min-width:180px;min-height:90px}
   .chart-box{position:relative;height:260px;width:100%}
   .num{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-weight:700}
+  /* الكمية تحت القيمة في نفس الخلية — عشان عدد الأعمدة ما يتضاعفش */
+  .q2{display:block;font-size:.78em;color:#5b6376;font-weight:700;direction:ltr;margin-top:2px}
   .missing{color:var(--warn)}
   .total-row td{background:#e7ebfa;font-weight:700}
   /* ---- كروت "أعلى 3" فوق التقرير — شكل منصة التتويج ---- */
@@ -284,6 +286,13 @@
         <option value="xlarge">أكبر (أوضح)</option>
       </select>
     </label>
+    <label class="chk" style="gap:6px">المعروض
+      <select id="pdfMetric" style="padding:4px 8px">
+        <option value="value" selected>القيمة</option>
+        <option value="qty">الكمية</option>
+        <option value="both">القيمة والكمية</option>
+      </select>
+    </label>
     <label class="chk" style="gap:6px">اتجاه الورقة
       <select id="pdfOrient" style="padding:4px 8px">
         <option value="auto" selected>تلقائي</option>
@@ -357,6 +366,13 @@
     <label class="chk"><input type="checkbox" id="reportGrowthCols" checked> عمود الفرق والنمو %</label>
     <label class="chk"><input type="checkbox" id="reportShowClass"> عمود التصنيف</label>
     <label class="chk"><input type="checkbox" id="reportRanks" checked> ميداليات لأعلى 10</label>
+    <label class="chk" style="gap:6px">المعروض
+      <select id="reportMetric" style="padding:4px 8px">
+        <option value="value" selected>القيمة</option>
+        <option value="qty">الكمية</option>
+        <option value="both">القيمة والكمية</option>
+      </select>
+    </label>
     <button class="ghost" id="reportMonthsBtn">الشهور المعروضة</button>
     <span class="badge" id="reportCount"></span>
   </div>
@@ -455,7 +471,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v52';
+const APP_VERSION = 'v53';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1131,6 +1147,18 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
   const col = (name) => header.findIndex(h => normName(h) === name);
   const cCustomer = col('c_name'), cItem = col('Item_Name'), cVout = col('vout'), cVin = col('vin'),
         cDate = col('Order_Date'), cInv = col('Inv_Name');
+  // الكمية: اسم العمود بيختلف من تصدير للتاني، فبندوّر على أشهر الأسماء.
+  // لو ملقيناش، التقرير بيشتغل بالقيمة بس والرسالة بتقول كده بصراحة.
+  const QTY_OUT_NAMES = ['qout','q_out','qty_out','qtyout','quantity_out','الكمية','كمية','العدد','qty','quantity'];
+  const QTY_IN_NAMES  = ['qin','q_in','qty_in','qtyin','quantity_in','كمية مرتجع','الكمية المرتجعة'];
+  const findCol = (names)=>{
+    for(const n of names){
+      const i = header.findIndex(h => normName(h).toLowerCase() === n.toLowerCase());
+      if(i !== -1) return {idx:i, name: normName(header[i])};
+    }
+    return null;
+  };
+  const qOut = findCol(QTY_OUT_NAMES), qIn = findCol(QTY_IN_NAMES);
   const missing = [['c_name',cCustomer],['Item_Name',cItem],['vout',cVout]].filter(p => p[1] === -1).map(p => p[0]);
   if(missing.length){
     throw new Error('الملف ناقصه أعمدة أساسية: ' + missing.join('، ') + '. اتأكد إنه نفس تنسيق تصدير المحاسبة.');
@@ -1159,17 +1187,27 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
     }
     const vin = toNum(r[cVin]);
     const net = vout - (vin || 0);
+    const qty = qOut ? ((toNum(r[qOut.idx]) || 0) - (qIn ? (toNum(r[qIn.idx]) || 0) : 0)) : 0;
     const month = excelSerialToMonth(r[cDate]) || fallbackMonth;
     if(!month){ noMonthRows++; continue; }
     const wh = cInv !== -1 ? normName(r[cInv]) : '';
     if(!byMonth[month]) byMonth[month] = {};
     if(!byMonth[month][custCell]) byMonth[month][custCell] = {};
     if(!byMonth[month][custCell][itemCell]) byMonth[month][custCell][itemCell] = {cat:'-', net:0, wh:{}};
-    byMonth[month][custCell][itemCell].net += net;
-    if(wh) byMonth[month][custCell][itemCell].wh[wh] = (byMonth[month][custCell][itemCell].wh[wh]||0) + net;
+    const cell = byMonth[month][custCell][itemCell];
+    cell.net += net;
+    if(wh) cell.wh[wh] = (cell.wh[wh]||0) + net;
+    // الكمية بتتخزن جنب القيمة بنفس التقسيمة (إجمالي + لكل مخزن) عشان
+    // تقارير القطاعات تعرف تقسّمها زي الفلوس بالظبط
+    if(qOut){
+      cell.q = (cell.q || 0) + qty;
+      if(wh){ if(!cell.wq) cell.wq = {}; cell.wq[wh] = (cell.wq[wh]||0) + qty; }
+    }
     if(!(itemCell in itemOverride)) newItems.add(itemCell);
   }
-  return {byMonth, newItems: Array.from(newItems), skippedRows, noMonthRows};
+  return {byMonth, newItems: Array.from(newItems), skippedRows, noMonthRows,
+          qtyCol: qOut ? qOut.name : null,
+          headerNames: header.map(h => normName(h)).filter(Boolean)};
 }
 
 function itemSector(itemName){
@@ -1194,17 +1232,36 @@ function resolveForcedSector(base, warehouse){
   return forced;
 }
 
+// ---- المقياس: فلوس ولا كمية ----
+// كل الحسابات بتقرا من نفس الدوال، فبدل ما نمرّر بارامتر في 20 دالة، بنبدّل
+// المقياس مؤقتًا حوالين الحساب. الحساب كله متزامن، فمفيش تداخل.
+let METRIC = 'net';                      // 'net' = قيمة | 'q' = كمية
+function withMetric(m, fn){
+  const old = METRIC; METRIC = m;
+  try{ return fn(); } finally { METRIC = old; }
+}
+function entryAmount(entry){ return Number(entry && entry[METRIC]) || 0; }
+function entryWarehouses(entry){ return (METRIC === 'q' ? (entry && entry.wq) : (entry && entry.wh)) || {}; }
+// فيه كمية متخزنة أصلًا؟ (الشهور المرفوعة قبل ما الكمية تتقرا مالهاش كمية)
+function hasQtyData(){
+  return activeMonths().some(m => {
+    const md = monthsData[m]; if(!md) return false;
+    return Object.keys(md).some(c => Object.keys(md[c]).some(it => md[c][it] && md[c][it].q !== undefined));
+  });
+}
+
 function itemEffectiveSectors(item, entry){
   const base = itemSector(item);
-  const whKeys = entry.wh ? Object.keys(entry.wh) : [];
-  if(!whKeys.length) return [{sector: base, amt: entry.net}];
-  const out = whKeys.map(w => ({ sector: resolveForcedSector(base, w), amt: entry.wh[w] }));
+  const whMap = entryWarehouses(entry);
+  const whKeys = Object.keys(whMap);
+  if(!whKeys.length) return [{sector: base, amt: entryAmount(entry)}];
+  const out = whKeys.map(w => ({ sector: resolveForcedSector(base, w), amt: whMap[w] }));
   // في ملف المحاسبة ممكن بعض سطور نفس الصنف تيجي من غير اسم مخزن (Inv_Name
   // فاضي). السطور دي كانت بتتحسب في إجمالي الصنف بس مش في أي قطاع — يعني
   // فلوس بتختفي من تقارير القطاعات ومن مجموعات التصدير. الباقي بيترحّل
   // لقطاع الصنف الأصلي.
   const tagged = out.reduce((a,o)=> a + o.amt, 0);
-  const rest = (entry.net || 0) - tagged;
+  const rest = entryAmount(entry) - tagged;
   if(Math.abs(rest) > 0.005) out.push({sector: base, amt: rest});
   return out;
 }
@@ -1222,7 +1279,7 @@ $('processBtn').addEventListener('click', async ()=>{
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, {type:'array'});
     const sheetName = wb.SheetNames[0];
-    const {byMonth, newItems, skippedRows, noMonthRows} = parseFlatWorkbook(wb, sheetName, fallbackMonth);
+    const {byMonth, newItems, skippedRows, noMonthRows, qtyCol, headerNames} = parseFlatWorkbook(wb, sheetName, fallbackMonth);
 
     if(!Object.keys(byMonth).length){
       $('uploadMsg').innerHTML = `<div class="msg err">مقدرتش أوصل لشهر لأي صف — الملف مفيهوش تاريخ صالح أو مش بنفس تنسيق ملفات المحاسبة المعروفة، ومحددتش شهر يدوي. جرب اختار الشهر يدوي وأعد المحاولة.</div>`;
@@ -1252,6 +1309,14 @@ $('processBtn').addEventListener('click', async ()=>{
     }
     if(newItems.length){
       msg += `<div class="msg warn">${newItems.length} صنف جديد هيتحط تلقائي على أقرب قطاع بالتخمين بعد الحفظ — راجعهم من "الأصناف" لو حابب تظبطهم.</div>`;
+    }
+    // الكمية: نقول للمستخدم لقيناها في أنهي عمود، ولو ملقيناهاش نعرض أسماء
+    // الأعمدة اللي في الملف عشان يقولنا اسم عمود الكمية الصح.
+    if(qtyCol){
+      msg += `<div class="msg ok">الكمية اتقرت من عمود <b>${esc(qtyCol)}</b> — هتقدر تعرضها جنب القيمة في التقارير.</div>`;
+    } else {
+      msg += `<div class="msg warn">مفيش عمود كمية في الملف — التقارير هتشتغل بالقيمة بس.
+        الأعمدة اللي في الملف: ${esc((headerNames||[]).join('، ').slice(0,300))}</div>`;
     }
     // سطور اتلغت: لازم تتقال بصراحة، دي فلوس مش داخلة في التقرير
     if(skippedRows){
@@ -1343,6 +1408,10 @@ async function commitAll(){
         dst.cat = src.cat;
         if(!dst.wh) dst.wh = {};
         Object.keys(src.wh||{}).forEach(w=>{ dst.wh[w] = (dst.wh[w]||0) + src.wh[w]; });
+        if(src.q !== undefined){
+          dst.q = (dst.q || 0) + src.q;
+          if(src.wq){ if(!dst.wq) dst.wq = {}; Object.keys(src.wq).forEach(w=>{ dst.wq[w] = (dst.wq[w]||0) + src.wq[w]; }); }
+        }
       });
     });
   });
@@ -1443,7 +1512,7 @@ function customerSectorSums(monthData){
 }
 function customerTotal(monthData){
   let t = 0;
-  Object.values(monthData||{}).forEach(o => t += (Number(o.net)||0));
+  Object.values(monthData||{}).forEach(o => t += entryAmount(o));
   return t;
 }
 
@@ -1678,6 +1747,11 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
     const size = (perCol - CELL_PAD) / (digits * DIGIT_EM);
     return 'font-size:' + Math.max(8.5, Math.min(15, size)).toFixed(1) + 'px';
   };
+  // وضع "القيمة والكمية": الكمية بتتكتب سطر صغير تحت القيمة في نفس الخلية،
+  // عشان عدد الأعمدة ما يتضاعفش والورقة ما تزحمش.
+  const withQty = !!opts.qty;
+  const qLine = (q)=> (withQty && q !== null && q !== undefined)
+    ? `<span class="q2">${q ? fmtNum(q) : '-'}</span>` : '';
   const monthlyCols = months.length + (growthCols ? 2 : 0);
   // الميداليات مالهاش معنى إلا لو الجدول مرتّب بالإجمالي من الأكبر للأصغر
   const ranks = !!opts.ranks;
@@ -1710,7 +1784,9 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
       ${growthCols ? `<th title="${esc(gLabel(months[months.length-1]))} − ${esc(gLabel(months[0]))}">الفرق</th><th>النمو %</th>` : ''}
     </tr></thead><tbody>`;
     let grandTotals = months.map(()=>0);
+    let grandQty = withQty ? months.map(()=>0) : null;
     totalsRows.forEach(r => r.months.forEach((v,mi)=> grandTotals[mi]+=v));
+    if(withQty) totalsRows.forEach(r => (r.monthsQty||[]).forEach((v,mi)=> { grandQty[mi]+=v; }));
     rows.forEach((r,i)=>{
       const rowTotal = r.months.reduce((a,b)=>a+b,0);
       const cells = r.months.map((v,mi)=>{
@@ -1720,7 +1796,8 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
           if(v === st.max) style = `background:${CELL_HI_BG}`;
           else if(v === st.min) style = `background:${CELL_LO_BG}`;
         }
-        return `<td class="num" style="${style}">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`;
+        const q = r.monthsQty ? r.monthsQty[mi] : null;
+        return `<td class="num" style="${style}">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}${qLine(q)}</td>`;
       }).join('');
       let gCells = '';
       if(growthCols){
@@ -1729,7 +1806,8 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
         gCells = `<td class="num" style="color:${d>0?'#0a7a4a':(d<0?'#c0392b':'#666')}">${d>=0?'+':''}${d.toLocaleString('en-US',{maximumFractionDigits:0})}</td>` +
                  `<td class="num" style="color:${pc===null?'#0a7a4a':(pc>0?'#0a7a4a':(pc<0?'#c0392b':'#666'))};font-weight:700">${pctText(pc)}</td>`;
       }
-      html += `<tr><td>${rankOf(i)}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}<td class="num">${rowTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</td>${cells}${gCells}</tr>`;
+      const rowQty = r.monthsQty ? r.monthsQty.reduce((a,b)=>a+b,0) : null;
+      html += `<tr><td>${rankOf(i)}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}<td class="num">${rowTotal.toLocaleString('en-US',{maximumFractionDigits:0})}${qLine(rowQty)}</td>${cells}${gCells}</tr>`;
     });
     if(showTotals){
       let gTotal = '';
@@ -1738,7 +1816,10 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
         const d = l - f, pc = pctChange(f, l);
         gTotal = `<td class="num">${d>=0?'+':''}${d.toLocaleString('en-US',{maximumFractionDigits:0})}</td><td class="num">${pctText(pc)}</td>`;
       }
-      html += `<tr class="total-row"><td colspan="${labelSpan}">الإجمالي</td><td class="num">${grandTotals.reduce((a,b)=>a+b,0).toLocaleString('en-US',{maximumFractionDigits:0})}</td>${grandTotals.map(v=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}</td>`).join('')}${gTotal}</tr>`;
+      html += `<tr class="total-row"><td colspan="${labelSpan}">الإجمالي</td>` +
+        `<td class="num">${grandTotals.reduce((a,b)=>a+b,0).toLocaleString('en-US',{maximumFractionDigits:0})}` +
+        `${qLine(grandQty ? grandQty.reduce((a,b)=>a+b,0) : null)}</td>` +
+        `${grandTotals.map((v,mi)=>`<td class="num">${v.toLocaleString('en-US',{maximumFractionDigits:0})}${qLine(grandQty?grandQty[mi]:null)}</td>`).join('')}${gTotal}</tr>`;
     }
     html += '</tbody></table></div>';
     return growthHiddenNote + html;
@@ -1773,6 +1854,7 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
     rows.forEach((r,i)=>{
       const sums = cols.map(s => (r.sectors||{})[s]||0);
       const total = sums.reduce((a,b)=>a+b,0);
+      const qs = withQty && r.sectorsQty ? cols.map(sc => (r.sectorsQty||{})[sc]||0) : null;
       const cells = sums.map((v,si)=>{
         const st = colStats[si];
         let style = '';
@@ -1780,9 +1862,10 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
           if(v === st.max) style = `background:${CELL_HI_BG}`;
           else if(v === st.min) style = `background:${CELL_LO_BG}`;
         }
-        return `<td class="num" style="${style}">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}</td>`;
+        return `<td class="num" style="${style}">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}${qLine(qs?qs[si]:null)}</td>`;
       }).join('');
-      html += `<tr><td>${rankOf(i)}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}${cells}<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`;
+      html += `<tr><td>${rankOf(i)}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}${cells}` +
+        `<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}${qLine(qs?qs.reduce((a,b)=>a+b,0):null)}</td></tr>`;
     });
     if(showTotals){
       const gt = grandTotals.reduce((a,b)=>a+b,0);
@@ -1799,6 +1882,7 @@ const reportView = {
   cls: '',            // '' = كل التصنيفات
   aggWholesale: true, // الجملة في صف واحد زي التصدير
   hiddenMonths: [],   // شهور المستخدم شالها من العرض
+  metric: 'value',    // 'value' | 'qty' | 'both'
   sortKey: 'total',   // 'total' | 'label' | رقم عمود
   sortDir: 'desc',
   growthCols: true,   // عمودَي الفرق والنمو % جوه جدول المبيعات
@@ -1905,6 +1989,24 @@ function sortReportRows(rows, tabType, sectorCols){
   });
 }
 
+// بيرجّع صفوف جاهزة حسب المقياس المختار. في وضع "الاتنين" بنحسب الصفوف
+// مرتين (فلوس وكمية) وبنلزق الكمية جنب كل صف بنفس الاسم.
+function rowsForMetric(metric, build){
+  if(metric === 'qty') return withMetric('q', build);
+  const rows = build();
+  if(metric !== 'both') return rows;
+  const qRows = withMetric('q', build);
+  const byLabel = {};
+  qRows.forEach(r => { byLabel[r.label] = r; });
+  return rows.map(r => {
+    const q = byLabel[r.label];
+    return Object.assign({}, r, {
+      monthsQty: q ? q.months : null,
+      sectorsQty: q ? q.sectors : null,
+    });
+  });
+}
+
 function renderReport(){
   renderReportClassFilter();
   const months = visibleMonths();
@@ -1926,7 +2028,8 @@ function renderReport(){
   renderKpiCards(months);
   if(activeTab === 'growth'){ renderGrowthTab(months); return; }
 
-  const baseRows = reportRows(months);
+  const metric = reportView.metric;
+  const baseRows = rowsForMetric(metric, ()=> reportRows(months));
   // أعمدة تبويب "بالقطاع" بتتحدد هنا مرة واحدة: كل قطاع فيه مبيعات فعلية.
   // نفس القايمة بتروح للترتيب وللرسم، عشان الضغط على رأس عمود يرتّب بالعمود
   // اللي المستخدم ضغط عليه فعلًا.
@@ -1936,14 +2039,16 @@ function renderReport(){
   const rows = sortReportRows(baseRows, activeTab, secCols);
   const total = rows.reduce((a,r)=> a + rowGrandTotal(activeTab, r, secCols), 0);
   const ranksOff = reportView.ranks && !(reportView.sortKey === 'total' && reportView.sortDir === 'desc');
+  const metricNote = metric === 'qty' ? ' — الأرقام كمية مش قيمة'
+    : (metric === 'both' ? ' — الرقم الصغير تحت كل قيمة هو الكمية' : '');
   $('reportCount').textContent = rows.length
-    ? `${rows.length} صف — إجمالي ${total.toLocaleString('en-US',{maximumFractionDigits:0})}` +
+    ? `${rows.length} صف — إجمالي ${total.toLocaleString('en-US',{maximumFractionDigits:0})}` + metricNote +
       (ranksOff ? ' — الميداليات مخفية عشان الترتيب مش بالإجمالي' : '')
     : '';
   $('reportArea').innerHTML = rows.length
     ? buildTableHtml(activeTab, months, rows, null, {
         sortable:true, growthCols: reportView.growthCols, showClass: reportView.showClass, allRows: rows,
-        sectorCols: secCols, showAllSectorCols: !!secCols,
+        sectorCols: secCols, showAllSectorCols: !!secCols, qty: metric === 'both',
         // الميدالية معناها "الأعلى مبيعات" — فمتظهرش لو المستخدم رتّب بعمود تاني
         ranks: reportView.ranks && reportView.sortKey === 'total' && reportView.sortDir === 'desc',
       })
@@ -1965,7 +2070,7 @@ function itemTotalsForMonths(months, filter){
       if(classification[c] === 'مستبعد') return;
       if(filter && !filter.customer(c)) return;
       Object.keys(md[c]).forEach(item=>{
-        if(!filter){ map[item] = (map[item]||0) + (Number(md[c][item].net)||0); return; }
+        if(!filter){ map[item] = (map[item]||0) + entryAmount(md[c][item]); return; }
         // مجموعة معيّنة: الصنف بيتحسب بالجزء اللي قطاعه داخل المجموعة بس
         itemEffectiveSectors(item, md[c][item]).forEach(({sector, amt})=>{
           if(filter.sector(sector)) map[item] = (map[item]||0) + amt;
@@ -2426,6 +2531,7 @@ $('reportAggWholesale').addEventListener('change', (e)=>{ reportView.aggWholesal
 $('reportGrowthCols').addEventListener('change', (e)=>{ reportView.growthCols = e.target.checked; renderReport(); });
 $('reportShowClass').addEventListener('change', (e)=>{ reportView.showClass = e.target.checked; renderReport(); });
 $('reportRanks').addEventListener('change', (e)=>{ reportView.ranks = e.target.checked; renderReport(); });
+$('reportMetric').addEventListener('change', (e)=>{ reportView.metric = e.target.value; renderReport(); });
 $('reportMonthsBtn').addEventListener('click', ()=>{
   const panel = $('reportMonthsPanel');
   const showing = panel.style.display !== 'none';
@@ -2488,39 +2594,59 @@ function renderCharts(){
 // ---- Export ----
 // ---- تصدير Excel: بنفس اختيارات وتنسيق الـPDF ----
 // نفس المجموعات المختارة، نفس الأعمدة (شهور/كوارترات)، ونفس الترتيب من الأكبر للأصغر.
-function monthlyAoa(rows, columns, totalsRows, withGrowth, showClass){
+function monthlyAoa(rows, columns, totalsRows, withGrowth, showClass, withQty){
   const g = withGrowth && columns.length >= 2;
   const lbl = (c)=> typeof c === 'string' ? monthLabel(c) : c.label;
-  const header = ['م','بيان', ...(showClass ? ['التصنيف'] : []), 'الإجمالي', ...columns.map(lbl)];
+  // في الإكسل الخلية مبتشيلش رقمين، فالكمية بتاخد عمود جنب كل قيمة
+  const qh = (name)=> withQty ? [name, 'كمية ' + name] : [name];
+  const pair = (v, q)=> withQty ? [v, q] : [v];
+  const header = ['م','بيان', ...(showClass ? ['التصنيف'] : []),
+    ...qh('الإجمالي'), ...columns.flatMap(c=> qh(lbl(c)))];
   if(g) header.push(`الفرق (${lbl(columns[columns.length-1])} − ${lbl(columns[0])})`, 'النمو %');
   const growthCells = (arr)=>{
     const f = arr[0]||0, l = arr[arr.length-1]||0, pc = pctChange(f, l);
     return [l - f, pc === null ? 'جديد' : Number(pc.toFixed(1))];
   };
+  const qOf = (r, i)=> (r.monthsQty && r.monthsQty[i] !== undefined) ? r.monthsQty[i] : 0;
   const body = rows.map((r,i)=>{
-    const row = [i+1, r.label, ...(showClass ? [r.cls] : []), r.months.reduce((a,b)=>a+b,0), ...r.months];
+    const row = [i+1, r.label, ...(showClass ? [r.cls] : []),
+      ...pair(r.months.reduce((a,b)=>a+b,0), (r.monthsQty||[]).reduce((a,b)=>a+b,0)),
+      ...r.months.flatMap((v,ci)=> pair(v, qOf(r, ci)))];
     if(g) row.push(...growthCells(r.months));
     return row;
   });
   const src = totalsRows || rows;
   const colTotals = columns.map((_,ci)=> src.reduce((a,r)=> a + (r.months[ci]||0), 0));
-  const totalRow = ['', 'الإجمالي', ...(showClass ? [''] : []), colTotals.reduce((a,b)=>a+b,0), ...colTotals];
+  const colQty    = columns.map((_,ci)=> src.reduce((a,r)=> a + qOf(r, ci), 0));
+  const totalRow = ['', 'الإجمالي', ...(showClass ? [''] : []),
+    ...pair(colTotals.reduce((a,b)=>a+b,0), colQty.reduce((a,b)=>a+b,0)),
+    ...colTotals.flatMap((v,ci)=> pair(v, colQty[ci]))];
   if(g) totalRow.push(...growthCells(colTotals));
   return [header, ...body, totalRow];
 }
-function sectorAoa(rows, allCols, totalsRows, showClass, showAllCols){
+function sectorAoa(rows, allCols, totalsRows, showClass, showAllCols, withQty){
   const src = totalsRows || rows;
   // نفس منطق الشاشة: القطاع اللي مفيهوش أي مبيعات مبيظهرش عمود —
   // إلا لو دي أعمدة شيت خاص، ساعتها بتظهر كلها.
   const cols = showAllCols ? allCols
     : allCols.filter(sc => src.some(r => ((r.sectors||{})[sc]||0) !== 0));
-  const header = ['م','العميل / المجموعة', ...(showClass ? ['التصنيف'] : []), ...cols, 'الإجمالي'];
+  const qh = (name)=> withQty ? [name, 'كمية ' + name] : [name];
+  const pair = (v, q)=> withQty ? [v, q] : [v];
+  const qOf = (r, sc)=> ((r.sectorsQty||{})[sc]) || 0;
+  const header = ['م','العميل / المجموعة', ...(showClass ? ['التصنيف'] : []),
+    ...cols.flatMap(qh), ...qh('الإجمالي')];
   const body = rows.map((r,i)=>{
     const sums = cols.map(sc=> (r.sectors||{})[sc]||0);
-    return [i+1, r.label, ...(showClass ? [r.cls] : []), ...sums, sums.reduce((a,b)=>a+b,0)];
+    const qs   = cols.map(sc=> qOf(r, sc));
+    return [i+1, r.label, ...(showClass ? [r.cls] : []),
+      ...sums.flatMap((v,ci)=> pair(v, qs[ci])),
+      ...pair(sums.reduce((a,b)=>a+b,0), qs.reduce((a,b)=>a+b,0))];
   });
   const colTotals = cols.map(sc=> src.reduce((a,r)=> a + ((r.sectors||{})[sc]||0), 0));
-  const totalRow = ['', 'الإجمالي', ...(showClass ? [''] : []), ...colTotals, colTotals.reduce((a,b)=>a+b,0)];
+  const colQty    = cols.map(sc=> src.reduce((a,r)=> a + qOf(r, sc), 0));
+  const totalRow = ['', 'الإجمالي', ...(showClass ? [''] : []),
+    ...colTotals.flatMap((v,ci)=> pair(v, colQty[ci])),
+    ...pair(colTotals.reduce((a,b)=>a+b,0), colQty.reduce((a,b)=>a+b,0))];
   return [header, ...body, totalRow];
 }
 
@@ -2692,6 +2818,7 @@ function generateExcel(includeMonthly, includeSector, opts){
   if(!wantedIds.length){ alert('اختار مجموعة واحدة على الأقل'); return; }
   const groups = PDF_GROUPS.filter(g => wantedIds.includes(g.id));
 
+  const xlMetric = ($('pdfMetric') || {}).value || 'value';
   const wbOut = XLSX.utils.book_new();
   // الملف كله من اليمين لليسار زي التقرير
   wbOut.Workbook = {Views:[{RTL:true}]};
@@ -2699,7 +2826,7 @@ function generateExcel(includeMonthly, includeSector, opts){
   const secCols = mainSectors();
 
   groups.forEach(g=>{
-    const rows = groupRows(g, columns);
+    const rows = rowsForMetric(xlMetric, ()=> groupRows(g, columns));
     if(!rows.length) return;
     const sheetCols = g.kind === 'special' ? sectorsOfSheet(g.sheet) : null;
     const canSectorSheet = g.kind === 'class' || (sheetCols && sheetCols.length > 1);
@@ -2707,7 +2834,7 @@ function generateExcel(includeMonthly, includeSector, opts){
     const wantMonthlySheet = includeMonthly || (includeSector && !canSectorSheet);
     if(wantMonthlySheet){
       const sorted = sortRowsForTable('monthly', rows);
-      const aoa = monthlyAoa(sorted, columns, null, withGrowthCols, withShowClass);
+      const aoa = monthlyAoa(sorted, columns, null, withGrowthCols, withShowClass, xlMetric === 'both');
       XLSX.utils.book_append_sheet(wbOut,
         sheetWithHeader(aoa, g.title, period, aoa[0].length),
         safeSheetName('شهري-' + g.title, used));
@@ -2715,7 +2842,7 @@ function generateExcel(includeMonthly, includeSector, opts){
     if(includeSector && canSectorSheet){
       const cols = sheetCols && sheetCols.length ? sheetCols : secCols;
       const sorted = sortRowsForTable('sector', rows, cols);
-      const aoa = sectorAoa(sorted, cols, null, withShowClass, false);
+      const aoa = sectorAoa(sorted, cols, null, withShowClass, false, xlMetric === 'both');
       XLSX.utils.book_append_sheet(wbOut,
         sheetWithHeader(aoa, g.title, period, aoa[0].length),
         safeSheetName('قطاع-' + g.title, used));
@@ -2756,6 +2883,10 @@ async function mergeCustomers(fromName, toName){
       dst.net += src.net;
       if(!dst.wh) dst.wh = {};
       Object.keys(src.wh||{}).forEach(w=>{ dst.wh[w] = (dst.wh[w]||0) + src.wh[w]; });
+      if(src.q !== undefined){
+        dst.q = (dst.q || 0) + src.q;
+        if(src.wq){ if(!dst.wq) dst.wq = {}; Object.keys(src.wq).forEach(w=>{ dst.wq[w] = (dst.wq[w]||0) + src.wq[w]; }); }
+      }
     });
     delete md[fromName];
     touched.push(m);
@@ -3520,6 +3651,7 @@ const PDF_STYLE = `
   /* الأرقام: مايطلعش منها حاجة بره الخلية. الخط بيتحدد من fitStyle حسب عدد
      الأعمدة، والـoverflow ضمانة أخيرة لو رقم طلع أطول من المتوقع. */
   td.num{font-weight:700;direction:ltr;font-family:Arial,Helvetica,sans-serif;white-space:nowrap}
+  .q2{display:block;font-size:.78em;color:#555;font-weight:700;direction:ltr;margin-top:1px}
   th,td{overflow:hidden}
   /* عمود الاسم بالنسبة مش بالبكسل — عشان يفضل متزن مع أي مقاس خط */
   td:nth-child(2),th:nth-child(2){width:21%;text-align:right}
@@ -3672,6 +3804,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
   const groups = PDF_GROUPS.filter(g => wantedIds.includes(g.id));
   const withCharts = opts.allGroups ? true : $('pdfCharts').checked;
   const withCards  = opts.allGroups ? true : $('pdfCards').checked;
+  const exportMetric = ($('pdfMetric') || {}).value || 'value';
   const sizeChoice = ($('pdfFontSize') || {}).value || 'large';
   const pdfFont = PDF_FONT_BY_SIZE[sizeChoice] || PDF_FONT_BY_SIZE.large;
   pdfNeededW = 0;                       // بيتحسب أثناء بناء الجداول تحت
@@ -3691,11 +3824,13 @@ async function generatePdf(includeMonthly, includeSector, opts){
     // ---- 1) بناء محتوى التقرير كله كـHTML، كل كتلة .blk نقطة قطع مسموحة ----
     let body = '';
     for(const g of groups){
-      const rows = groupRows(g, columns);
+      const rows = rowsForMetric(exportMetric, ()=> groupRows(g, columns));
       if(!rows.length) continue;
 
       // العنوان ملزوق بأول جدول في نفس الكتلة، عشان ميقعش لوحده في آخر صفحة
-      let head = `<div class="grp-title">${esc(g.title)}</div>`;
+      let head = `<div class="grp-title">${esc(g.title)}</div>` +
+        (exportMetric === 'qty' ? `<div class="sub-title">الأرقام في هذا التقرير <b>كمية</b> مش قيمة</div>`
+         : (exportMetric === 'both' ? `<div class="sub-title">الرقم الصغير تحت كل قيمة هو <b>الكمية</b></div>` : ''));
       const canSector = g.kind === 'class'; // القطاعات الخاصة كلها قطاع واحد أصلًا
 
       // كروت "أعلى ٣" للمجموعة دي فوق جداولها — بأرقام المجموعة نفسها
@@ -3724,6 +3859,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
           // بيظهر دايمًا فاضي (كله "-") لأي شيت خاص، حتى لو مفيش عليه بضاعة خالص.
           showAllSectorCols: false,
           pdfBaseFont: pdfFont,    // الخط ثابت، والعرض هو اللي بيتظبط
+          qty: exportMetric === 'both',
         });
         body += `<div class="blk">${head}<div class="sub-title">${esc(subTitle)}</div>${tbl}</div>`;
         head = ''; // العنوان مرة واحدة بس
