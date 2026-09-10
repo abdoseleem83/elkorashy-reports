@@ -273,6 +273,7 @@
   <div class="row" style="margin-top:10px">
     <label class="chk"><input type="checkbox" id="pdfMonthly" checked> مقارنة المبيعات الشهرية</label>
     <label class="chk"><input type="checkbox" id="pdfSector" checked> مقارنة المبيعات بالقطاع</label>
+    <label class="chk"><input type="checkbox" id="pdfItems"> الأصناف بالقطاع (كل صنف وتوزيعه)</label>
     <label class="chk"><input type="checkbox" id="pdfGrowthCols" checked> عمودَي الفرق والنمو % في جدول المبيعات</label>
     <label class="chk"><input type="checkbox" id="pdfShowClass"> عمود التصنيف</label>
     <label class="chk"><input type="checkbox" id="pdfRanks" checked> ميداليات لأعلى 10</label>
@@ -356,6 +357,7 @@
   <div class="tabs">
     <div class="tab active" data-tab="monthly">مقارنة المبيعات الشهرية</div>
     <div class="tab" data-tab="sector">مقارنة المبيعات بالقطاع</div>
+    <div class="tab" data-tab="items">الأصناف بالقطاع</div>
     <div class="tab" data-tab="growth">النمو والمقارنة</div>
   </div>
 
@@ -366,6 +368,11 @@
     <label class="chk"><input type="checkbox" id="reportGrowthCols" checked> عمود الفرق والنمو %</label>
     <label class="chk"><input type="checkbox" id="reportShowClass"> عمود التصنيف</label>
     <label class="chk"><input type="checkbox" id="reportRanks" checked> ميداليات لأعلى 10</label>
+    <label class="chk" style="gap:6px" id="itemsSheetWrap" style="display:none">القطاعات
+      <select id="itemsSheet" style="padding:4px 8px">
+        <option value="">كل القطاعات</option>
+      </select>
+    </label>
     <label class="chk" style="gap:6px">المعروض
       <select id="reportMetric" style="padding:4px 8px">
         <option value="value" selected>القيمة</option>
@@ -471,7 +478,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v53';
+const APP_VERSION = 'v54';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1844,7 +1851,7 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
       widest = Math.max(widest, numWidth(t));
     });
     let html = `<div class="tbl-wrap"><table style="${fitStyleFor(cols.length + 1, widest)}"><thead><tr>
-      <th>م</th><th${sortAttr('label')}>العميل / المجموعة${arrow('label')}</th>${clsHead}
+      <th>م</th><th${sortAttr('label')}>${esc(opts.labelHead || 'العميل / المجموعة')}${arrow('label')}</th>${clsHead}
       ${cols.map((s,si)=>`<th${sortAttr(si)}>${esc(s)}${arrow(si)}</th>`).join('')}<th${sortAttr('total')}>الإجمالي${arrow('total')}</th>
     </tr></thead><tbody>`;
     let grandTotals = cols.map(()=>0);
@@ -1893,6 +1900,15 @@ const reportView = {
 // الشهور اللي التقرير بيعرضها فعلًا (النشطة ناقص اللي المستخدم خفاها)
 function visibleMonths(){
   return activeMonths().filter(m => !reportView.hiddenMonths.includes(m));
+}
+
+function renderItemsSheetOptions(){
+  const sel = $('itemsSheet');
+  if(!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">كل القطاعات</option>` +
+    SPECIAL_SHEETS.map(sh=>`<option value="${sh.id}">شيت ${esc(sh.title)}</option>`).join('');
+  sel.value = cur;
 }
 
 function renderReportClassFilter(){
@@ -1989,6 +2005,43 @@ function sortReportRows(rows, tabType, sectorCols){
   });
 }
 
+// ---- تقرير الأصناف بالقطاع ----
+// كل صف = صنف، وكل عمود = قطاع، والخلية = مبيعات الصنف ده في القطاع ده.
+// بيستخدم itemEffectiveSectors فالتفنيطات وترحيل المخازن بيتحسبوا زي أي تقرير.
+function itemSectorRows(months, opts){
+  opts = opts || {};
+  const only = opts.sectors ? new Set(opts.sectors) : null;
+  const map = {};
+  months.forEach(m=>{
+    const md = monthsData[m]; if(!md) return;
+    Object.keys(md).forEach(c=>{
+      if(classification[c] === 'مستبعد') return;
+      if(opts.cls && classification[c] !== opts.cls) return;
+      if(opts.filter && !opts.filter.customer(c)) return;
+      Object.keys(md[c]).forEach(item=>{
+        itemEffectiveSectors(item, md[c][item]).forEach(({sector, amt})=>{
+          if(!SECTORS.includes(sector)) return;
+          if(only && !only.has(sector)) return;
+          if(opts.filter && !opts.filter.sector(sector)) return;
+          if(!amt) return;
+          if(!map[item]) map[item] = {};
+          map[item][sector] = (map[item][sector]||0) + amt;
+        });
+      });
+    });
+  });
+  let rows = Object.keys(map).map(item => ({
+    label: item,
+    cls: itemSector(item) || 'غير محدد',
+    sectors: map[item],
+  }));
+  if(opts.search){
+    const q = opts.search.trim();
+    if(q) rows = rows.filter(r => r.label.includes(q));
+  }
+  return rows;
+}
+
 // بيرجّع صفوف جاهزة حسب المقياس المختار. في وضع "الاتنين" بنحسب الصفوف
 // مرتين (فلوس وكمية) وبنلزق الكمية جنب كل صف بنفس الاسم.
 function rowsForMetric(metric, build){
@@ -2009,6 +2062,8 @@ function rowsForMetric(metric, build){
 
 function renderReport(){
   renderReportClassFilter();
+  renderItemsSheetOptions();
+  $('reportSearch').placeholder = activeTab === 'items' ? 'بحث باسم الصنف...' : 'بحث باسم العميل...';
   const months = visibleMonths();
   const anyMonths = activeMonths();
   if(!anyMonths.length){
@@ -2029,6 +2084,12 @@ function renderReport(){
   if(activeTab === 'growth'){ renderGrowthTab(months); return; }
 
   const metric = reportView.metric;
+
+  // تبويب "الأصناف بالقطاع": صفوفه أصناف مش عملاء
+  const itemsWrap = $('itemsSheetWrap');
+  if(itemsWrap) itemsWrap.style.display = activeTab === 'items' ? '' : 'none';
+  if(activeTab === 'items'){ renderItemsSectorTab(months, metric); return; }
+
   const baseRows = rowsForMetric(metric, ()=> reportRows(months));
   // أعمدة تبويب "بالقطاع" بتتحدد هنا مرة واحدة: كل قطاع فيه مبيعات فعلية.
   // نفس القايمة بتروح للترتيب وللرسم، عشان الضغط على رأس عمود يرتّب بالعمود
@@ -2203,6 +2264,34 @@ function renderKpiCards(months){
   // نفس اختيار "اجمع الجملة في صف واحد" اللي فوق الجدول
   const {html, note} = kpiCardsHtml(months, null, reportView.aggWholesale);
   box.innerHTML = html ? html + `<div class="kpi-note">${esc(note)}</div>` : '';
+}
+
+// شاشة تقرير الأصناف بالقطاع
+function renderItemsSectorTab(months, metric){
+  const sheetSel = $('itemsSheet');
+  const sheetId = sheetSel ? sheetSel.value : '';
+  const secList = sheetId ? sectorsOfSheet(sheetId) : null;
+  const build = ()=> itemSectorRows(months, {
+    sectors: secList, cls: reportView.cls || null, search: reportView.search,
+  });
+  const baseRows = rowsForMetric(metric, build);
+  const cols = (secList || SECTORS).filter(sec => baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
+  const rows = sortRowsForTable('sector', baseRows, cols);
+  const total = rows.reduce((a,r)=> a + rowGrandTotal('sector', r, cols), 0);
+  const note = metric === 'qty' ? ' — الأرقام كمية مش قيمة'
+    : (metric === 'both' ? ' — الرقم الصغير تحت كل قيمة هو الكمية' : '');
+  $('reportCount').textContent = rows.length
+    ? `${rows.length} صنف — إجمالي ${fmtNum(total)}${note}` : '';
+  $('reportArea').innerHTML = rows.length
+    ? buildTableHtml('sector', months, rows, null, {
+        sortable:true, showClass: reportView.showClass, allRows: rows,
+        sectorCols: cols, showAllSectorCols: true, qty: metric === 'both',
+        ranks: reportView.ranks && reportView.sortKey === 'total' && reportView.sortDir === 'desc',
+        labelHead: 'الصنف',
+      })
+    : '<div class="sub">مفيش أصناف عليها مبيعات في الشهور والفلاتر دي.</div>';
+  bindSortHeaders();
+  renderCharts();
 }
 
 // ---- تبويب النمو والمقارنة ----
@@ -2532,6 +2621,7 @@ $('reportGrowthCols').addEventListener('change', (e)=>{ reportView.growthCols = 
 $('reportShowClass').addEventListener('change', (e)=>{ reportView.showClass = e.target.checked; renderReport(); });
 $('reportRanks').addEventListener('change', (e)=>{ reportView.ranks = e.target.checked; renderReport(); });
 $('reportMetric').addEventListener('change', (e)=>{ reportView.metric = e.target.value; renderReport(); });
+$('itemsSheet').addEventListener('change', ()=> renderReport());
 $('reportMonthsBtn').addEventListener('click', ()=>{
   const panel = $('reportMonthsPanel');
   const showing = panel.style.display !== 'none';
@@ -2801,7 +2891,10 @@ function generateExcel(includeMonthly, includeSector, opts){
   const includeGrowth = opts.allGroups ? true : $('pdfGrowth').checked;
   const withGrowthCols = opts.allGroups ? true : $('pdfGrowthCols').checked;
   const withShowClass = $('pdfShowClass') ? $('pdfShowClass').checked : false;
-  if(!includeMonthly && !includeSector && !includeGrowth){ alert('اختار تقرير واحد على الأقل (شهري أو قطاعي أو نمو)'); return; }
+  const includeItems = $('pdfItems') ? $('pdfItems').checked : false;
+  if(!includeMonthly && !includeSector && !includeGrowth && !includeItems){
+    alert('اختار تقرير واحد على الأقل (شهري أو قطاعي أو أصناف أو نمو)'); return;
+  }
   if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
 
   const checked = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(el=>el.value);
@@ -2846,6 +2939,21 @@ function generateExcel(includeMonthly, includeSector, opts){
       XLSX.utils.book_append_sheet(wbOut,
         sheetWithHeader(aoa, g.title, period, aoa[0].length),
         safeSheetName('قطاع-' + g.title, used));
+    }
+    // شيت "الأصناف بالقطاع": كل صف صنف وكل عمود قطاع
+    if(includeItems){
+      const secList = sheetCols && sheetCols.length ? sheetCols : secCols;
+      const iRows = rowsForMetric(xlMetric, ()=>
+        itemSectorRows(selectedMonths, {sectors: secList, filter: groupFilter(g)}));
+      const iCols = secList.filter(sec => iRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
+      if(iRows.length && iCols.length){
+        const sorted = sortRowsForTable('sector', iRows, iCols);
+        const aoa = sectorAoa(sorted, iCols, null, withShowClass, true, xlMetric === 'both');
+        aoa[0][1] = 'الصنف';
+        XLSX.utils.book_append_sheet(wbOut,
+          sheetWithHeader(aoa, g.title + ' — الأصناف بالقطاع', period, aoa[0].length),
+          safeSheetName('أصناف-' + g.title, used));
+      }
     }
     if(growthOk){
       const gRows = growthRowsFrom(rows, growthView.prevMonths, growthView.curMonths, growthScope(g));
@@ -3786,7 +3894,10 @@ async function generatePdf(includeMonthly, includeSector, opts){
   const withShowClass = $('pdfShowClass') ? $('pdfShowClass').checked : false;
   const withRanks = $('pdfRanks') ? $('pdfRanks').checked : true;
   const withWatermark = $('pdfWatermark') ? $('pdfWatermark').checked : true;
-  if(!includeMonthly && !includeSector && !includeGrowth){ alert('اختار تقرير واحد على الأقل (شهري أو قطاعي أو نمو)'); return; }
+  const includeItems = $('pdfItems') ? $('pdfItems').checked : false;
+  if(!includeMonthly && !includeSector && !includeGrowth && !includeItems){
+    alert('اختار تقرير واحد على الأقل (شهري أو قطاعي أو أصناف أو نمو)'); return;
+  }
 
   const checked = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(el=>el.value);
   const selectedMonths = checked.length ? checked : allMonths;
@@ -3868,14 +3979,33 @@ async function generatePdf(includeMonthly, includeSector, opts){
       // الشيت الخاص (أبواب/شتر) بيتقارن بقطاعاته الفرعية — ابواب 70/80/90...
       const sheetCols = g.kind === 'special' ? sectorsOfSheet(g.sheet) : null;
       const canSectorHere = canSector || (sheetCols && sheetCols.length > 1);
+
+      // تقرير الأصناف بالقطاع: كل صف صنف، وكل عمود قطاع من قطاعات المجموعة
+      const addItemsTable = ()=>{
+        const secList = sheetCols && sheetCols.length ? sheetCols : mainSectors();
+        const iRows = rowsForMetric(exportMetric, ()=>
+          itemSectorRows(selectedMonths, {sectors: secList, filter: groupFilter(g)}));
+        const iCols = secList.filter(sec => iRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
+        if(!iRows.length || !iCols.length) return;
+        const sorted = sortRowsForTable('sector', iRows, iCols);
+        const tbl = buildTableHtml('sector', columns, sorted, null, {
+          totalsFrom: sorted, showClass: withShowClass, sectorCols: iCols,
+          ranks: withRanks, allRows: sorted, showAllSectorCols: true,
+          pdfBaseFont: pdfFont, qty: exportMetric === 'both', labelHead: 'الصنف',
+        });
+        body += `<div class="blk">${head}<div class="sub-title">الأصناف بالقطاع (من الأكبر للأصغر)</div>${tbl}</div>`;
+        head = '';
+      };
+
       if(includeMonthly) addTable('monthly', 'مقارنة المبيعات (من الأكبر للأصغر)');
       if(includeSector && canSectorHere){
         addTable('sector', 'مقارنة المبيعات بالقطاع (من الأكبر للأصغر)', sheetCols);
-      } else if(includeSector && !includeMonthly){
+      } else if(includeSector && !includeMonthly && !includeItems){
         // شيت قطاعه واحد بس: مفيش تفصيل قطاعي ليه، فنعرض جدوله الشهري
         // بدل ما يطلع شارت لوحده من غير أي جدول.
         addTable('monthly', 'مقارنة المبيعات (من الأكبر للأصغر)');
       }
+      if(includeItems) addItemsTable();
 
       // جدول النمو للمجموعة دي بالفترتين المختارتين
       if(growthOk){
