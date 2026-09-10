@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v70';
+const APP_VERSION = 'v71';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -826,6 +826,30 @@ function guessSector(itemName){
   return 'اكسسوارات';
 }
 
+// نتيجة التحميل المتوازي: مفتاح -> {ok, r} أو {ok:false, e}
+let preFetched = null;
+async function preloadKeys(keys){
+  const out = {};
+  const LIMIT = 6;   // Apps Script بيرفض لو الطلبات المتوازية كترت
+  for(let i=0;i<keys.length;i+=LIMIT){
+    await Promise.all(keys.slice(i, i+LIMIT).map(async k=>{
+      try{ out[k] = {ok:true, r: await window.storage.get(k)}; }
+      catch(e){ out[k] = {ok:false, e}; }
+    }));
+  }
+  preFetched = out;
+  return out;
+}
+// بيقرا من التحميل المتوازي لو المفتاح فيه، وإلا بيروح للسيرفر عادي
+async function getKey(k){
+  if(preFetched && preFetched[k]){
+    const p = preFetched[k];
+    if(p.ok) return p.r;
+    throw p.e;
+  }
+  return window.storage.get(k);
+}
+
 async function loadStorage(){
   // 1) اعرض آخر نسخة محفوظة على الجهاز فورًا عشان الصفحة تفتح من غير انتظار،
   //    وبعدين هات النسخة المركزية في الخلفية وحدّث لو فيه جديد.
@@ -860,7 +884,7 @@ async function loadStorage(){
       $('appVersionBadge').textContent = APP_VERSION;
       $('loadStatus').textContent = 'بيزامن...';
       renderMonthPills();
-      renderReport();
+      if(activeModule === 'sales') renderReport();
       shownFromCache = true;
     }
   }catch(e){}
@@ -868,6 +892,13 @@ async function loadStorage(){
 
   // مهم: منمسحش اللي معروض غير لما البيانات المركزية توصل فعلًا. قبل كده كانت
   // monthsData بتتفضّى على طول، فلو النت قطع كانت الشاشة تفضل فاضية.
+  // كل المفاتيح دي كانت بتتقرا واحد ورا التاني — ١٠ رحلات للسيرفر ورا بعض،
+  // وده أكتر سبب للبطء في أول تحميل. دلوقتي بنجيبهم مع بعض (٦ في نفس
+  // الوقت زي الشهور) وبنقرا من النتيجة الجاهزة بنفس منطق الفشل القديم.
+  const PRELOAD_KEYS = ['classificationDiff','itemOverrideDiff','sectorsList','sectorSheets',
+    'warehouseForcing','archivedYears','whCatalog','whBalances','whOrder','whCount'];
+  const preloadPromise = preloadKeys(PRELOAD_KEYS);
+
   const cachedSnapshot = monthsData;
   let fetched = {};
   let loadedFromIndex = false;
@@ -929,12 +960,14 @@ async function loadStorage(){
       }
     }catch(e){}
   }
+  await preloadPromise;   // الشهور كانت بتتحمّل والإعدادات جاية معاها في نفس الوقت
+
   // تصنيفات العملاء: الفروق عن البذرة. لو لقينا المفتاح القديم الكامل، نرحّله مرة واحدة.
   const clsSeed = seedClassificationMap();
   let clsLoaded = false;
   let clsMissing = false;
   try{
-    const cd = await window.storage.get('classificationDiff');
+    const cd = await getKey('classificationDiff');
     classification = mergeWithSeed(clsSeed, JSON.parse(cd.value));
     clsLoaded = true;
   }catch(e){ clsMissing = isMissingKey(e); if(!clsMissing) settingsStale = true; }
@@ -965,7 +998,7 @@ async function loadStorage(){
   // قطاعات الأصناف: نفس الحكاية
   let itemsLoaded = false;
   try{
-    const idf = await window.storage.get('itemOverrideDiff');
+    const idf = await getKey('itemOverrideDiff');
     itemOverride = mergeWithSeed(ITEM_SECTOR_SEED, JSON.parse(idf.value));
     itemsLoaded = true;
   }catch(e){ if(!isMissingKey(e)) settingsStale = true; }
@@ -993,7 +1026,7 @@ async function loadStorage(){
   });
   let sectorsLoaded = false;
   try{
-    const sl = await window.storage.get('sectorsList');
+    const sl = await getKey('sectorsList');
     if(sl) SECTORS = JSON.parse(sl.value);
     else throw new Error('not found');
     sectorsLoaded = true;
@@ -1007,7 +1040,7 @@ async function loadStorage(){
   // توزيع القطاعات على الشيتات الخاصة
   let sheetsLoaded = false;
   try{
-    const ss = await window.storage.get('sectorSheets');
+    const ss = await getKey('sectorSheets');
     sectorSheet = JSON.parse(ss.value) || {};
     sheetsLoaded = true;
   }catch(e){
@@ -1016,7 +1049,7 @@ async function loadStorage(){
     else settingsStale = true;
   }
   try{
-    const wf = await window.storage.get('warehouseForcing');
+    const wf = await getKey('warehouseForcing');
     warehouseForcingOn = JSON.parse(wf.value) !== false;
   }catch(e){}
   // أي قطاع لسه متصنّفش: تخمين أولي بالاسم (ابواب/حلوق/برور -> شيت الأبواب،
@@ -1039,7 +1072,7 @@ async function loadStorage(){
   if(sectorsChanged && sectorsLoaded) await trySave(saveSectors);
 
   try{
-    const ar = await window.storage.get('archivedYears');
+    const ar = await getKey('archivedYears');
     archivedYears = JSON.parse(ar.value);
   }catch(e){ archivedYears = []; }
 
@@ -1051,12 +1084,14 @@ async function loadStorage(){
     ['whCount',    (v)=>{ whCount    = v; }],
   ]){
     try{
-      const r = await window.storage.get(key);
+      const r = await getKey(key);
       setter(JSON.parse(r.value) || {});
     }catch(e){ if(!isMissingKey(e)) settingsStale = true; }
   }
   whSyncAt = Date.now();
-  if(typeof renderWh === 'function') renderWh();
+  preFetched = null;   // المرات الجاية تقرا من السيرفر مباشرة
+  // رسم جدول المخازن (١٢٠٠ صف) والقسم مقفول = شغل ضايع في أول تحميل
+  if(typeof renderWh === 'function' && activeModule === 'wh') renderWh();
 
   // لو المزامنة فشلت، منكتبش فوق الكاش المحلي بنسخة ناقصة
   offlineMode = netFailed;
@@ -1081,7 +1116,7 @@ async function loadStorage(){
     : 'جاهز';
   $('appVersionBadge').textContent = APP_VERSION;
   renderMonthPills();
-  renderReport();
+  if(activeModule === 'sales') renderReport();
 }
 
 // إعادة تحميل الشهور اللي فشلت — من غير ما نعيد تحميل الصفحة كلها
@@ -5340,8 +5375,12 @@ function showModule(mod){
     // بس لو فيه تعديلات لسه في طابور الحفظ منزامنش عشان ما تضيعش.
     if(Date.now() - whSyncAt > 60000 && !pendingSaveCount()) reloadWhFromServer(true);
   }
-  // الشارت لو اترسم والقسم مقفول بيطلع بعرض صفر، فبنعيد رسمه عند الفتح
-  if(mod === 'sales' && typeof renderCharts === 'function'){ try{ renderCharts(); }catch(e){} }
+  // التقرير والشارت بيترسموا عند فتح القسم — رسمهم والقسم مقفول شغل ضايع،
+  // والشارت كمان كان بيطلع بعرض صفر.
+  if(mod === 'sales'){
+    try{ renderReport(); }catch(e){}
+    if(typeof renderCharts === 'function'){ try{ renderCharts(); }catch(e){} }
+  }
 }
 document.querySelectorAll('.mod-btn').forEach(b=>{
   // دوسة تفتح، ودوسة تانية على نفس الأيقونة تقفل
