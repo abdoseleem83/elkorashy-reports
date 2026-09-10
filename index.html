@@ -118,7 +118,20 @@
   .unk-grid input{width:100%;padding:6px 8px;font-size:13px}
   @media(max-width:820px){ .unk-grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
   @media(max-width:460px){ .unk-grid{grid-template-columns:1fr} }
-  .wh-in{width:76px;padding:4px 6px;font-size:13px;text-align:center;direction:ltr}
+  .wh-in{width:76px;padding:4px 6px;font-size:13px;text-align:center;direction:ltr;
+    font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-weight:700}
+  /* جداول المخازن كلها Arial بولد — كانت باهتة وصعبة القراية على الموبايل */
+  #whArea table{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-weight:700}
+  #whArea th, #whArea td{font-size:13px}
+  /* قايمة الوحدة كانت بتتزنق لسهم من غير كلام */
+  .whUnitIn{min-width:96px;font-size:13px;font-weight:700;padding:4px 6px;
+    font-family:Arial,'Liberation Sans',Helvetica,sans-serif;background:#fff}
+  /* على الموبايل بنخفي الأعمدة المساعدة عشان المطلوب والوحدة يبانوا من غير سحب */
+  @media(max-width:620px){ #whArea .hide-sm{display:none} }
+  .fam-bar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .fam-btn{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;
+    padding:9px 14px;border-radius:10px}
+  .fam-btn .fam-n{background:rgba(255,255,255,.25);border-radius:20px;padding:0 8px;font-size:12px}
   .grp-row td{background:#e7ebfa;font-weight:700}
   .opt-sec{font-size:12.5px;font-weight:700;color:var(--muted);margin:14px 0 6px}
   .opt-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
@@ -628,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v68';
+const APP_VERSION = 'v69';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -5020,11 +5033,12 @@ function whOrderView(){
   const ord = whOrder[store] || {};
   let html = `<div class="sub" style="margin-bottom:8px">اكتب الكمية المطلوبة قدام كل صنف واختار <b>الوحدة</b>
     (لفة / قطعة / كرتونة / كيس / عود) — الاتنين بيتحفظوا لوحدهم، والوحدة بتفضل محفوظة للصنف في المرات الجاية.
-    بعدين دوس <b>تصدير صور</b> عشان تطلّع ورقة الأوردر صور (كل مجموعات مع بعض في صورة).
     <br>التبويب ده بيعرض <b>كل الأصناف</b> حتى اللي رصيدها صفر — دي بالظبط اللي محتاج تطلبها.
     استخدم البحث أو فلتر المجموعة عشان توصل بسرعة.</div>
+    ${whFamilyBarHtml(store)}
     <div class="tbl-wrap"><table><thead><tr>
-      <th>م</th><th>الصنف</th><th>المجموعة الفرعية</th><th>الرصيد</th><th>لفة</th><th>عود</th>
+      <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة الفرعية</th><th>الرصيد</th>
+      <th class="hide-sm">لفة</th><th class="hide-sm">عود</th>
       <th>المطلوب</th><th>الوحدة</th>
     </tr></thead><tbody>`;
   // الصفوف متجمّعة بالمجموعة الفرعية: سطر عنوان قبل كل مجموعة عشان وانت
@@ -5037,8 +5051,10 @@ function whOrderView(){
       html += `<tr class="grp-row"><td colspan="8">${esc(key)}</td></tr>`;
       lastKey = key;
     }
-    html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td><td>${esc(r.sub || r.main)}</td>
-      <td class="wh-num">${whFmt(r.qty)}</td><td class="wh-num">${whFmt(sp.rolls)}</td><td class="wh-num">${whFmt(sp.loose)}</td>
+    html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td>
+      <td class="hide-sm">${esc(r.sub || r.main)}</td>
+      <td class="wh-num">${whFmt(r.qty)}</td>
+      <td class="wh-num hide-sm">${whFmt(sp.rolls)}</td><td class="wh-num hide-sm">${whFmt(sp.loose)}</td>
       <td><input type="number" min="0" step="1" class="wh-in whOrderIn" data-item="${encodeURIComponent(r.name)}"
         value="${ord[r.name] != null ? esc(String(ord[r.name])) : ''}"></td>
       <td><select class="whUnitIn" data-item="${encodeURIComponent(r.name)}" style="font-size:12.5px;padding:3px">
@@ -5173,6 +5189,26 @@ function bindWhInputs(){
       scheduleSave('whOrder', saveWhOrder, 'طلب النواقص');
       const asked = Object.values(whOrder[store] || {}).filter(x=>Number(x)>0).length;
       $('whCount').textContent = $('whCount').textContent.replace(/مطلوب \d+ صنف/, `مطلوب ${asked} صنف`);
+    });
+  });
+  document.querySelectorAll('.fam-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
+      const fam = btn.dataset.fam;
+      const store = $('whStore').value;
+      const rows = whOrderRows(store).filter(r => whFamilyOf(r.main) === fam);
+      if(!rows.length){ alert('مفيش أصناف مطلوبة في المجموعة دي.'); return; }
+      const label = btn.innerHTML;
+      exportBusy = true; setExportButtons(false); btn.textContent = 'بيجهّز الصورة...';
+      try{
+        const t = whFamilyTitle(fam);
+        await whDownloadImage(whOrderSheetHtml(store, rows, 'طلب النواقص — ' + t),
+          'طلب النواقص — ' + t, `نواقص-${t}-${store}`);
+      }catch(e){
+        alert('حصل خطأ في إنشاء الصورة: ' + e.message);
+      }finally{
+        exportBusy = false; setExportButtons(true); btn.innerHTML = label;
+      }
     });
   });
   document.querySelectorAll('.whUnitIn').forEach(sel=>{
@@ -5339,6 +5375,19 @@ function whOrderRows(store){
     .map(r => ({...r, want: Number(ord[r.name])}));
 }
 
+// شريط أيقونات العائلات: كل واحدة بتطلّع صورة ورقة النواقص بتاعتها وتشاركها
+function whFamilyBarHtml(store){
+  const rows = whOrderRows(store);
+  if(!rows.length) return '<div class="msg warn" style="margin:8px 0">اكتب الكميات الأول وهتظهر لك أزرار صور المجموعات.</div>';
+  const byFam = {};
+  rows.forEach(r=>{ const f = whFamilyOf(r.main); byFam[f] = (byFam[f] || 0) + 1; });
+  const icons = {kraft:'🪟', acc:'🧩', shutter:'🎞️', gevis:'🔑', doors:'🚪', other:'📦'};
+  const ids = WH_FAMILIES.map(f=>f.id).concat('other').filter(f => byFam[f]);
+  return `<div class="fam-bar">` + ids.map(id =>
+    `<button class="fam-btn" data-fam="${id}">${icons[id] || '📦'} ${esc(whFamilyTitle(id))}
+      <span class="fam-n">${byFam[id]}</span></button>`).join('') + `</div>`;
+}
+
 function whOrderSheetHtml(store, rows, title){
   let html = `<div class="blk"><div class="grp-title">${esc(title)} — ${esc(store)}</div>
     <div class="tbl-wrap"><table style="font-size:15px"><thead><tr>
@@ -5379,8 +5428,10 @@ function whOrderSheetHtml(store, rows, title){
   return html + '</div>';
 }
 
-// صورة PNG من HTML — بنفس ستايل تقارير الـPDF ورأسه
-async function whDownloadImage(bodyHtml, subtitle, fileName){
+// صورة PNG من HTML — بنفس ستايل تقارير الـPDF ورأسه.
+// الأصل مشاركة (واتساب/أي تطبيق) مش تنزيل، ولو الجهاز مش بيدعم المشاركة
+// بينزّلها عادي.
+async function whDownloadImage(bodyHtml, subtitle, fileName, share){
   const headerHtml = `<div style="border-bottom:2px solid #1b3a8f;padding:0 0 8px;margin-bottom:10px;
       display:flex;align-items:center;justify-content:space-between;gap:16px">
     <div><div style="font-size:20px;font-weight:700">${esc(reportTitle())}</div>
@@ -5391,11 +5442,25 @@ async function whDownloadImage(bodyHtml, subtitle, fileName){
   try{
     const res = await renderReportCanvas(`<div class="blk">${headerHtml}</div>` + bodyHtml);
     const blob = await new Promise(r => res.canvas.toBlob(r, 'image/png'));
+    const fn = safeFileName(fileName) + '.png';
+    if(share !== false && navigator.canShare){
+      const file = new File([blob], fn, {type:'image/png'});
+      if(navigator.canShare({files:[file]})){
+        try{
+          await navigator.share({files:[file], title: subtitle, text: subtitle});
+          return 'shared';
+        }catch(e){
+          // المستخدم قفل شاشة المشاركة — مش غلط، وساعتها منزّلش
+          if(e && e.name === 'AbortError') return 'aborted';
+        }
+      }
+    }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = safeFileName(fileName) + '.png';
+    a.href = url; a.download = fn;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=> URL.revokeObjectURL(url), 4000);
+    return 'downloaded';
   } finally { PDF_RENDER_W = old; }
 }
 
