@@ -609,7 +609,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v62';
+const APP_VERSION = 'v63';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -663,6 +663,7 @@ let duplicateMonths = []; // شهور موجودة بالفعل في الرفع�
 let replaceExisting = false;
 let lastSyncAt = 0; // آخر مزامنة ناجحة مع التخزين المركزي
 let offlineMode = false;  // آخر تحميل فشل فإحنا شغالين على نسخة الجهاز
+let whSyncAt = 0;         // آخر مرة جبنا فيها بيانات المخازن من السيرفر
 // "not found" = المفتاح مش موجود فعلًا على السيرفر (أول تشغيل).
 // أي رسالة تانية = عطل مؤقت، والسيرفر لسه شايل بيانات المستخدم.
 // الفرق ده مهم جدًا: الكتابة الافتراضية فوق مفتاح موجود بتمسح إعدادات المستخدم.
@@ -1022,6 +1023,7 @@ async function loadStorage(){
       setter(JSON.parse(r.value) || {});
     }catch(e){ if(!isMissingKey(e)) settingsStale = true; }
   }
+  whSyncAt = Date.now();
   if(typeof renderWh === 'function') renderWh();
 
   // لو المزامنة فشلت، منكتبش فوق الكاش المحلي بنسخة ناقصة
@@ -4757,14 +4759,16 @@ function renderWhSyncLine(){
     return `${w}: ${b && b.date ? esc(b.date) : 'مفيش أرصدة مرفوعة'}`;
   });
   const src = offlineMode ? 'نسخة محفوظة على الجهاز (مفيش نت)' : 'التخزين المركزي';
-  el.innerHTML = `آخر رفع للأرصدة — ${parts.join(' · ')} — المصدر: <b>${src}</b>
+  const t = whSyncAt ? new Date(whSyncAt).toLocaleTimeString('ar-EG-u-nu-latn',{hour:'2-digit',minute:'2-digit'}) : '—';
+  el.innerHTML = `آخر رفع للأرصدة — ${parts.join(' · ')} — المصدر: <b>${src}</b> · آخر مزامنة: <b>${t}</b>
     <button class="ghost" id="whReloadBtn" style="padding:2px 10px;font-size:12px;margin-inline-start:8px">تحديث من السيرفر</button>`;
   $('whReloadBtn').addEventListener('click', reloadWhFromServer);
 }
 
 // إعادة جلب بيانات المخازن من السيرفر من غير reload للصفحة كلها
-async function reloadWhFromServer(){
-  const btn = $('whReloadBtn'); if(btn){ btn.disabled = true; btn.textContent = 'بيحمّل...'; }
+async function reloadWhFromServer(silent){
+  const btn = $('whReloadBtn');
+  if(btn && !silent){ btn.disabled = true; btn.textContent = 'بيحمّل...'; }
   let failed = 0;
   for(const [key, setter] of [
     ['whCatalog',  v=>{ whCatalog  = v; }],
@@ -4777,10 +4781,11 @@ async function reloadWhFromServer(){
       setter(JSON.parse(r.value) || {});
     }catch(e){ if(!isMissingKey(e)) failed++; }
   }
-  if(!failed){ whUpdateLocalCache(); offlineMode = false; }
+  if(!failed){ whUpdateLocalCache(); offlineMode = false; whSyncAt = Date.now(); }
   renderWh();
-  if(btn){ btn.disabled = false; }
-  if(failed) alert('مقدرناش نقرا بيانات المخازن من السيرفر دلوقتي — جرّب تاني.');
+  const btn2 = $('whReloadBtn');
+  if(btn2){ btn2.disabled = false; btn2.textContent = 'تحديث من السيرفر'; }
+  if(failed && !silent) alert('مقدرناش نقرا بيانات المخازن من السيرفر دلوقتي — جرّب تاني.');
 }
 
 // ---- الشاشات ----
@@ -5121,7 +5126,12 @@ function showModule(mod){
   });
   try{ localStorage.setItem('activeModule', mod || ''); }catch(e){}
   $('modHint').style.display = mod ? 'none' : '';
-  if(mod === 'wh') renderWh();
+  if(mod === 'wh'){
+    renderWh();
+    // فتح القسم = تأكيد إن اللي قدامك هو آخر حاجة مرفوعة من أي جهاز.
+    // بس لو فيه تعديلات لسه في طابور الحفظ منزامنش عشان ما تضيعش.
+    if(Date.now() - whSyncAt > 60000 && !pendingSaveCount()) reloadWhFromServer(true);
+  }
   // الشارت لو اترسم والقسم مقفول بيطلع بعرض صفر، فبنعيد رسمه عند الفتح
   if(mod === 'sales' && typeof renderCharts === 'function'){ try{ renderCharts(); }catch(e){} }
 }
