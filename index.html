@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v71';
+const APP_VERSION = 'v72';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4572,6 +4572,7 @@ let whBalances = {};  // مخزن -> {date, items:{اسم: رصيد بالقطع
 let whOrder = {};     // مخزن -> {اسم: كمية مطلوبة}
 let whCount = {};     // مخزن -> {اسم: الجرد الفعلي}
 let whTab = 'balances';
+let whCountMode = 'entry';   // 'entry' إدخال الجرد | 'result' نتيجة الجرد (عجز/زيادة)
 
 async function saveWhCatalog(){ await window.storage.set('whCatalog', JSON.stringify(whCatalog)); }
 async function saveWhBalances(){ await window.storage.set('whBalances', JSON.stringify(whBalances)); }
@@ -5039,66 +5040,78 @@ function whBalancesView(){
 function whCompareView(){
   const rows = whRows(null);
   if(!rows.length) return {html:'<div class="sub">مفيش أصناف تطابق الفلتر.</div>', count:''};
-  let html = `<div class="tbl-wrap"><table><thead><tr>
-    <th>م</th><th>الصنف</th><th>المجموعة</th>
-    ${WAREHOUSES.map(w=>`<th>${esc(w)}</th>`).join('')}
-    <th>الإجمالي</th>${WAREHOUSES.map(w=>`<th>لفة ${esc(w)}</th>`).join('')}
+  // المطلوب: طنطا / الاسكندريه / الإجمالي بس، والأرقام باللفف، والصفوف
+  // متجمّعة: كل مجموعة رئيسية مع بعضها، وجواها كل مجموعة فرعية مع بعضها.
+  let html = `<div class="sub" style="margin-bottom:8px">الأرقام <b>باللفة</b> (الصنف اللي مالوش محتوى لفة بيتحسب بالقطعة).</div>
+    <div class="tbl-wrap"><table><thead><tr>
+    <th>م</th><th>الصنف</th>${WAREHOUSES.map(w=>`<th>${esc(w)}</th>`).join('')}<th>الإجمالي</th>
   </tr></thead><tbody>`;
-  const totals = WAREHOUSES.map(()=>0);
-  rows.forEach((r,i)=>{
-    const qs = WAREHOUSES.map(w => Number(whStoreBalances(w)[r.name]) || 0);
-    qs.forEach((q,k)=> totals[k] += q);
-    const sum = qs.reduce((a,b)=>a+b,0);
-    html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td><td>${esc(r.main)}</td>` +
+  const zero = ()=> WAREHOUSES.map(()=>0);
+  const gTot = zero(), sTot = zero(), mTot = zero();
+  let lastMain = null, lastSub = null, n = 0;
+  const out = [];
+  const sumRow = (label, arr, cls)=>
+    `<tr class="${cls}"><td colspan="2" style="text-align:right">${esc(label)}</td>` +
+    arr.map(v=>`<td class="wh-num">${whFmt(v)}</td>`).join('') +
+    `<td class="wh-num">${whFmt(arr.reduce((a,b)=>a+b,0))}</td></tr>`;
+  const flushSub = ()=>{ if(lastSub !== null) out.push(sumRow('إجمالي ' + lastSub, sTot.slice(), 'grp-row')); };
+  const flushMain = ()=>{ if(lastMain !== null) out.push(sumRow('إجمالي ' + lastMain, mTot.slice(), 'total-row')); };
+  rows.forEach(r=>{
+    if(r.main !== lastMain){
+      flushSub(); flushMain();
+      lastMain = r.main; lastSub = null;
+      mTot.forEach((_,k)=> mTot[k] = 0);
+      out.push(`<tr class="total-row"><td colspan="${WAREHOUSES.length + 3}" style="text-align:right">${esc(r.main)}</td></tr>`);
+    }
+    const sub = r.sub || '—';
+    if(sub !== lastSub){
+      flushSub();
+      lastSub = sub;
+      sTot.forEach((_,k)=> sTot[k] = 0);
+      out.push(`<tr class="grp-row"><td colspan="${WAREHOUSES.length + 3}" style="text-align:right">${esc(sub)}</td></tr>`);
+    }
+    const qs = WAREHOUSES.map(w => whSplit(Number(whStoreBalances(w)[r.name]) || 0, r.name).rolls);
+    qs.forEach((q,k)=>{ sTot[k] += q; mTot[k] += q; gTot[k] += q; });
+    n++;
+    out.push(`<tr><td>${n}</td><td style="text-align:right">${esc(r.name)}</td>` +
       qs.map(q=>`<td class="wh-num">${whFmt(q)}</td>`).join('') +
-      `<td class="wh-num">${whFmt(sum)}</td>` +
-      qs.map(q=>`<td class="wh-num">${whFmt(whSplit(q, r.name).rolls)}</td>`).join('') + '</tr>';
+      `<td class="wh-num">${whFmt(qs.reduce((a,b)=>a+b,0))}</td></tr>`);
   });
-  html += `<tr class="total-row"><td colspan="3">الإجمالي</td>` +
-    totals.map(t=>`<td class="wh-num">${whFmt(t)}</td>`).join('') +
-    `<td class="wh-num">${whFmt(totals.reduce((a,b)=>a+b,0))}</td>` +
-    WAREHOUSES.map(()=>'<td></td>').join('') + '</tr></tbody></table></div>';
-  return {html, count: `${rows.length} صنف`};
+  flushSub(); flushMain();
+  html += out.join('') + sumRow('الإجمالي العام', gTot, 'total-row') + '</tbody></table></div>';
+  return {html, count: `${rows.length} صنف — بالّلفة`};
 }
 
-// طلب النواقص — الكمية بتتكتب بإيد المستخدم
-function whOrderView(){
-  const store = $('whStore').value;
-  const rows = whRows(store, {applyZero:false});
-  const ord = whOrder[store] || {};
-  let html = `<div class="sub" style="margin-bottom:8px">اكتب الكمية المطلوبة قدام كل صنف واختار <b>الوحدة</b>
-    (لفة / قطعة / كرتونة / كيس / عود) — الاتنين بيتحفظوا لوحدهم، والوحدة بتفضل محفوظة للصنف في المرات الجاية.
-    <br>التبويب ده بيعرض <b>كل الأصناف</b> حتى اللي رصيدها صفر — دي بالظبط اللي محتاج تطلبها.
-    استخدم البحث أو فلتر المجموعة عشان توصل بسرعة.</div>
-    ${whFamilyBarHtml(store)}
-    <div class="tbl-wrap"><table><thead><tr>
-      <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة الفرعية</th><th>الرصيد</th>
-      <th class="hide-sm">لفة</th><th class="hide-sm">عود</th>
-      <th>المطلوب</th><th>الوحدة</th>
-    </tr></thead><tbody>`;
-  // الصفوف متجمّعة بالمجموعة الفرعية: سطر عنوان قبل كل مجموعة عشان وانت
-  // بتعمل الطلبية تبقى ماشي مجموعة مجموعة من غير لخبطة.
-  let lastKey = null;
-  rows.forEach((r,i)=>{
-    const sp = whSplit(r.qty, r.name);
-    const key = r.main + ' › ' + (r.sub || '—');
-    if(key !== lastKey){
-      html += `<tr class="grp-row"><td colspan="8">${esc(key)}</td></tr>`;
-      lastKey = key;
-    }
-    html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td>
-      <td class="hide-sm">${esc(r.sub || r.main)}</td>
-      <td class="wh-num">${whFmt(r.qty)}</td>
-      <td class="wh-num hide-sm">${whFmt(sp.rolls)}</td><td class="wh-num hide-sm">${whFmt(sp.loose)}</td>
-      <td><input type="number" min="0" step="1" class="wh-in whOrderIn" data-item="${encodeURIComponent(r.name)}"
-        value="${ord[r.name] != null ? esc(String(ord[r.name])) : ''}"></td>
-      <td><select class="whUnitIn" data-item="${encodeURIComponent(r.name)}" style="font-size:12.5px;padding:3px">
-        ${WH_UNITS.map(u=>`<option value="${esc(u)}"${u === whOrderUnit(r.name) ? ' selected' : ''}>${esc(u)}</option>`).join('')}
-      </select></td></tr>`;
-  });
-  html += '</tbody></table></div>';
-  const asked = Object.values(ord).filter(v => Number(v) > 0).length;
-  return {html, count: `${rows.length} صنف — مطلوب ${asked} صنف`};
+// نتيجة الجرد: أصناف العجز مع بعض، وأصناف الزيادة مع بعض، والمطابق مش بيتعرض
+function whCountResultHtml(detail){
+  if(!detail.length) return '<div class="msg ok">مفيش فروق — كل اللي اتجرد مطابق ✅</div>';
+  const block = (title, list, color, sign)=>{
+    if(!list.length) return `<div class="msg ok" style="margin-top:10px">مفيش ${esc(title)}.</div>`;
+    const qty = list.reduce((a,r)=> a + Math.abs(r.diff), 0);
+    let h = `<div class="grp-title" style="margin-top:14px;color:${color}">${esc(title)}
+      — ${list.length} صنف بفرق ${whFmt(qty)} قطعة</div>
+      <div class="tbl-wrap"><table><thead><tr>
+        <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة</th><th>الرصيد</th><th>الفعلي</th><th>الفرق</th>
+      </tr></thead><tbody>`;
+    let lastMain = null;
+    list.slice().sort((a,b)=> (a.main||'').localeCompare(b.main||'','ar')
+        || Math.abs(b.diff) - Math.abs(a.diff))
+      .forEach((r,i)=>{
+        if(r.main !== lastMain){
+          lastMain = r.main;
+          h += `<tr class="grp-row"><td colspan="6" style="text-align:right">${esc(r.main || '—')}</td></tr>`;
+        }
+        h += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td>
+          <td class="hide-sm">${esc(r.main || '')}</td>
+          <td class="wh-num">${whFmt(r.book)}</td><td class="wh-num">${whFmt(r.real)}</td>
+          <td class="wh-num" style="color:${color}">${sign}${whFmt(Math.abs(r.diff))}</td></tr>`;
+      });
+    h += `<tr class="total-row"><td colspan="2">الإجمالي</td><td class="hide-sm"></td>
+      <td colspan="2"></td><td class="wh-num" style="color:${color}">${sign}${whFmt(qty)}</td></tr>`;
+    return h + '</tbody></table></div>';
+  };
+  return block('أصناف العجز', detail.filter(r=>r.diff < 0), 'var(--danger)', '-')
+       + block('أصناف الزيادة', detail.filter(r=>r.diff > 0), 'var(--accent2)', '+');
 }
 
 // الجرد ونتيجته
@@ -5138,9 +5151,18 @@ function whCountView(){
       <div class="kpi-share">${overQty.toLocaleString('en-US',{maximumFractionDigits:2})} قطعة</div></div>
     <div class="kpi-card"><div class="kpi-title">نسبة المطابقة</div><div class="kpi-sum" style="font-size:20px">${match}%</div></div>
   </div>
-  <div class="sub" style="margin:10px 0 8px">اكتب الجرد الفعلي قدام كل صنف — بيتحفظ لوحده والنتيجة بتتحدّث فورًا.</div>
+  <div class="fam-bar" style="margin:12px 0 8px">
+    <button class="fam-btn${whCountMode === 'entry' ? '' : ' ghost'}" data-cmode="entry">📝 إدخال الجرد</button>
+    <button class="fam-btn${whCountMode === 'result' ? '' : ' ghost'}" data-cmode="result">📊 نتيجة الجرد
+      <span class="fam-n"${whCountMode === 'result' ? '' : ' style="background:var(--panel2)"'}>${shortItems + overItems}</span></button>
+  </div>`;
+  if(whCountMode === 'result'){
+    return {html: html + whCountResultHtml(detail), count: `عجز ${shortItems} · زيادة ${overItems}`};
+  }
+  html += `<div class="sub" style="margin:10px 0 8px">اكتب الجرد الفعلي قدام كل صنف — بيتحفظ لوحده والنتيجة بتتحدّث فورًا.</div>
   <div class="tbl-wrap"><table><thead><tr>
-    <th>م</th><th>الصنف</th><th>المجموعة</th><th>الرصيد (برنامج)</th><th>لفة</th><th>عود</th><th>الجرد الفعلي</th><th>الفرق</th>
+    <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة</th><th>الرصيد</th>
+    <th class="hide-sm">لفة</th><th class="hide-sm">عود</th><th>الجرد الفعلي</th><th>الفرق</th>
   </tr></thead><tbody>`;
   rows.forEach((r,i)=>{
     const sp = whSplit(r.qty, r.name);
@@ -5148,8 +5170,10 @@ function whCountView(){
     const diff = (v === undefined || v === '') ? null : Number(v) - r.qty;
     const dTxt = diff === null ? '' : (diff === 0 ? '0' : (diff > 0 ? '+' + whFmt(diff) : '-' + whFmt(-diff)));
     const dCol = diff === null || diff === 0 ? '' : (diff > 0 ? 'color:var(--accent2)' : 'color:var(--danger)');
-    html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td><td>${esc(r.main)}</td>
-      <td class="wh-num">${whFmt(r.qty)}</td><td class="wh-num">${whFmt(sp.rolls)}</td><td class="wh-num">${whFmt(sp.loose)}</td>
+    html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td>
+      <td class="hide-sm">${esc(r.main)}</td>
+      <td class="wh-num">${whFmt(r.qty)}</td>
+      <td class="wh-num hide-sm">${whFmt(sp.rolls)}</td><td class="wh-num hide-sm">${whFmt(sp.loose)}</td>
       <td><input type="number" step="1" class="wh-in whCountIn" data-item="${encodeURIComponent(r.name)}"
         value="${v != null ? esc(String(v)) : ''}"></td>
       <td class="wh-num" style="${dCol}">${dTxt}</td></tr>`;
@@ -5225,6 +5249,9 @@ function bindWhInputs(){
       const asked = Object.values(whOrder[store] || {}).filter(x=>Number(x)>0).length;
       $('whCount').textContent = $('whCount').textContent.replace(/مطلوب \d+ صنف/, `مطلوب ${asked} صنف`);
     });
+  });
+  document.querySelectorAll('[data-cmode]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ whCountMode = btn.dataset.cmode; renderWh(); });
   });
   const clr = $('whOrderClear');
   if(clr) clr.addEventListener('click', async ()=>{
@@ -5569,14 +5596,14 @@ function whExportAoa(){
     return {aoa, title:`أرصدة ${store}`, sheet:`أرصدة-${store}`};
   }
   if(whTab === 'compare'){
+    // نفس شكل الشاشة: باللفف، ومتجمّعة رئيسية ثم فرعية
     const rows = whRows(null);
-    const aoa = [['م','الصنف','المجموعة', ...WAREHOUSES, 'الإجمالي', ...WAREHOUSES.map(w=>'لفة '+w)]];
+    const aoa = [['م','الصنف','المجموعة','المجموعة الفرعية', ...WAREHOUSES, 'الإجمالي']];
     rows.forEach((r,i)=>{
-      const qs = WAREHOUSES.map(w => Number(whStoreBalances(w)[r.name]) || 0);
-      aoa.push([i+1, r.name, r.main, ...qs, qs.reduce((a,b)=>a+b,0),
-        ...qs.map(q=> whSplit(q, r.name).rolls)]);
+      const qs = WAREHOUSES.map(w => whSplit(Number(whStoreBalances(w)[r.name]) || 0, r.name).rolls);
+      aoa.push([i+1, r.name, r.main, r.sub, ...qs, qs.reduce((a,b)=>a+b,0)]);
     });
-    return {aoa, title:'مقارنة أرصدة الفروع', sheet:'مقارنة الفروع'};
+    return {aoa, title:'مقارنة أرصدة الفروع (باللفة)', sheet:'مقارنة الفروع'};
   }
   if(whTab === 'order'){
     const ord = whOrder[store] || {};
@@ -5588,6 +5615,23 @@ function whExportAoa(){
   }
   const cnt = whCount[store] || {};
   const rows = whRows(store, {applyZero:false});
+  if(whCountMode === 'result'){
+    // نتيجة الجرد: العجز مع بعض، وبعده الزيادة — والمطابق مش بيتصدّر
+    const aoa = [['م','الصنف','المجموعة','الرصيد','الفعلي','الفرق','النوع']];
+    const det = [];
+    rows.forEach(r=>{
+      const v = cnt[r.name];
+      if(v === undefined || v === '') return;
+      const diff = Number(v) - r.qty;
+      if(diff !== 0) det.push({name:r.name, main:r.main, book:r.qty, real:Number(v), diff});
+    });
+    const push = (list, kind)=> list
+      .sort((a,b)=> (a.main||'').localeCompare(b.main||'','ar') || Math.abs(b.diff) - Math.abs(a.diff))
+      .forEach((r,i)=> aoa.push([aoa.length, r.name, r.main, r.book, r.real, r.diff, kind]));
+    push(det.filter(r=>r.diff < 0), 'عجز');
+    push(det.filter(r=>r.diff > 0), 'زيادة');
+    return {aoa, title:`نتيجة الجرد — ${store}`, sheet:`نتيجة-${store}`};
+  }
   const aoa = [['م','الصنف','المجموعة','الرصيد (برنامج)','لفة','عود','الجرد الفعلي','الفرق']];
   rows.forEach((r,i)=>{
     const sp = whSplit(r.qty, r.name);
