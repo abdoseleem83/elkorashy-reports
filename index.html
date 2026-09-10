@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v72';
+const APP_VERSION = 'v73';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -826,6 +826,61 @@ function guessSector(itemName){
   return 'اكسسوارات';
 }
 
+// ---- إصدارات البيانات: نجيب من السيرفر اللي اتغيّر بس ----
+// كل حفظ بيسجّل ختم وقت للمفتاح في مفتاح صغير اسمه dataVersions. عند التحميل
+// بنقارن الأختام دي باللي محفوظ عندنا في الكاش، ومنجيبش غير المفاتيح اللي
+// اتغيّرت فعلًا — ده اللي كان بيخلي كل فتحة للتطبيق تجيب كل الشهور والدليل
+// من أول وجديد.
+let dataVersions = {};        // آخر أختام معروفة (من السيرفر)
+let localVersions = {};       // أختام النسخة اللي في الكاش عندنا
+const VERSION_TTL_MS = 24 * 60 * 60 * 1000;   // كل يوم بنعمل تحميل كامل مهما كان
+let versionsSaveTimer = null;
+try{ localVersions = JSON.parse(localStorage.getItem('cache:dataVersions') || '{}') || {}; }catch(e){ localVersions = {}; }
+
+function bumpVersion(key){
+  dataVersions[key] = Date.now();
+  // مهم: منقولش إن الكاش عندنا مطابق للختم الجديد غير لما نكون كتبنا الكاش
+  // فعلًا. من غير كده الجهاز يفتح تاني ويقول "متغيّرش" وهو شايف نسخة قديمة.
+  try{
+    if(key.indexOf('wh') === 0){ if(typeof whUpdateLocalCache === 'function') whUpdateLocalCache(); }
+    else if(typeof updateLocalCache === 'function') updateLocalCache(true);
+    localVersions[key] = dataVersions[key];
+    localStorage.setItem('cache:dataVersions', JSON.stringify(localVersions));
+  }catch(e){}
+  if(versionsSaveTimer) clearTimeout(versionsSaveTimer);
+  // كذا حفظ ورا بعض (شهور مثلًا) = كتابة واحدة للأختام
+  versionsSaveTimer = setTimeout(()=>{
+    window.storage.set('dataVersions', JSON.stringify(Object.assign({}, dataVersions, {savedAt: Date.now()})))
+      .catch(()=>{});
+  }, 400);
+}
+// حفظ + تسجيل ختم
+async function setKey(key, value){
+  await window.storage.set(key, value);
+  bumpVersion(key);
+}
+function markVersionsFresh(keys){
+  keys.forEach(k=>{ if(dataVersions[k] != null) localVersions[k] = dataVersions[k]; });
+  localVersions.__at = Date.now();
+  try{ localStorage.setItem('cache:dataVersions', JSON.stringify(localVersions)); }catch(e){}
+}
+// المفتاح ده متغيّرش وعندنا نسخته في الكاش؟ يبقى مش محتاجين نجيبه
+function versionFresh(key, cachedRaw){
+  if(forceFullSync) return false;
+  if(cachedRaw == null) return false;
+  if(!dataVersions || dataVersions[key] == null) return false;
+  if(localVersions[key] !== dataVersions[key]) return false;
+  if(!localVersions.__at || Date.now() - localVersions.__at > VERSION_TTL_MS) return false;
+  return true;
+}
+let forceFullSync = false;    // زرار "تحديث" بيجيب كل حاجة مهما كان
+try{
+  if(localStorage.getItem('forceFullSync') === '1'){
+    forceFullSync = true;
+    localStorage.removeItem('forceFullSync');
+  }
+}catch(e){}
+
 // نتيجة التحميل المتوازي: مفتاح -> {ok, r} أو {ok:false, e}
 let preFetched = null;
 async function preloadKeys(keys){
@@ -897,26 +952,55 @@ async function loadStorage(){
   // الوقت زي الشهور) وبنقرا من النتيجة الجاهزة بنفس منطق الفشل القديم.
   const PRELOAD_KEYS = ['classificationDiff','itemOverrideDiff','sectorsList','sectorSheets',
     'warehouseForcing','archivedYears','whCatalog','whBalances','whOrder','whCount'];
-  const preloadPromise = preloadKeys(PRELOAD_KEYS);
+
+  // الخطوة الأولى: الأختام + فهرس الشهور مع بعض (طلبين بس)
+  let idxPre = null, idxErr = null;
+  try{
+    const [vr, ir] = await Promise.all([
+      window.storage.get('dataVersions').then(r=>r).catch(e=>({__err:e})),
+      window.storage.get('monthsIndex').then(r=>r).catch(e=>({__err:e})),
+    ]);
+    if(!vr.__err){ try{ dataVersions = JSON.parse(vr.value) || {}; }catch(e){ dataVersions = {}; } }
+    else { dataVersions = {}; }
+    if(ir.__err) idxErr = ir.__err; else idxPre = ir;
+  }catch(e){ idxErr = e; }
+
+  // اللي ختمه زي اللي عندنا مش هنجيبه — بناخده من الكاش على طول
+  const cachedRawOf = (k)=>{ try{ return localStorage.getItem('cache:' + k); }catch(e){ return null; } };
+  const needKeys = [], skipKeys = [];
+  PRELOAD_KEYS.forEach(k=>{ (versionFresh(k, cachedRawOf(k)) ? skipKeys : needKeys).push(k); });
+  const preloadPromise = preloadKeys(needKeys).then(res=>{
+    skipKeys.forEach(k=>{ res[k] = {ok:true, r:{key:k, value: cachedRawOf(k)}}; });
+    preFetched = res;
+    return res;
+  });
 
   const cachedSnapshot = monthsData;
   let fetched = {};
   let loadedFromIndex = false;
   let netFailed = false;
   try{
-    const idx = await window.storage.get('monthsIndex');
-    const months = JSON.parse(idx.value);
+    if(idxErr) throw idxErr;
+    const months = JSON.parse(idxPre.value);
     indexedMonths = months.slice();
     const loadMonth = async (m)=>{
       const r = await window.storage.get('month:' + m);
       return [m, JSON.parse(r.value)];
     };
+    // الشهر اللي ختمه زي اللي عندنا وموجود في الكاش: منجيبوش تاني
+    const fresh = [];
+    const stillNeeded = months.filter(m=>{
+      const has = cachedSnapshot && cachedSnapshot[m];
+      if(has && versionFresh('month:' + m, '1')){ fresh.push(m); return false; }
+      return true;
+    });
+    fresh.forEach(m => { fetched[m] = cachedSnapshot[m]; });
     // على دفعات مش كلهم مرة واحدة: Apps Script بيرفض لو عدد الطلبات المتوازية
     // كبر، وعدد الشهور بيزيد كل شهر. الدفعة الواحدة بتخلص قبل اللي بعدها.
     const LOAD_BATCH = 6;
     let results = [];
-    for(let i=0;i<months.length;i+=LOAD_BATCH){
-      const batch = months.slice(i, i+LOAD_BATCH);
+    for(let i=0;i<stillNeeded.length;i+=LOAD_BATCH){
+      const batch = stillNeeded.slice(i, i+LOAD_BATCH);
       results = results.concat(await Promise.all(batch.map(async m=>{
         try{ return await loadMonth(m); }catch(e){ return null; }
       })));
@@ -926,11 +1010,11 @@ async function loadStorage(){
     const retryIdx = results.map((r,i)=> r === null ? i : -1).filter(i => i >= 0);
     if(retryIdx.length){
       const retried = await Promise.all(retryIdx.map(async i=>{
-        try{ return await loadMonth(months[i]); }catch(e){ return null; }
+        try{ return await loadMonth(stillNeeded[i]); }catch(e){ return null; }
       }));
       retryIdx.forEach((idxPos, k)=>{ if(retried[k]) results[idxPos] = retried[k]; });
     }
-    if(months.length && results.every(x => x === null)) throw new Error('كل الشهور فشلت');
+    if(stillNeeded.length && results.every(x => x === null)) throw new Error('كل الشهور فشلت');
     results.forEach(pair => { if(pair) fetched[pair[0]] = pair[1]; });
     // الشهور اللي فضلت فاشلة: بتتسجل هنا عشان (1) تتعرض للمستخدم بوضوح
     // و(2) ما تتشالش من الفهرس عند أي حفظ جاي فتضيع للأبد.
@@ -1096,6 +1180,9 @@ async function loadStorage(){
   // لو المزامنة فشلت، منكتبش فوق الكاش المحلي بنسخة ناقصة
   offlineMode = netFailed;
   if(!netFailed){
+    // الكاش بقى مطابق لأختام السيرفر — المرة الجاية مش هنجيب غير اللي اتغيّر
+    markVersionsFresh(Object.keys(dataVersions));
+    forceFullSync = false;
     updateLocalCache(true);
     try{ localStorage.removeItem('cache:classification'); localStorage.removeItem('cache:itemOverride'); }catch(e){}
     lastSyncAt = Date.now();
@@ -1176,7 +1263,7 @@ function updateLocalCache(immediate){
 // السنة المؤرشفة بتختفي من التقرير الحالي، بس بياناتها بتفضل محفوظة زي ما هي
 // (نفس مفاتيح month:YYYY-MM) — الأرشفة بتسجّل السنة في قائمة archivedYears بس.
 async function saveArchivedYears(){
-  await window.storage.set('archivedYears', JSON.stringify(archivedYears));
+  await setKey('archivedYears', JSON.stringify(archivedYears));
 }
 function yearOf(m){ return (m||'').split('-')[0]; }
 
@@ -1305,9 +1392,9 @@ async function saveMonths(changedMonths){
   const skipped = wanted.filter(m => staleMonths.includes(m));
   const toSave = wanted.filter(m => !staleMonths.includes(m));
   for(const m of toSave){
-    if(monthsData[m]) await window.storage.set('month:' + m, JSON.stringify(monthsData[m]));
+    if(monthsData[m]) await setKey('month:' + m, JSON.stringify(monthsData[m]));
   }
-  await window.storage.set('monthsIndex', JSON.stringify(months));
+  await setKey('monthsIndex', JSON.stringify(months));
   if(skipped.length){
     alert(`التعديل اتحفظ محليًا بس ${skipped.length} شهر (${skipped.map(monthLabel).join('، ')}) `
       + 'مترفعش للسيرفر عشان تحميلهم فشل ومش مضمون إن اللي عندنا هو الأحدث. '
@@ -1336,19 +1423,19 @@ function seedClassificationMap(){
 }
 
 async function saveItemOverride(){
-  await window.storage.set('itemOverrideDiff', JSON.stringify(diffFromSeed(itemOverride, ITEM_SECTOR_SEED)));
+  await setKey('itemOverrideDiff', JSON.stringify(diffFromSeed(itemOverride, ITEM_SECTOR_SEED)));
 }
 async function saveSectors(){
-  await window.storage.set('sectorsList', JSON.stringify(SECTORS));
+  await setKey('sectorsList', JSON.stringify(SECTORS));
 }
 async function saveSectorSheets(){
-  await window.storage.set('sectorSheets', JSON.stringify(sectorSheet));
+  await setKey('sectorSheets', JSON.stringify(sectorSheet));
 }
 async function saveWarehouseForcing(){
-  await window.storage.set('warehouseForcing', JSON.stringify(warehouseForcingOn));
+  await setKey('warehouseForcing', JSON.stringify(warehouseForcingOn));
 }
 async function saveClassification(){
-  await window.storage.set('classificationDiff', JSON.stringify(diffFromSeed(classification, seedClassificationMap())));
+  await setKey('classificationDiff', JSON.stringify(diffFromSeed(classification, seedClassificationMap())));
 }
 
 function findHeaderRow(rows){
@@ -4574,10 +4661,10 @@ let whCount = {};     // مخزن -> {اسم: الجرد الفعلي}
 let whTab = 'balances';
 let whCountMode = 'entry';   // 'entry' إدخال الجرد | 'result' نتيجة الجرد (عجز/زيادة)
 
-async function saveWhCatalog(){ await window.storage.set('whCatalog', JSON.stringify(whCatalog)); }
-async function saveWhBalances(){ await window.storage.set('whBalances', JSON.stringify(whBalances)); }
-async function saveWhOrder(){ await window.storage.set('whOrder', JSON.stringify(whOrder)); }
-async function saveWhCount(){ await window.storage.set('whCount', JSON.stringify(whCount)); }
+async function saveWhCatalog(){ await setKey('whCatalog', JSON.stringify(whCatalog)); }
+async function saveWhBalances(){ await setKey('whBalances', JSON.stringify(whBalances)); }
+async function saveWhOrder(){ await setKey('whOrder', JSON.stringify(whOrder)); }
+async function saveWhCount(){ await setKey('whCount', JSON.stringify(whCount)); }
 
 function whItem(name){ return whCatalog[name] || null; }
 function whRoll(name){
@@ -5761,6 +5848,8 @@ window.addEventListener('online', ()=>{
   flushSaves();
 });
 $('updateBtn').addEventListener('click', async ()=>{
+  // "تحديث" اليدوي = هات كل حاجة من السيرفر تاني، مش اللي اتغيّر بس
+  try{ localStorage.setItem('forceFullSync','1'); }catch(e){}
   $('updateBtn').textContent = 'بيدور على تحديث...';
   reloadingForUpdate = true; // الريلود اليدوي تحت هو اللي هيحصل، مش بتاع controllerchange
   try{
