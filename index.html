@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v79';
+const APP_VERSION = 'v80';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4730,8 +4730,54 @@ loadStorage();
 
 async function saveWhCatalog(){ await setKey('whCatalog', JSON.stringify(whCatalog)); }
 async function saveWhBalances(){ await setKey('whBalances', JSON.stringify(whBalances)); }
-async function saveWhOrder(){ await setKey('whOrder', JSON.stringify(whOrder)); }
-async function saveWhCount(){ await setKey('whCount', JSON.stringify(whCount)); }
+// الطلبية والجرد ممكن اتنين يشتغلوا فيهم في نفس الوقت (واحد في طنطا وواحد في
+// الإسكندرية). لو كل جهاز كتب نسخته كاملة، آخر واحد يحفظ يمسح شغل التاني.
+// عشان كده بنسجّل الأصناف اللي اتعدّلت هنا بس، وعند الحفظ بنقرا نسخة السيرفر
+// وندمج عليها التعديلات دي — والباقي زي ما هو.
+let whDirty = {whOrder:{}, whCount:{}};   // key -> store -> {names:Set, wipe:bool}
+function whMarkDirty(key, store, name){
+  const d = whDirty[key];
+  if(!d[store]) d[store] = {names:{}, wipe:false};
+  if(name === null) d[store].wipe = true; else d[store].names[name] = true;
+}
+async function saveWhMerged(key, local){
+  const dirty = whDirty[key];
+  const stores = Object.keys(dirty);
+  if(!stores.length){ await setKey(key, JSON.stringify(local)); return local; }
+  let server = null;
+  try{
+    const r = await window.storage.get(key);
+    server = JSON.parse(r.value) || {};
+  }catch(e){
+    // مفتاح مش موجود = أول مرة. غير كده (قراءة فشلت) منخاطرش بدمج ناقص
+    // ونكتب نسختنا زي ما التطبيق كان بيعمل قبل كده.
+    server = isMissingKey(e) ? {} : null;
+  }
+  if(server === null){
+    await setKey(key, JSON.stringify(local));
+    whDirty[key] = {};
+    return local;
+  }
+  stores.forEach(store=>{
+    const info = dirty[store];
+    if(info.wipe){ delete server[store]; }
+    const localStore = local[store] || {};
+    const names = Object.keys(info.names);
+    if(names.length){
+      if(!server[store]) server[store] = {};
+      names.forEach(n=>{
+        if(localStore[n] === undefined) delete server[store][n];
+        else server[store][n] = localStore[n];
+      });
+    }
+    if(server[store] && !Object.keys(server[store]).length) delete server[store];
+  });
+  await setKey(key, JSON.stringify(server));
+  whDirty[key] = {};
+  return server;
+}
+async function saveWhOrder(){ whOrder = await saveWhMerged('whOrder', whOrder); }
+async function saveWhCount(){ whCount = await saveWhMerged('whCount', whCount); }
 
 function whItem(name){ return whCatalog[name] || null; }
 function whRoll(name){
@@ -5428,6 +5474,8 @@ function bindWhCountUpload(){
       const res = parseWhCount(wb);
       if(!res.filled) throw new Error('عمود الجرد الفعلي فاضي في الملف كله.');
       whCount[store] = res.counts;
+      whMarkDirty('whCount', store, null);
+      Object.keys(res.counts).forEach(n => whMarkDirty('whCount', store, n));
       try{ await saveWhCount(); }catch(e){ scheduleSave('whCount', saveWhCount, 'الجرد'); }
       whUpdateLocalCache();
       renderWh();
@@ -5443,6 +5491,7 @@ function bindWhCountUpload(){
     const store = $('whStore').value;
     if(!confirm(`تمسح الجرد المدخّل لمخزن ${store}؟`)) return;
     delete whCount[store];
+    whMarkDirty('whCount', store, null);
     try{ await saveWhCount(); }catch(e){ scheduleSave('whCount', saveWhCount, 'الجرد'); }
     whUpdateLocalCache();
     renderWh();
@@ -5458,6 +5507,7 @@ function bindWhInputs(){
       const v = inp.value === '' ? null : Number(inp.value);
       if(v === null || !isFinite(v) || v === 0) delete whOrder[store][name];
       else whOrder[store][name] = v;
+      whMarkDirty('whOrder', store, name);
       scheduleSave('whOrder', saveWhOrder, 'طلب النواقص');
       const asked = Object.values(whOrder[store] || {}).filter(x=>Number(x)>0).length;
       $('whCount').textContent = $('whCount').textContent.replace(/مطلوب \d+ صنف/, `مطلوب ${asked} صنف`);
@@ -5485,6 +5535,7 @@ function bindWhFamButtons(){
     if(!n) return;
     if(!confirm(`تمسح كل الكميات المطلوبة في مخزن ${store}؟ (${n} صنف)\nالوحدات اللي اخترتها هتفضل زي ما هي.`)) return;
     delete whOrder[store];
+    whMarkDirty('whOrder', store, null);   // مسح مقصود لكل المخزن
     try{ await saveWhOrder(); }catch(e){ scheduleSave('whOrder', saveWhOrder, 'طلب النواقص'); }
     whUpdateLocalCache();
     renderWh();
@@ -5525,6 +5576,7 @@ function bindWhFamButtons(){
       if(!whCount[store]) whCount[store] = {};
       if(inp.value === '') delete whCount[store][name];
       else whCount[store][name] = Number(inp.value);
+      whMarkDirty('whCount', store, name);
       scheduleSave('whCount', saveWhCount, 'الجرد');
       renderWh();   // النتيجة فوق بتتحدّث
     });
