@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v74';
+const APP_VERSION = 'v75';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -837,15 +837,23 @@ const VERSION_TTL_MS = 24 * 60 * 60 * 1000;   // كل يوم بنعمل تحمي
 let versionsSaveTimer = null;
 try{ localVersions = JSON.parse(localStorage.getItem('cache:dataVersions') || '{}') || {}; }catch(e){ localVersions = {}; }
 
+let pendingVersionMarks = {};   // أختام مستنية الكاش يتكتب
+// الختم مبيتسجّلش كـ"عندنا نسخته" غير بعد ما الكاش يتكتب فعلًا — من غير كده
+// الجهاز يفتح تاني ويقول "متغيّرش" وهو شايف نسخة قديمة.
+function flushVersionMarks(){
+  const keys = Object.keys(pendingVersionMarks);
+  if(!keys.length) return;
+  keys.forEach(k=>{ localVersions[k] = pendingVersionMarks[k]; });
+  pendingVersionMarks = {};
+  try{ localStorage.setItem('cache:dataVersions', JSON.stringify(localVersions)); }catch(e){}
+}
 function bumpVersion(key){
   dataVersions[key] = Date.now();
-  // مهم: منقولش إن الكاش عندنا مطابق للختم الجديد غير لما نكون كتبنا الكاش
-  // فعلًا. من غير كده الجهاز يفتح تاني ويقول "متغيّرش" وهو شايف نسخة قديمة.
+  pendingVersionMarks[key] = dataVersions[key];
+  // كتابة الكاش مؤجّلة: حفظ ١٦ شهر ورا بعض كان بيكتب الكاش كله ١٦ مرة
   try{
     if(key.indexOf('wh') === 0){ if(typeof whUpdateLocalCache === 'function') whUpdateLocalCache(); }
-    else if(typeof updateLocalCache === 'function') updateLocalCache(true);
-    localVersions[key] = dataVersions[key];
-    localStorage.setItem('cache:dataVersions', JSON.stringify(localVersions));
+    else if(typeof updateLocalCache === 'function') updateLocalCache();
   }catch(e){}
   if(versionsSaveTimer) clearTimeout(versionsSaveTimer);
   // كذا حفظ ورا بعض (شهور مثلًا) = كتابة واحدة للأختام
@@ -910,6 +918,14 @@ async function loadStorage(){
   //    وبعدين هات النسخة المركزية في الخلفية وحدّث لو فيه جديد.
   let shownFromCache = false;
   try{
+    // بيانات المخازن بتترجع من الكاش دايمًا — حتى لو مفيش شهور مبيعات محفوظة.
+    // قبل كده كانت جوه شرط الشهور، فمستخدم المخازن بس كان يلاقي الشاشة فاضية
+    // لو قراءة السيرفر فشلت.
+    [['cache:whCatalog', v=>whCatalog=v], ['cache:whBalances', v=>whBalances=v],
+     ['cache:whOrder', v=>whOrder=v], ['cache:whCount', v=>whCount=v]].forEach(([k,set])=>{
+      const raw = localStorage.getItem(k);
+      if(raw){ try{ set(JSON.parse(raw)); }catch(e){} }
+    });
     const cached = localStorage.getItem('cache:monthsData');
     if(cached){
       monthsData = JSON.parse(cached);
@@ -930,12 +946,6 @@ async function loadStorage(){
       if(cachedWF !== null) warehouseForcingOn = JSON.parse(cachedWF) !== false;
       const cachedArchive = localStorage.getItem('cache:archivedYears');
       if(cachedArchive) archivedYears = JSON.parse(cachedArchive);
-      // بيانات المخازن كمان بتفتح فورًا من الكاش
-      [['cache:whCatalog', v=>whCatalog=v], ['cache:whBalances', v=>whBalances=v],
-       ['cache:whOrder', v=>whOrder=v], ['cache:whCount', v=>whCount=v]].forEach(([k,set])=>{
-        const raw = localStorage.getItem(k);
-        if(raw){ try{ set(JSON.parse(raw)); }catch(e){} }
-      });
       $('appVersionBadge').textContent = APP_VERSION;
       $('loadStatus').textContent = 'بيزامن...';
       renderMonthPills();
@@ -966,11 +976,16 @@ async function loadStorage(){
   }catch(e){ idxErr = e; }
 
   // اللي ختمه زي اللي عندنا مش هنجيبه — بناخده من الكاش على طول
+  const loadedOkKeys = [];   // اللي وصل فعلًا (أو عندنا نسخته المطابقة) — بس ده اللي بيتعلّم "محدّث"
   const cachedRawOf = (k)=>{ try{ return localStorage.getItem('cache:' + k); }catch(e){ return null; } };
   const needKeys = [], skipKeys = [];
   PRELOAD_KEYS.forEach(k=>{ (versionFresh(k, cachedRawOf(k)) ? skipKeys : needKeys).push(k); });
   const preloadPromise = preloadKeys(needKeys).then(res=>{
     skipKeys.forEach(k=>{ res[k] = {ok:true, r:{key:k, value: cachedRawOf(k)}}; });
+    Object.keys(res).forEach(k=>{
+      // "مفتاح مش موجود" برضه نتيجة نهائية — مش فشل شبكة
+      if(res[k].ok || isMissingKey(res[k].e)) loadedOkKeys.push(k);
+    });
     preFetched = res;
     return res;
   });
@@ -1016,6 +1031,9 @@ async function loadStorage(){
     }
     if(stillNeeded.length && results.every(x => x === null)) throw new Error('كل الشهور فشلت');
     results.forEach(pair => { if(pair) fetched[pair[0]] = pair[1]; });
+    loadedOkKeys.push('monthsIndex');
+    fresh.forEach(m => loadedOkKeys.push('month:' + m));
+    results.forEach(pair => { if(pair) loadedOkKeys.push('month:' + pair[0]); });
     // الشهور اللي فضلت فاشلة: بتتسجل هنا عشان (1) تتعرض للمستخدم بوضوح
     // و(2) ما تتشالش من الفهرس عند أي حفظ جاي فتضيع للأبد.
     failedMonths = months.filter(m => !(m in fetched));
@@ -1180,10 +1198,14 @@ async function loadStorage(){
   // لو المزامنة فشلت، منكتبش فوق الكاش المحلي بنسخة ناقصة
   offlineMode = netFailed;
   if(!netFailed){
-    // الكاش بقى مطابق لأختام السيرفر — المرة الجاية مش هنجيب غير اللي اتغيّر
-    markVersionsFresh(Object.keys(dataVersions));
+    // الكاش بقى مطابق لأختام السيرفر — بس للمفاتيح اللي وصلت فعلًا.
+    // أي مفتاح فشل تحميله بيفضل "قديم" عشان نجيبه المرة الجاية.
+    markVersionsFresh(loadedOkKeys);
     forceFullSync = false;
     updateLocalCache(true);
+    // الكاش المحلي للمخازن كان بيتكتب بس لما المستخدم يعمل حاجة في المخازن،
+    // فأول فتحة كانت بتسيبه فاضي ولو القراءة فشلت بعدها الشاشة تطلع فاضية.
+    if(typeof whUpdateLocalCache === 'function') whUpdateLocalCache();
     try{ localStorage.removeItem('cache:classification'); localStorage.removeItem('cache:itemOverride'); }catch(e){}
     lastSyncAt = Date.now();
   }
@@ -1233,6 +1255,7 @@ async function retryFailedMonths(){
 let cacheTimer = null;
 function writeLocalCache(){
   cacheTimer = null;
+  let ok = false;
   try{
     try{
       localStorage.setItem('cache:monthsData', JSON.stringify(monthsData));
@@ -1251,7 +1274,9 @@ function writeLocalCache(){
     localStorage.setItem('cache:sectorSheets', JSON.stringify(sectorSheet));
     localStorage.setItem('cache:warehouseForcing', JSON.stringify(warehouseForcingOn));
     localStorage.setItem('cache:archivedYears', JSON.stringify(archivedYears));
+    ok = true;
   }catch(e){}
+  if(ok && typeof flushVersionMarks === 'function') flushVersionMarks();
 }
 function updateLocalCache(immediate){
   if(cacheTimer) clearTimeout(cacheTimer);
@@ -4642,6 +4667,18 @@ $('xlsAllBtn').addEventListener('click', ()=>{
 
 $('appLogo').src = LOGO_HEAD;
 
+// أي حالة بيلمسها loadStorage لازم تتعرّف قبلها. الـlet اللي بعد النداء
+// بيرمي ReferenceError (TDZ) جوه try صامت وبيوقّف باقي مسار "افتح من الكاش".
+let activeModule = null;   // مفيش قسم مفتوح غير لما المستخدم يدوس
+
+const WAREHOUSES = ['طنطا','الاسكندريه'];
+let whCatalog = {};   // اسم الصنف -> {main, sub, roll, color}
+let whBalances = {};  // مخزن -> {date, items:{اسم: رصيد بالقطعة}}
+let whOrder = {};     // مخزن -> {اسم: كمية مطلوبة}
+let whCount = {};     // مخزن -> {اسم: الجرد الفعلي}
+let whTab = 'balances';
+let whCountMode = 'entry';   // 'entry' إدخال الجرد | 'result' نتيجة الجرد (عجز/زيادة)
+
 loadStorage();
 
 
@@ -4653,13 +4690,6 @@ loadStorage();
 //   whBalances = آخر رصيد لكل مخزن (الرفعة الجديدة بتحل محل القديمة).
 //   whOrder    = طلب النواقص اللي المستخدم كتبه بإيده لكل مخزن.
 //   whCount    = الجرد الفعلي اللي المستخدم دخّله لكل مخزن.
-const WAREHOUSES = ['طنطا','الاسكندريه'];
-let whCatalog = {};   // اسم الصنف -> {main, sub, roll, color}
-let whBalances = {};  // مخزن -> {date, items:{اسم: رصيد بالقطعة}}
-let whOrder = {};     // مخزن -> {اسم: كمية مطلوبة}
-let whCount = {};     // مخزن -> {اسم: الجرد الفعلي}
-let whTab = 'balances';
-let whCountMode = 'entry';   // 'entry' إدخال الجرد | 'result' نتيجة الجرد (عجز/زيادة)
 
 async function saveWhCatalog(){ await setKey('whCatalog', JSON.stringify(whCatalog)); }
 async function saveWhBalances(){ await setKey('whBalances', JSON.stringify(whBalances)); }
@@ -4696,6 +4726,12 @@ function whSubGroups(main){
   return Array.from(set).sort((a,b)=> a.localeCompare(b,'ar'));
 }
 function whStoreBalances(store){ return (whBalances[store] && whBalances[store].items) || {}; }
+// الرقم اللي بيتعرض في تقرير "باللفف": لفف للأصناف اللي ليها محتوى لفة،
+// وقطع للأصناف اللي مالهاش — من غير كده كانت بتطلع أصفار.
+function whRollsOrPieces(qty, name){
+  const q = Number(qty) || 0;
+  return whRoll(name) > 0 ? whSplit(q, name).rolls : q;
+}
 
 // كل الأصناف اللي هتظهر: من الدليل + أي صنف في الأرصدة مش في الدليل
 function whAllItemNames(){
@@ -5157,7 +5193,7 @@ function whCompareView(){
       sTot.forEach((_,k)=> sTot[k] = 0);
       out.push(`<tr class="grp-row"><td colspan="${WAREHOUSES.length + 3}" style="text-align:right">${esc(sub)}</td></tr>`);
     }
-    const qs = WAREHOUSES.map(w => whSplit(Number(whStoreBalances(w)[r.name]) || 0, r.name).rolls);
+    const qs = WAREHOUSES.map(w => whRollsOrPieces(whStoreBalances(w)[r.name], r.name));
     qs.forEach((q,k)=>{ sTot[k] += q; mTot[k] += q; gTot[k] += q; });
     n++;
     out.push(`<tr><td>${n}</td><td style="text-align:right">${esc(r.name)}</td>` +
@@ -5207,12 +5243,13 @@ function whOrderView(){
   const ord = whOrder[store] || {};
   let html = `<div class="sub" style="margin-bottom:8px">اكتب الكمية المطلوبة قدام كل صنف واختار <b>الوحدة</b>
     (لفة / قطعة / كرتونة / كيس / عود) — الاتنين بيتحفظوا لوحدهم، والوحدة بتفضل محفوظة للصنف في المرات الجاية.
-    <br>التبويب ده بيعرض <b>كل الأصناف</b> حتى اللي رصيدها صفر — دي بالظبط اللي محتاج تطلبها.
+    <br>قدام كل صنف رصيده <b>لفة</b> و<b>عود</b> عشان تحدّد المطلوب وانت شايف اللي موجود.
+    والتبويب بيعرض <b>كل الأصناف</b> حتى اللي رصيدها صفر — دي بالظبط اللي محتاج تطلبها.
     استخدم البحث أو فلتر المجموعة عشان توصل بسرعة.</div>
     ${whFamilyBarHtml(store)}
     <div class="tbl-wrap"><table><thead><tr>
-      <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة الفرعية</th><th>الرصيد</th>
-      <th class="hide-sm">لفة</th><th class="hide-sm">عود</th>
+      <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة الفرعية</th>
+      <th class="hide-sm">الرصيد</th><th>لفة</th><th>عود</th>
       <th>المطلوب</th><th>الوحدة</th>
     </tr></thead><tbody>`;
   // الصفوف متجمّعة بالمجموعة الفرعية: سطر عنوان قبل كل مجموعة عشان وانت
@@ -5227,8 +5264,8 @@ function whOrderView(){
     }
     html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td>
       <td class="hide-sm">${esc(r.sub || r.main)}</td>
-      <td class="wh-num">${whFmt(r.qty)}</td>
-      <td class="wh-num hide-sm">${whFmt(sp.rolls)}</td><td class="wh-num hide-sm">${whFmt(sp.loose)}</td>
+      <td class="wh-num hide-sm">${whFmt(r.qty)}</td>
+      <td class="wh-num">${whFmt(sp.rolls)}</td><td class="wh-num">${whFmt(sp.loose)}</td>
       <td><input type="number" min="0" step="1" class="wh-in whOrderIn" data-item="${encodeURIComponent(r.name)}"
         value="${ord[r.name] != null ? esc(String(ord[r.name])) : ''}"></td>
       <td><select class="whUnitIn" data-item="${encodeURIComponent(r.name)}" style="font-size:12.5px;padding:3px">
@@ -5287,8 +5324,8 @@ function whCountView(){
   }
   html += `<div class="sub" style="margin:10px 0 8px">اكتب الجرد الفعلي قدام كل صنف — بيتحفظ لوحده والنتيجة بتتحدّث فورًا.</div>
   <div class="tbl-wrap"><table><thead><tr>
-    <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة</th><th>الرصيد</th>
-    <th class="hide-sm">لفة</th><th class="hide-sm">عود</th><th>الجرد الفعلي</th><th>الفرق</th>
+    <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة</th><th class="hide-sm">الرصيد</th>
+    <th>لفة</th><th>عود</th><th>الجرد الفعلي</th><th>الفرق</th>
   </tr></thead><tbody>`;
   rows.forEach((r,i)=>{
     const sp = whSplit(r.qty, r.name);
@@ -5298,8 +5335,8 @@ function whCountView(){
     const dCol = diff === null || diff === 0 ? '' : (diff > 0 ? 'color:var(--accent2)' : 'color:var(--danger)');
     html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td>
       <td class="hide-sm">${esc(r.main)}</td>
-      <td class="wh-num">${whFmt(r.qty)}</td>
-      <td class="wh-num hide-sm">${whFmt(sp.rolls)}</td><td class="wh-num hide-sm">${whFmt(sp.loose)}</td>
+      <td class="wh-num hide-sm">${whFmt(r.qty)}</td>
+      <td class="wh-num">${whFmt(sp.rolls)}</td><td class="wh-num">${whFmt(sp.loose)}</td>
       <td><input type="number" step="1" class="wh-in whCountIn" data-item="${encodeURIComponent(r.name)}"
         value="${v != null ? esc(String(v)) : ''}"></td>
       <td class="wh-num" style="${dCol}">${dTxt}</td></tr>`;
@@ -5530,7 +5567,6 @@ $('whGroup').addEventListener('change', ()=>{
 });
 
 // ---- تبديل المبيعات/المخازن ----
-let activeModule = null;   // مفيش حاجة مفتوحة غير لما المستخدم يدوس
 function showModule(mod){
   activeModule = mod;
   $('salesApp').style.display = mod === 'sales' ? '' : 'none';
@@ -5746,7 +5782,7 @@ function whExportAoa(){
     const rows = whRows(null);
     const aoa = [['م','الصنف','المجموعة','المجموعة الفرعية', ...WAREHOUSES, 'الإجمالي']];
     rows.forEach((r,i)=>{
-      const qs = WAREHOUSES.map(w => whSplit(Number(whStoreBalances(w)[r.name]) || 0, r.name).rolls);
+      const qs = WAREHOUSES.map(w => whRollsOrPieces(whStoreBalances(w)[r.name], r.name));
       aoa.push([i+1, r.name, r.main, r.sub, ...qs, qs.reduce((a,b)=>a+b,0)]);
     });
     return {aoa, title:'مقارنة أرصدة الفروع (باللفة)', sheet:'مقارنة الفروع'};
@@ -5842,10 +5878,16 @@ $('whPdfBtn').addEventListener('click', async ()=>{
 // نسخة محلية سريعة لبيانات المخازن (زي المبيعات)
 function whUpdateLocalCache(){
   try{
+    // لو الذاكرة فاضية والكاش فيه دليل، يبقى القراءة فشلت — منمسحش الكاش
+    if(!Object.keys(whCatalog).length){
+      const raw = localStorage.getItem('cache:whCatalog');
+      if(raw && raw.length > 2) return;
+    }
     localStorage.setItem('cache:whCatalog', JSON.stringify(whCatalog));
     localStorage.setItem('cache:whBalances', JSON.stringify(whBalances));
     localStorage.setItem('cache:whOrder', JSON.stringify(whOrder));
     localStorage.setItem('cache:whCount', JSON.stringify(whCount));
+    flushVersionMarks();
   }catch(e){}
 }
 
