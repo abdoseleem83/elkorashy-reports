@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v78';
+const APP_VERSION = 'v79';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -706,6 +706,7 @@ let failedMonths = [];  // شهور موجودة في الفهرس بس تحمي
 // نرفعه للسيرفر — يمكن يكون فيه نسخة أحدث هناك وإحنا اللي فشلنا نجيبها.
 let staleMonths = [];
 let indexedMonths = []; // كل الشهور اللي الفهرس بيقول إنها متخزنة
+let deletedMonths = []; // شهور المستخدم مسحها بنفسه — دي بس اللي تخرج من الفهرس
 
 const $ = (id) => document.getElementById(id);
 
@@ -1435,7 +1436,13 @@ $('closeArchiveBtn').addEventListener('click', ()=> $('archivePanel').style.disp
 async function saveMonths(changedMonths){
   // مهم: الفهرس بيشمل الشهور اللي فشل تحميلها كمان. من غير كده أول حفظ بعد
   // فشل تحميل شهر كان بيشيله من الفهرس نهائي وبياناته تبقى يتيمة على السيرفر.
-  const months = Array.from(new Set(Object.keys(monthsData).concat(failedMonths))).sort();
+  // الفهرس = اللي في الذاكرة + اللي فشل تحميله + **اللي الفهرس القديم كان
+  // فيه**. من غير الجزء الأخير: لو التحميل فشل خالص (الذاكرة فاضية) وبعدين
+  // المستخدم رفع شهر، كان الفهرس بيتكتب بالشهر ده لوحده وباقي الشهور تبقى
+  // موجودة على السيرفر بس مش في الفهرس — يعني تختفي من التطبيق للأبد.
+  const months = Array.from(new Set(
+      Object.keys(monthsData).concat(failedMonths).concat(indexedMonths)
+    )).filter(m => !deletedMonths.includes(m)).sort();
   const wanted = changedMonths && changedMonths.length ? changedMonths : months;
   // الشهر اللي معروض من النسخة المحلية (تحميله فشل) مبيترفعش: ممكن يكون فيه
   // نسخة أحدث على السيرفر من جهاز تاني، ورفع القديمة فوقها بيمسحها.
@@ -1830,6 +1837,8 @@ async function deleteMonth(m){
   try{
     await window.storage.delete('month:' + m);
     failedMonths = failedMonths.filter(x => x !== m);
+    indexedMonths = indexedMonths.filter(x => x !== m);
+    if(!deletedMonths.includes(m)) deletedMonths.push(m);
     // تحديث الفهرس بس. قبل كده saveMonths([]) كانت بتعيد رفع كل الشهور من أول وجديد.
     await window.storage.set('monthsIndex',
       JSON.stringify(Array.from(new Set(Object.keys(monthsData).concat(failedMonths))).sort()));
@@ -4735,7 +4744,12 @@ function whSplit(qty, name){
   const roll = whRoll(name);
   const q = Number(qty) || 0;
   if(!roll) return {rolls: 0, loose: q};
-  return {rolls: Math.floor(q / roll), loose: q % roll};
+  // الأرصدة السالبة موجودة فعلًا (مرتجع/خدمة). Math.floor مع السالب كان
+  // بيدي -2 لفة و-5 عود لرصيد -15 (يعني -25) — بنحسبها بالمطلق وبعدين
+  // نرجّع الإشارة.
+  const sign = q < 0 ? -1 : 1;
+  const a = Math.abs(q);
+  return {rolls: sign * Math.floor(a / roll), loose: sign * (a % roll)};
 }
 function whGroups(){
   const set = new Set();
