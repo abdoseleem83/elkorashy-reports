@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v69';
+const APP_VERSION = 'v70';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -5191,7 +5191,18 @@ function bindWhInputs(){
       $('whCount').textContent = $('whCount').textContent.replace(/مطلوب \d+ صنف/, `مطلوب ${asked} صنف`);
     });
   });
-  document.querySelectorAll('.fam-btn').forEach(btn=>{
+  const clr = $('whOrderClear');
+  if(clr) clr.addEventListener('click', async ()=>{
+    const store = $('whStore').value;
+    const n = Object.values(whOrder[store] || {}).filter(v => Number(v) > 0).length;
+    if(!n) return;
+    if(!confirm(`تمسح كل الكميات المطلوبة في مخزن ${store}؟ (${n} صنف)\nالوحدات اللي اخترتها هتفضل زي ما هي.`)) return;
+    delete whOrder[store];
+    try{ await saveWhOrder(); }catch(e){ scheduleSave('whOrder', saveWhOrder, 'طلب النواقص'); }
+    whUpdateLocalCache();
+    renderWh();
+  });
+  document.querySelectorAll('.fam-btn[data-fam]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
       const fam = btn.dataset.fam;
@@ -5385,7 +5396,9 @@ function whFamilyBarHtml(store){
   const ids = WH_FAMILIES.map(f=>f.id).concat('other').filter(f => byFam[f]);
   return `<div class="fam-bar">` + ids.map(id =>
     `<button class="fam-btn" data-fam="${id}">${icons[id] || '📦'} ${esc(whFamilyTitle(id))}
-      <span class="fam-n">${byFam[id]}</span></button>`).join('') + `</div>`;
+      <span class="fam-n">${byFam[id]}</span></button>`).join('') +
+    `<button class="fam-btn ghost" id="whOrderClear" title="يفضّي كل الكميات المطلوبة في المخزن ده">
+      🗑️ امسح النواقص <span class="fam-n" style="background:var(--panel2)">${rows.length}</span></button></div>`;
 }
 
 function whOrderSheetHtml(store, rows, title){
