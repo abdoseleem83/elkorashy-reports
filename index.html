@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v80';
+const APP_VERSION = 'v81';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1502,13 +1502,37 @@ function findHeaderRow(rows){
   return -1;
 }
 
+// التاريخ في ملفات المحاسبة بييجي بأشكال: رقم إكسل، أو تاريخ حقيقي، أو نص
+// ("2026-07-15" / "15/07/2026"). قبل كده كنا بنقبل الرقم بس، فالملف اللي
+// تواريخه نص كان بيقول "مفيش تاريخ" ويجبر المستخدم يختار شهر واحد يدوي —
+// ولو الملف فيه شهرين كانوا بيتلموا غلط في شهر واحد.
 function excelSerialToMonth(serial){
-  if(typeof serial !== 'number' || !serial) return null;
-  try{
-    const d = XLSX.SSF.parse_date_code(serial);
-    if(!d || !d.y) return null;
-    return `${d.y}-${String(d.m).padStart(2,'0')}`;
-  }catch(e){ return null; }
+  if(serial instanceof Date && !isNaN(serial)){
+    return `${serial.getFullYear()}-${String(serial.getMonth()+1).padStart(2,'0')}`;
+  }
+  if(typeof serial === 'number' && serial){
+    try{
+      const d = XLSX.SSF.parse_date_code(serial);
+      if(!d || !d.y) return null;
+      return `${d.y}-${String(d.m).padStart(2,'0')}`;
+    }catch(e){ return null; }
+  }
+  const t = String(serial == null ? '' : serial).trim();
+  if(!t) return null;
+  // رقم إكسل جاي كنص
+  if(/^\d+(\.\d+)?$/.test(t)) return excelSerialToMonth(Number(t));
+  // 2026-07-15 أو 2026/7/15
+  let m = t.match(/^(\d{4})[-\/.](\d{1,2})/);
+  if(m) return `${m[1]}-${String(Number(m[2])).padStart(2,'0')}`;
+  // 15/07/2026 (يوم/شهر/سنة) — ولو الرقم التاني أكبر من ١٢ يبقى شهر/يوم/سنة
+  m = t.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})/);
+  if(m){
+    let mm = Number(m[2]);
+    if(mm > 12 && Number(m[1]) <= 12) mm = Number(m[1]);
+    if(mm < 1 || mm > 12) return null;
+    return `${m[3]}-${String(mm).padStart(2,'0')}`;
+  }
+  return null;
 }
 
 // ---- تنسيق "Header_Wide" المُصدَّر من برنامج المحاسبة (c_name / Item_Name / Inv_Name لكل صف) ----
@@ -1555,13 +1579,18 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
     const r = rows[i];
     const custCell = normName(r[cCustomer]);
     const itemCell = normName(r[cItem]);
-    const vout = toNum(r[cVout]);
+    let vout = toNum(r[cVout]);
+    const vin = toNum(r[cVin]);
+    // سطر مرتجع صافي: خانة المبيعات **فاضية** والمرتجع فيه رقم حقيقي. قبل كده
+    // السطر ده كان بيتلغي خالص، يعني المرتجع ما بيتخصمش من المبيعات.
+    // شرط إن الخانة فاضية مهم: لو فيها كلام بايظ لازم تفضل تتحسب "سطر ملغي"
+    // ويتقال للمستخدم، مش تتحول لصفر في صمت.
+    if(vout === null && normName(r[cVout]) === '' && vin !== null && vin !== 0) vout = 0;
     // سطر فاضي تمامًا مش مشكلة — بس سطر فيه بيانات ورقمه مش صالح لازم يتحسب
     if(!custCell || !itemCell || vout === null){
       if(custCell || itemCell || normName(r[cVout])) skippedRows++;
       continue;
     }
-    const vin = toNum(r[cVin]);
     const net = vout - (vin || 0);
     const qty = qOut ? ((toNum(r[qOut.idx]) || 0) - (qIn ? (toNum(r[qIn.idx]) || 0) : 0)) : 0;
     const month = excelSerialToMonth(r[cDate]) || fallbackMonth;
