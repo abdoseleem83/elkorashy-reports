@@ -573,7 +573,7 @@ function isTransientError(msg){
   // "not found" مش خطأ عابر — دي إجابة نهائية إن المفتاح مش موجود. كانت
   // هنا فبتتعاد 3 مرات بتباعد متزايد لكل مفتاح ناقص، وده كان بيضيف تقريبًا
   // ٢.٤ ثانية لكل مفتاح على أول فتح للتطبيق.
-  return /unknown action|HTTP 5\d\d|Service invoked too many|Exceeded maximum|timed out|وقت أطول/i.test(msg || '');
+  return /unknown action|busy|HTTP 5\d\d|Service invoked too many|Exceeded maximum|timed out|وقت أطول/i.test(msg || '');
 }
 
 // لما نتأكد إن مفيش اتصال خالص، مفيش داعي نعيد المحاولة لكل مفتاح.
@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v77';
+const APP_VERSION = 'v78';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4150,7 +4150,10 @@ function reportDateText(){
 const DEFAULT_REPORT_TITLE = 'تقارير مبيعات القرشي';
 let exportTitle = '';
 
+// عنوان التقرير: تقارير المخازن مش "مبيعات" — العنوان بيتغيّر حسب القسم
+let whReportMode = false;
 function reportTitle(){
+  if(whReportMode) return 'تقارير مخازن القرشي';
   const t = (exportTitle || '').trim();
   return t || DEFAULT_REPORT_TITLE;
 }
@@ -5718,6 +5721,7 @@ function whOrderSheetHtml(store, rows, title){
 // الأصل مشاركة (واتساب/أي تطبيق) مش تنزيل، ولو الجهاز مش بيدعم المشاركة
 // بينزّلها عادي.
 async function whDownloadImage(bodyHtml, subtitle, fileName, share){
+  whReportMode = true;   // قبل بناء الرأس: العنوان لازم يبقى "تقارير مخازن القرشي"
   const headerHtml = `<div style="border-bottom:2px solid #1b3a8f;padding:0 0 8px;margin-bottom:10px;
       display:flex;align-items:center;justify-content:space-between;gap:16px">
     <div><div style="font-size:20px;font-weight:700">${esc(reportTitle())}</div>
@@ -5747,7 +5751,7 @@ async function whDownloadImage(bodyHtml, subtitle, fileName, share){
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=> URL.revokeObjectURL(url), 4000);
     return 'downloaded';
-  } finally { PDF_RENDER_W = old; }
+  } finally { PDF_RENDER_W = old; whReportMode = false; }
 }
 
 $('whImgBtn').addEventListener('click', async ()=>{
@@ -5855,8 +5859,12 @@ $('whExcelBtn').addEventListener('click', ()=>{
   if(aoa.length < 2){ alert('مفيش بيانات في الجدول ده.'); return; }
   const wb = XLSX.utils.book_new();
   wb.Workbook = {Views:[{RTL:true}]};
-  XLSX.utils.book_append_sheet(wb, sheetWithHeader(aoa, title, 'تاريخ التقرير: ' + reportDateText(), aoa[0].length),
-    safeSheetName(sheet, new Set()));
+  whReportMode = true;
+  try{
+    // sheetWithHeader بيضيف تاريخ التقرير لوحده — كنا بنبعته تاني فيتكرر
+    XLSX.utils.book_append_sheet(wb, sheetWithHeader(aoa, title, 'مخزن ' + $('whStore').value, aoa[0].length),
+      safeSheetName(sheet, new Set()));
+  } finally { whReportMode = false; }
   XLSX.writeFile(wb, safeFileName(title) + '.xlsx');
 });
 
@@ -5887,6 +5895,7 @@ $('whPdfBtn').addEventListener('click', async ()=>{
     pdfNeededW = 0;
     PDF_RENDER_W = PDF_WIDTH_BY_SIZE.large;
     const html = `<div class="blk"><div class="grp-title">${esc(title)}</div>${tbl}</div>`;
+    whReportMode = true;
     await renderPdfFromHtml(html, {
       subtitle: title,
       orient: numCols >= 8 ? 'l' : 'p',
@@ -5896,6 +5905,7 @@ $('whPdfBtn').addEventListener('click', async ()=>{
   }catch(e){
     alert('حصل خطأ في إنشاء الـPDF: ' + e.message);
   }finally{
+    whReportMode = false;
     exportBusy = false; setExportButtons(true); btn.textContent = label;
   }
 });
