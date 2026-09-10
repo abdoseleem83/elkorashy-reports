@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v75';
+const APP_VERSION = 'v76';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -835,6 +835,7 @@ let dataVersions = {};        // آخر أختام معروفة (من السير
 let localVersions = {};       // أختام النسخة اللي في الكاش عندنا
 const VERSION_TTL_MS = 24 * 60 * 60 * 1000;   // كل يوم بنعمل تحميل كامل مهما كان
 let versionsSaveTimer = null;
+let versionsLoadedOk = false;  // قرينا خريطة الأختام من السيرفر بنجاح؟
 try{ localVersions = JSON.parse(localStorage.getItem('cache:dataVersions') || '{}') || {}; }catch(e){ localVersions = {}; }
 
 let pendingVersionMarks = {};   // أختام مستنية الكاش يتكتب
@@ -857,11 +858,29 @@ function bumpVersion(key){
   }catch(e){}
   if(versionsSaveTimer) clearTimeout(versionsSaveTimer);
   // كذا حفظ ورا بعض (شهور مثلًا) = كتابة واحدة للأختام
-  versionsSaveTimer = setTimeout(()=>{
-    window.storage.set('dataVersions', JSON.stringify(Object.assign({}, dataVersions, {savedAt: Date.now()})))
-      .catch(()=>{});
-  }, 400);
+  versionsSaveTimer = setTimeout(saveDataVersions, 400);
 }
+// كتابة خريطة الأختام. لو ما قدرناش نقراها عند التحميل، بنحاول نقراها
+// دلوقتي ونضيف عليها — من غير كده كنا هنكتب خريطة فيها أختامنا إحنا بس
+// ونمسح أختام باقي المفاتيح، فكل الأجهزة تفضل تحمّل كل حاجة كل مرة.
+async function saveDataVersions(){
+  let base = dataVersions;
+  if(!versionsLoadedOk){
+    try{
+      const r = await window.storage.get('dataVersions');
+      const srv = JSON.parse(r.value) || {};
+      base = Object.assign({}, srv, dataVersions);
+      dataVersions = base;
+      versionsLoadedOk = true;
+    }catch(e){
+      // مفتاح مش موجود = أول مرة، عادي. غير كده منكتبش خريطة ناقصة.
+      if(!isMissingKey(e)) return;
+    }
+  }
+  try{ await window.storage.set('dataVersions', JSON.stringify(Object.assign({}, base, {savedAt: Date.now()}))); }
+  catch(e){}
+}
+
 // حفظ + تسجيل ختم
 async function setKey(key, value){
   await window.storage.set(key, value);
@@ -970,8 +989,14 @@ async function loadStorage(){
       window.storage.get('dataVersions').then(r=>r).catch(e=>({__err:e})),
       window.storage.get('monthsIndex').then(r=>r).catch(e=>({__err:e})),
     ]);
-    if(!vr.__err){ try{ dataVersions = JSON.parse(vr.value) || {}; }catch(e){ dataVersions = {}; } }
-    else { dataVersions = {}; }
+    if(!vr.__err){
+      try{ dataVersions = JSON.parse(vr.value) || {}; versionsLoadedOk = true; }
+      catch(e){ dataVersions = {}; }
+    } else {
+      dataVersions = {};
+      // "مش موجود" يعني أول مرة — الخريطة فاضية فعلًا، مش قراءة فشلت
+      versionsLoadedOk = isMissingKey(vr.__err);
+    }
     if(ir.__err) idxErr = ir.__err; else idxPre = ir;
   }catch(e){ idxErr = e; }
 
@@ -5650,23 +5675,23 @@ function whFamilyBarHtml(store){
 }
 
 function whOrderSheetHtml(store, rows, title){
-  let html = `<div class="blk"><div class="grp-title">${esc(title)} — ${esc(store)}</div>
-    <div class="tbl-wrap"><table style="font-size:15px"><thead><tr>
-      <th style="width:7%">م</th><th style="width:53%">الصنف</th>
-      <th style="width:20%">الكمية المطلوبة</th><th style="width:20%">ملاحظات</th>
+  let html = `<div class="blk"><div class="grp-title" style="font-size:15px">${esc(title)} — ${esc(store)}</div>
+    <div class="tbl-wrap"><table style="font-size:12.5px"><thead><tr>
+      <th style="width:6%;padding:5px 4px">م</th><th style="width:52%;padding:5px 4px">الصنف</th>
+      <th style="width:21%;padding:5px 4px">الكمية المطلوبة</th><th style="width:21%;padding:5px 4px">ملاحظات</th>
     </tr></thead><tbody>`;
   let lastKey = null, n = 0;
   const totals = {};   // إجمالي اللفف لكل مجموعة رئيسية
   rows.forEach(r=>{
     const key = r.sub || r.main;
     if(key !== lastKey){
-      html += `<tr class="grp-row"><td colspan="4" style="text-align:right">${esc(key)}</td></tr>`;
+      html += `<tr class="grp-row"><td colspan="4" style="text-align:right;padding:4px 6px">${esc(key)}</td></tr>`;
       lastKey = key;
     }
     n++;
-    html += `<tr><td>${n}</td><td style="text-align:right">${esc(r.name)}</td>
-      <td><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(r.want)}</span>
-        ${esc(whOrderUnit(r.name))}</td><td></td></tr>`;
+    html += `<tr><td style="padding:4px">${n}</td><td style="text-align:right;padding:4px 6px">${esc(r.name)}</td>
+      <td style="padding:4px"><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(r.want)}</span>
+        ${esc(whOrderUnit(r.name))}</td><td style="padding:4px"></td></tr>`;
     // الإجمالي بيتجمّع لكل مجموعة × وحدة (مش كل حاجة "لفة")
     const u = whOrderUnit(r.name);
     const tk = r.main + '|' + u;
@@ -5677,7 +5702,7 @@ function whOrderSheetHtml(store, rows, title){
   if(keys.length){
     const byUnit = {};
     keys.forEach(k => { const u = k.split('|')[1]; byUnit[u] = (byUnit[u] || 0) + totals[k]; });
-    html += `<table style="font-size:15px;margin-top:10px"><tbody>` +
+    html += `<table style="font-size:12.5px;margin-top:8px"><tbody>` +
       keys.map(k => { const [main, u] = k.split('|');
         return `<tr class="total-row"><td style="text-align:right">إجمالي ${esc(u === 'لفة' ? 'لفف' : u)} ${esc(main)}</td>
         <td style="width:30%"><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(totals[k])}</span> ${esc(u)}</td></tr>`;
@@ -5699,7 +5724,7 @@ async function whDownloadImage(bodyHtml, subtitle, fileName, share){
       <div style="font-size:12.5px;color:#444;margin-top:4px">${esc(subtitle)} — تاريخ التقرير ${esc(reportDateText())}</div></div>
     <img src="${LOGO_HEAD}" style="height:46px;width:auto;display:block" alt=""></div>`;
   const old = PDF_RENDER_W;
-  PDF_RENDER_W = 900;
+  PDF_RENDER_W = 640;   // ورقة أضيق = صورة أصغر وأسهل في الواتساب
   try{
     const res = await renderReportCanvas(`<div class="blk">${headerHtml}</div>` + bodyHtml);
     const blob = await new Promise(r => res.canvas.toBlob(r, 'image/png'));
