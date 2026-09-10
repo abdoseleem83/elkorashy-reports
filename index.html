@@ -374,6 +374,9 @@
     <label class="chk"><input type="checkbox" id="reportGrowthCols" checked> عمود الفرق والنمو %</label>
     <label class="chk"><input type="checkbox" id="reportShowClass"> عمود التصنيف</label>
     <label class="chk"><input type="checkbox" id="reportRanks" checked> ميداليات لأعلى 10</label>
+    <label class="chk" id="itemsCodeWrap" style="display:none">
+      <input type="checkbox" id="itemsByCode" checked> كود الباب بس (A06) بدل الاسم الكامل
+    </label>
     <label class="chk" style="gap:6px" id="itemsSheetWrap" style="display:none">القطاعات
       <select id="itemsSheet" style="padding:4px 8px">
         <option value="">كل القطاعات</option>
@@ -484,7 +487,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v55';
+const APP_VERSION = 'v56';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1877,7 +1880,7 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
         }
         return `<td class="num" style="${style}">${v?v.toLocaleString('en-US',{maximumFractionDigits:0}):'-'}${qLine(qs?qs[si]:null)}</td>`;
       }).join('');
-      html += `<tr><td>${rankOf(i)}</td><td style="text-align:right">${esc(r.label)}</td>${clsCell(r)}${cells}` +
+      html += `<tr><td>${rankOf(i)}</td><td style="text-align:right"${r.hint?` title="${esc(r.hint)}"`:''}>${esc(r.label)}</td>${clsCell(r)}${cells}` +
         `<td class="num">${total.toLocaleString('en-US',{maximumFractionDigits:0})}${qLine(qs?qs.reduce((a,b)=>a+b,0):null)}</td></tr>`;
     });
     if(showTotals){
@@ -1899,6 +1902,7 @@ const reportView = {
   // تقرير الأصناف بالقطاع غرضه الكميات (كام باب 70 وكام باب 80)، فبيفتح
   // على "الكمية" بشكل افتراضي وبيفتكر اختيار المستخدم لوحده.
   itemsMetric: 'qty',
+  itemsByCode: true,  // البيان = كود الباب (A06)، وكل مقاساته في صف واحد
   sortKey: 'total',   // 'total' | 'label' | رقم عمود
   sortDir: 'desc',
   growthCols: true,   // عمودَي الفرق والنمو % جوه جدول المبيعات
@@ -2017,6 +2021,20 @@ function sortReportRows(rows, tabType, sectorCols){
 // ---- تقرير الأصناف بالقطاع ----
 // كل صف = صنف، وكل عمود = قطاع، والخلية = مبيعات الصنف ده في القطاع ده.
 // بيستخدم itemEffectiveSectors فالتفنيطات وترحيل المخازن بيتحسبوا زي أي تقرير.
+// كود الباب من اسم الصنف. الأسماء عند المستخدم شكلها:
+//   "باب WPC ابيض 70 سم A06"  →  الكود A06 في آخر الاسم.
+// بناخد آخر مقطع فيه حروف لاتينية ملزوقة بأرقام (A06 / a-12)، فالمقاس (70)
+// وكلمة WPC لوحدها مش بيتحسبوا كود.
+function doorCode(name){
+  const m = String(name || '').match(/[A-Za-z]{1,4}-?\d{1,4}/g);
+  if(!m) return null;
+  return m[m.length - 1].replace(/-/g,'').toUpperCase();
+}
+// صنف "باب" ولا حاجة تانية؟ التقرير ده للأبواب بس (الاكسسوارات والحلوق
+// والبرور بتتشال منه) — لكن لو مفيش ولا صنف اسمه فيه "باب" مبنفلترش خالص
+// عشان ما يطلعش فاضي.
+function looksLikeDoor(name){ return /باب|أبواب|ابواب/.test(String(name || '')); }
+
 function itemSectorRows(months, opts){
   opts = opts || {};
   const only = opts.sectors ? new Set(opts.sectors) : null;
@@ -2039,7 +2057,36 @@ function itemSectorRows(months, opts){
       });
     });
   });
-  let rows = Object.keys(map).map(item => ({
+  let names = Object.keys(map);
+
+  // وضع "كود الباب": صف واحد لكل كود، والمقاسات بتتوزّع على الأعمدة.
+  if(opts.byCode){
+    const doors = names.filter(looksLikeDoor);
+    const src = doors.length ? doors : names;   // مفيش أبواب خالص؟ متفلترش
+    const byCode = {};
+    src.forEach(item=>{
+      const code = doorCode(item);
+      if(!code) return;                          // من غير كود = مش باب، يتشال
+      if(!byCode[code]) byCode[code] = {sectors:{}, items:[]};
+      byCode[code].items.push(item);
+      Object.keys(map[item]).forEach(sec=>{
+        byCode[code].sectors[sec] = (byCode[code].sectors[sec]||0) + map[item][sec];
+      });
+    });
+    let rows = Object.keys(byCode).map(code => ({
+      label: code,
+      cls: byCode[code].items.length > 1 ? `${byCode[code].items.length} أصناف` : (itemSector(byCode[code].items[0]) || ''),
+      hint: byCode[code].items.join(' • '),      // الأسماء الكاملة في tooltip
+      sectors: byCode[code].sectors,
+    }));
+    if(opts.search){
+      const q = opts.search.trim();
+      if(q) rows = rows.filter(r => r.label.includes(q.toUpperCase()) || r.hint.includes(q));
+    }
+    return rows;
+  }
+
+  let rows = names.map(item => ({
     label: item,
     cls: itemSector(item) || 'غير محدد',
     sectors: map[item],
@@ -2104,6 +2151,8 @@ function renderReport(){
 
   const itemsWrap = $('itemsSheetWrap');
   if(itemsWrap) itemsWrap.style.display = isItems ? '' : 'none';
+  const codeWrap = $('itemsCodeWrap');
+  if(codeWrap) codeWrap.style.display = isItems ? '' : 'none';
   if(isItems){ renderItemsSectorTab(months, metric, qtyMissing); return; }
 
   const baseRows = rowsForMetric(metric, ()=> reportRows(months));
@@ -2289,6 +2338,7 @@ function renderItemsSectorTab(months, metric, qtyMissing){
   const secList = sheetId ? sectorsOfSheet(sheetId) : null;
   const build = ()=> itemSectorRows(months, {
     sectors: secList, cls: reportView.cls || null, search: reportView.search,
+    byCode: reportView.itemsByCode,
   });
   const baseRows = rowsForMetric(metric, build);
   const cols = (secList || SECTORS).filter(sec => baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
@@ -2308,7 +2358,7 @@ function renderItemsSectorTab(months, metric, qtyMissing){
         sortable:true, showClass: reportView.showClass, allRows: rows,
         sectorCols: cols, showAllSectorCols: true, qty: metric === 'both',
         ranks: reportView.ranks && reportView.sortKey === 'total' && reportView.sortDir === 'desc',
-        labelHead: 'الصنف',
+        labelHead: reportView.itemsByCode ? 'كود الباب' : 'الصنف',
       })
     : '<div class="sub">مفيش أصناف عليها مبيعات في الشهور والفلاتر دي.</div>');
   bindSortHeaders();
@@ -2648,6 +2698,7 @@ $('reportMetric').addEventListener('change', (e)=>{
   renderReport();
 });
 $('itemsSheet').addEventListener('change', ()=> renderReport());
+$('itemsByCode').addEventListener('change', (e)=>{ reportView.itemsByCode = e.target.checked; renderReport(); });
 $('reportMonthsBtn').addEventListener('click', ()=>{
   const panel = $('reportMonthsPanel');
   const showing = panel.style.display !== 'none';
@@ -2972,12 +3023,13 @@ function generateExcel(includeMonthly, includeSector, opts){
     if(includeItems){
       const secList = sheetCols && sheetCols.length ? sheetCols : secCols;
       const iRows = rowsForMetric(xlItemsMetric, ()=>
-        itemSectorRows(selectedMonths, {sectors: secList, filter: groupFilter(g)}));
+        itemSectorRows(selectedMonths, {sectors: secList, filter: groupFilter(g),
+          byCode: reportView.itemsByCode}));
       const iCols = secList.filter(sec => iRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
       if(iRows.length && iCols.length){
         const sorted = sortRowsForTable('sector', iRows, iCols);
         const aoa = sectorAoa(sorted, iCols, null, withShowClass, true, xlItemsMetric === 'both');
-        aoa[0][1] = 'الصنف';
+        aoa[0][1] = reportView.itemsByCode ? 'كود الباب' : 'الصنف';
         XLSX.utils.book_append_sheet(wbOut,
           sheetWithHeader(aoa, g.title + ' — الأصناف بالقطاع', period, aoa[0].length),
           safeSheetName('أصناف-' + g.title, used));
@@ -4016,14 +4068,16 @@ async function generatePdf(includeMonthly, includeSector, opts){
       const addItemsTable = ()=>{
         const secList = sheetCols && sheetCols.length ? sheetCols : mainSectors();
         const iRows = rowsForMetric(itemsMetric, ()=>
-          itemSectorRows(selectedMonths, {sectors: secList, filter: groupFilter(g)}));
+          itemSectorRows(selectedMonths, {sectors: secList, filter: groupFilter(g),
+            byCode: reportView.itemsByCode}));
         const iCols = secList.filter(sec => iRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
         if(!iRows.length || !iCols.length) return;
         const sorted = sortRowsForTable('sector', iRows, iCols);
         const tbl = buildTableHtml('sector', columns, sorted, null, {
           totalsFrom: sorted, showClass: withShowClass, sectorCols: iCols,
           ranks: withRanks, allRows: sorted, showAllSectorCols: true,
-          pdfBaseFont: pdfFont, qty: itemsMetric === 'both', labelHead: 'الصنف',
+          pdfBaseFont: pdfFont, qty: itemsMetric === 'both',
+          labelHead: reportView.itemsByCode ? 'كود الباب' : 'الصنف',
         });
         const what = itemsMetric === 'qty' ? 'بالكمية'
           : (itemsMetric === 'both' ? '(القيمة والكمية تحتها)' : 'بالقيمة');
