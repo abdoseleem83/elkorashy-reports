@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v76';
+const APP_VERSION = 'v77';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -5677,21 +5677,21 @@ function whFamilyBarHtml(store){
 function whOrderSheetHtml(store, rows, title){
   let html = `<div class="blk"><div class="grp-title" style="font-size:15px">${esc(title)} — ${esc(store)}</div>
     <div class="tbl-wrap"><table style="font-size:12.5px"><thead><tr>
-      <th style="width:6%;padding:5px 4px">م</th><th style="width:52%;padding:5px 4px">الصنف</th>
-      <th style="width:21%;padding:5px 4px">الكمية المطلوبة</th><th style="width:21%;padding:5px 4px">ملاحظات</th>
+      <th style="width:8%;padding:5px 4px">م</th><th style="width:64%;padding:5px 4px">الصنف</th>
+      <th style="width:28%;padding:5px 4px">الكمية المطلوبة</th>
     </tr></thead><tbody>`;
   let lastKey = null, n = 0;
   const totals = {};   // إجمالي اللفف لكل مجموعة رئيسية
   rows.forEach(r=>{
     const key = r.sub || r.main;
     if(key !== lastKey){
-      html += `<tr class="grp-row"><td colspan="4" style="text-align:right;padding:4px 6px">${esc(key)}</td></tr>`;
+      html += `<tr class="grp-row"><td colspan="3" style="text-align:right;padding:4px 6px">${esc(key)}</td></tr>`;
       lastKey = key;
     }
     n++;
     html += `<tr><td style="padding:4px">${n}</td><td style="text-align:right;padding:4px 6px">${esc(r.name)}</td>
       <td style="padding:4px"><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(r.want)}</span>
-        ${esc(whOrderUnit(r.name))}</td><td style="padding:4px"></td></tr>`;
+        ${esc(whOrderUnit(r.name))}</td></tr>`;
     // الإجمالي بيتجمّع لكل مجموعة × وحدة (مش كل حاجة "لفة")
     const u = whOrderUnit(r.name);
     const tk = r.main + '|' + u;
