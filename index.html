@@ -451,7 +451,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v50';
+const APP_VERSION = 'v51';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2612,7 +2612,7 @@ function sheetWithHeader(aoa, title, period, width){
   const pad = (arr) => arr.concat(new Array(Math.max(0, width - arr.length)).fill(''));
   const head = [
     pad([`${reportTitle()} — ${title}`]),
-    pad([`${period} — تاريخ التقرير ${new Date().toLocaleDateString('ar-EG')}`]),
+    pad([`${period} — تاريخ التقرير ${reportDateText()}`]),
     pad([]),
   ];
   const rowsAll = [...head, ...aoa];
@@ -3417,6 +3417,13 @@ const LOGO_WATERMARK = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDA
 // ---- اسم التقرير ----
 // المستخدم يقدر يسمّي التقرير باسمه (مثلًا "تقرير الأبواب") — الاسم بيظهر في
 // رأس الـPDF وبيبقى اسم الملف في الـPDF والإكسل.
+// تاريخ التقرير بصيغة واحدة في الرأس والذيل: "10 سبتمبر 2026" بأرقام لاتينية
+function reportDateText(){
+  try{
+    return new Date().toLocaleDateString('ar-EG-u-nu-latn',
+      {day:'numeric', month:'long', year:'numeric'});
+  }catch(e){ return new Date().toLocaleDateString('ar-EG'); }
+}
 const DEFAULT_REPORT_TITLE = 'تقارير مبيعات القرشي';
 let exportTitle = '';
 
@@ -3535,7 +3542,16 @@ const PDF_STYLE = `
   .kpi-chg.down{background:#fdeaea;color:#c0392b}
   .kpi-chg.flat{background:#f0f1f6;color:#555;border:1px solid #ddd}
   .kpi-note{font-size:10px;color:#555;margin:2px 0 4px}
+  /* شريط ذيل الصفحة — بيتصوّر زي الرأس عشان العربي يطلع صح */
+  /* ٣ خانات: رقم الصفحة في النص بالظبط، والتاريخ على الجنب */
+  .pg-foot{height:26px;box-sizing:border-box;display:grid;align-items:center;
+    grid-template-columns:1fr 1fr 1fr;border-top:1px solid #b9c0d4;padding:5px 6px 0;
+    font-size:11.5px;font-weight:700;color:#444;font-family:Tahoma,Arial,sans-serif}
+  .pg-foot .mid{text-align:center}
+  .pg-foot .end{text-align:left}
 `;
+// ارتفاع شريط الذيل بالبكسل (نفس اللي في .pg-foot فوق) — الحساب بيعتمد عليه
+const PDF_FOOT_H = 26;
 
 // بيبني عنصر مخفي فيه التقرير كله، ويصوّره بـhtml2canvas مرة واحدة.
 // كل استدعاء لـhtml2canvas بينسخ الصفحة كلها، فاستدعاء واحد أسرع بمراحل من عشرات.
@@ -3769,7 +3785,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
         display:flex;align-items:center;justify-content:space-between;gap:16px">
       <div>
         <div style="font-size:20px;font-weight:700">${esc(reportTitle())}</div>
-        <div style="font-size:12.5px;color:#444;margin-top:4px">${esc(period)} — تاريخ التقرير ${esc(new Date().toLocaleDateString('ar-EG'))}</div>
+        <div style="font-size:12.5px;color:#444;margin-top:4px">${esc(period)} — تاريخ التقرير ${esc(reportDateText())}</div>
       </div>
       <img src="${LOGO_HEAD}" style="height:46px;width:auto;display:block" alt="">
     </div>`;
@@ -3812,7 +3828,8 @@ async function generatePdf(includeMonthly, includeSector, opts){
       if(ratio > 0) wmState = {data: LOGO_WATERMARK, ratio};
     }
     const topY = PDF_MARGIN + headHmm + 2;
-    const bottomY = pageH - PDF_MARGIN - 7;            // فوق رقم الصفحة
+    const footHmm = PDF_FOOT_H * PDF_SCALE * pxToMm;   // ارتفاع شريط الذيل
+    const bottomY = pageH - PDF_MARGIN - footHmm - 2;  // فوق شريط الذيل
 
     const stopsPx = stops.filter(v => v.y > 0);
     const BLEED = 5 * PDF_SCALE;      // بيبلع حد الجدول السفلي عند القطع
@@ -3863,25 +3880,24 @@ async function generatePdf(includeMonthly, includeSector, opts){
       cursor = cut;
     }
 
-    // ذيل الصفحة: رقم الصفحة في النص وتاريخ التقرير على الجنب.
-    // الأرقام والتاريخ بصيغة لاتينية عشان خط jsPDF الافتراضي معندوش عربي —
-    // أي كلام عربي هنا كان هيطلع رموز. (العربي بيتكتب في الرأس اللي بيتصوّر.)
+    // ذيل الصفحة بالعربي: "صفحة ١ من ٣" في النص و"تاريخ التقرير" على الجنب.
+    // خط jsPDF الافتراضي معندوش حروف عربية، فبنرسم الشريط HTML ونصوّره — بس
+    // مرة واحدة لكل الصفحات في صورة واحدة (كل صفحة سطر) وبنقص منها، عشان
+    // مانعملش استدعاء html2canvas لكل صفحة.
     const total = pdf.internal.getNumberOfPages();
-    const now = new Date();
-    const two = (n)=> String(n).padStart(2,'0');
-    const stamp = `${two(now.getDate())}/${two(now.getMonth()+1)}/${now.getFullYear()}` +
-                  `  ${two(now.getHours())}:${two(now.getMinutes())}`;
-    const footY = pageH - PDF_MARGIN + 2;
+    const dateText = reportDateText();
+    const footRows = Array.from({length: total}, (_, i)=>
+      `<div class="pg-foot"><span></span>` +
+      `<span class="mid">صفحة ${i+1} من ${total}</span>` +
+      `<span class="end">تاريخ التقرير: ${esc(dateText)}</span></div>`).join('');
+    const footRes = await renderReportCanvas(footRows);
+    const footCanvas = footRes.canvas;
+    const rowH = footCanvas.height / total;
+    const footY = pageH - PDF_MARGIN - footHmm;
     for(let i=1;i<=total;i++){
       pdf.setPage(i);
-      pdf.setDrawColor(200);
-      pdf.setLineWidth(0.2);
-      pdf.line(PDF_MARGIN, footY - 4, pageW - PDF_MARGIN, footY - 4);
-      pdf.setFontSize(9);
-      pdf.setTextColor(110);
-      pdf.text(`${i} / ${total}`, pageW/2, footY, {align:'center'});
-      pdf.setFontSize(8.5);
-      pdf.text(stamp, PDF_MARGIN, footY);
+      pdf.addImage(sliceCanvas(footCanvas, (i-1)*rowH, rowH), 'PNG',
+        PDF_MARGIN, footY, contentW, footHmm);
     }
 
     pdf.save(reportFileName('pdf'));
