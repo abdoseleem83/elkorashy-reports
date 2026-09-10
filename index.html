@@ -627,7 +627,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v65';
+const APP_VERSION = 'v66';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1747,6 +1747,17 @@ function buildColumns(selectedMonths, mode){
     return {key, label, months: buckets[key].sort()};
   });
 }
+// بيقول للمستخدم كام صنف فيه كلام مكتوب لسه متحفظش
+function whUnkHintUpdate(){
+  const el = $('whUnkHint'); if(!el) return;
+  const n = Object.values(whUnkDraft).filter(d =>
+    (d.main||'').trim() || (d.sub||'').trim() || (d.color||'').trim() || Number(d.roll) > 0).length;
+  el.textContent = n
+    ? `${n} صنف مكتوب ولسه متحفظش — دوس "احفظ التعديلات".`
+    : 'اللي هيتحفظ بس هو الأصناف اللي فيها محتوى لفة أو مجموعة.';
+  el.style.color = n ? 'var(--danger)' : '';
+}
+
 function pdfGroupMode(){ return ($('pdfGroupMode') || {}).value || 'month'; }
 function customerSectorColumnSeries(c, sector, columns){
   const want = asSectorSet(sector);
@@ -4685,8 +4696,21 @@ function whUnknownItems(){
 
 let whUnkOpen = false;      // القايمة مفتوحة ولا لأ (بتفضل مفتوحة بعد التحديث)
 let whFixMsgHtml = '';      // رسالة آخر تحديث — بتتعاد بعد إعادة الرسم
+// مسوّدة اللي المستخدم بيكتبه في كروت الأصناف الناقصة. من غيرها أي إعادة رسم
+// (مزامنة مع السيرفر، حفظ جرد، تغيير فلتر) كانت بتمسح اللي اتكتب.
+let whUnkDraft = {};
+try{ whUnkDraft = JSON.parse(localStorage.getItem('whUnkDraft') || '{}') || {}; }catch(e){ whUnkDraft = {}; }
+function whUnkSaveDraft(){
+  try{ localStorage.setItem('whUnkDraft', JSON.stringify(whUnkDraft)); }catch(e){}
+}
+function whUnkDraftOf(name){ return whUnkDraft[name] || {}; }
+
 function renderWhUnknown(){
   const box = $('whUnknownBox'); if(!box) return;
+  // المستخدم بيكتب دلوقتي جوه اللوحة؟ منعيدش الرسم — الكيبورد بيتقفل
+  // والخانة اللي تحت الإصبع بتتغيّر.
+  const focused = document.activeElement;
+  if(focused && box.contains(focused) && /INPUT|SELECT|TEXTAREA/.test(focused.tagName)) return;
   if(!Object.keys(whCatalog).length){ box.innerHTML = ''; return; }
   const list = whUnknownItems();
   if(!list.length){
@@ -4701,6 +4725,11 @@ function renderWhUnknown(){
     .sort((a,b)=> a.localeCompare(b,'ar'));
   const rows = list.map((r,i)=>{
     const key = encodeURIComponent(r.name);
+    const d = whUnkDraftOf(r.name);
+    const vMain = d.main !== undefined ? d.main : r.main;
+    const vSub  = d.sub  !== undefined ? d.sub  : r.sub;
+    const vRoll = d.roll !== undefined ? d.roll : (r.roll > 0 ? r.roll : '');
+    const vColor= d.color!== undefined ? d.color: r.color;
     const bal = WAREHOUSES.map(w=> `${esc(w)}: <b class="wh-num">${whFmt(r.qty[w])}</b>`).join(' · ');
     return `<div class="unk-card" data-item="${key}">
       <div class="unk-head"><span class="unk-i">${i+1}</span>
@@ -4709,14 +4738,14 @@ function renderWhUnknown(){
       <div class="unk-bal">${bal}</div>
       <div class="unk-grid">
         <label>المجموعة الرئيسية
-          <input class="unkMain" list="whMainList" value="${esc(r.main)}" placeholder="اختار أو اكتب"></label>
+          <input class="unkMain" list="whMainList" value="${esc(vMain)}" placeholder="اختار أو اكتب"></label>
         <label>المجموعة الفرعية
-          <input class="unkSub" list="whSubList" value="${esc(r.sub)}" placeholder="اختار أو اكتب"></label>
+          <input class="unkSub" list="whSubList" value="${esc(vSub)}" placeholder="اختار أو اكتب"></label>
         <label>محتوي اللفة (قطعة في اللفة)
           <input class="unkRoll wh-num" type="number" min="0" step="1"
-            value="${r.roll > 0 ? r.roll : ''}" placeholder="مثال: 25"></label>
+            value="${esc(String(vRoll))}" placeholder="مثال: 25"></label>
         <label>اللون
-          <input class="unkColor" list="whColorList" value="${esc(r.color)}" placeholder="اختياري"></label>
+          <input class="unkColor" list="whColorList" value="${esc(vColor)}" placeholder="اختياري"></label>
       </div>
     </div>`;
   }).join('');
@@ -4769,15 +4798,39 @@ function renderWhUnknown(){
     XLSX.utils.book_append_sheet(wb, ws, 'data');
     XLSX.writeFile(wb, 'اصناف-محتواها-مش-معروف.xlsx');
   });
+  // كل حرف بيتكتب بيتخزن في المسوّدة على طول
+  const FIELDS = [['unkMain','main'],['unkSub','sub'],['unkRoll','roll'],['unkColor','color']];
+  document.querySelectorAll('#whUnkList .unk-card').forEach(card=>{
+    const name = decodeURIComponent(card.dataset.item);
+    FIELDS.forEach(([cls, key])=>{
+      const inp = card.querySelector('.' + cls);
+      inp.addEventListener('input', ()=>{
+        if(!whUnkDraft[name]) whUnkDraft[name] = {};
+        whUnkDraft[name][key] = inp.value;
+        whUnkSaveDraft();
+        whUnkHintUpdate();
+      });
+    });
+  });
+  whUnkHintUpdate();
+
   $('whUnkSave').addEventListener('click', async ()=>{
-    const cards = Array.from(document.querySelectorAll('#whUnkList .unk-card'));
+    // بنقرا من المسوّدة (اللي فيها كل اللي اتكتب) مش من الشاشة بس
+    document.querySelectorAll('#whUnkList .unk-card').forEach(card=>{
+      const nm = decodeURIComponent(card.dataset.item);
+      if(!whUnkDraft[nm]) whUnkDraft[nm] = {};
+      whUnkDraft[nm].main  = card.querySelector('.unkMain').value;
+      whUnkDraft[nm].sub   = card.querySelector('.unkSub').value;
+      whUnkDraft[nm].roll  = card.querySelector('.unkRoll').value;
+      whUnkDraft[nm].color = card.querySelector('.unkColor').value;
+    });
     let saved = 0, skipped = 0;
-    cards.forEach(card=>{
-      const name = decodeURIComponent(card.dataset.item);
-      const main = card.querySelector('.unkMain').value.trim();
-      const sub  = card.querySelector('.unkSub').value.trim();
-      const roll = Number(card.querySelector('.unkRoll').value);
-      const color= card.querySelector('.unkColor').value.trim();
+    Object.keys(whUnkDraft).forEach(name=>{
+      const d = whUnkDraft[name];
+      const main = (d.main || '').trim();
+      const sub  = (d.sub  || '').trim();
+      const roll = Number(d.roll);
+      const color= (d.color|| '').trim();
       if(!main && !sub && !color && !(roll > 0)){ skipped++; return; }
       const cur = whCatalog[name] || {main:'', sub:'', roll:0, color:''};
       whCatalog[name] = {
@@ -4787,6 +4840,7 @@ function renderWhUnknown(){
       };
       saved++;
     });
+    whUnkDraft = {}; whUnkSaveDraft();
     if(!saved){
       $('whUnkSaveMsg').innerHTML = '<div class="msg warn">مفيش حاجة اتكتبت — املا محتوى اللفة أو المجموعة الأول.</div>';
       return;
