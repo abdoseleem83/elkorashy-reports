@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v78';
+const CACHE_VERSION = 'v79';
 const CACHE_NAME = 'elkorashy-reports-' + CACHE_VERSION;
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
@@ -54,7 +54,7 @@ self.addEventListener('fetch', (e) => {
           caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
         }
         return res;
-      }).catch(() => cached);
+      }).catch(() => cached || Response.error());
       return cached || network;
     })
   );
