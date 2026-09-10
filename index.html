@@ -451,7 +451,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v49';
+const APP_VERSION = 'v50';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -3863,13 +3863,25 @@ async function generatePdf(includeMonthly, includeSector, opts){
       cursor = cut;
     }
 
-    // أرقام الصفحات (لاتيني عشان الخط الافتراضي يعرضها صح)
+    // ذيل الصفحة: رقم الصفحة في النص وتاريخ التقرير على الجنب.
+    // الأرقام والتاريخ بصيغة لاتينية عشان خط jsPDF الافتراضي معندوش عربي —
+    // أي كلام عربي هنا كان هيطلع رموز. (العربي بيتكتب في الرأس اللي بيتصوّر.)
     const total = pdf.internal.getNumberOfPages();
+    const now = new Date();
+    const two = (n)=> String(n).padStart(2,'0');
+    const stamp = `${two(now.getDate())}/${two(now.getMonth()+1)}/${now.getFullYear()}` +
+                  `  ${two(now.getHours())}:${two(now.getMinutes())}`;
+    const footY = pageH - PDF_MARGIN + 2;
     for(let i=1;i<=total;i++){
       pdf.setPage(i);
+      pdf.setDrawColor(200);
+      pdf.setLineWidth(0.2);
+      pdf.line(PDF_MARGIN, footY - 4, pageW - PDF_MARGIN, footY - 4);
       pdf.setFontSize(9);
       pdf.setTextColor(110);
-      pdf.text(`${i} / ${total}`, pageW/2, pageH - PDF_MARGIN + 2, {align:'center'});
+      pdf.text(`${i} / ${total}`, pageW/2, footY, {align:'center'});
+      pdf.setFontSize(8.5);
+      pdf.text(stamp, PDF_MARGIN, footY);
     }
 
     pdf.save(reportFileName('pdf'));
