@@ -641,7 +641,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v73';
+const APP_VERSION = 'v74';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -5201,6 +5201,45 @@ function whCountResultHtml(detail){
        + block('أصناف الزيادة', detail.filter(r=>r.diff > 0), 'var(--accent2)', '+');
 }
 
+function whOrderView(){
+  const store = $('whStore').value;
+  const rows = whRows(store, {applyZero:false});
+  const ord = whOrder[store] || {};
+  let html = `<div class="sub" style="margin-bottom:8px">اكتب الكمية المطلوبة قدام كل صنف واختار <b>الوحدة</b>
+    (لفة / قطعة / كرتونة / كيس / عود) — الاتنين بيتحفظوا لوحدهم، والوحدة بتفضل محفوظة للصنف في المرات الجاية.
+    <br>التبويب ده بيعرض <b>كل الأصناف</b> حتى اللي رصيدها صفر — دي بالظبط اللي محتاج تطلبها.
+    استخدم البحث أو فلتر المجموعة عشان توصل بسرعة.</div>
+    ${whFamilyBarHtml(store)}
+    <div class="tbl-wrap"><table><thead><tr>
+      <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة الفرعية</th><th>الرصيد</th>
+      <th class="hide-sm">لفة</th><th class="hide-sm">عود</th>
+      <th>المطلوب</th><th>الوحدة</th>
+    </tr></thead><tbody>`;
+  // الصفوف متجمّعة بالمجموعة الفرعية: سطر عنوان قبل كل مجموعة عشان وانت
+  // بتعمل الطلبية تبقى ماشي مجموعة مجموعة من غير لخبطة.
+  let lastKey = null;
+  rows.forEach((r,i)=>{
+    const sp = whSplit(r.qty, r.name);
+    const key = r.main + ' › ' + (r.sub || '—');
+    if(key !== lastKey){
+      html += `<tr class="grp-row"><td colspan="8">${esc(key)}</td></tr>`;
+      lastKey = key;
+    }
+    html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td>
+      <td class="hide-sm">${esc(r.sub || r.main)}</td>
+      <td class="wh-num">${whFmt(r.qty)}</td>
+      <td class="wh-num hide-sm">${whFmt(sp.rolls)}</td><td class="wh-num hide-sm">${whFmt(sp.loose)}</td>
+      <td><input type="number" min="0" step="1" class="wh-in whOrderIn" data-item="${encodeURIComponent(r.name)}"
+        value="${ord[r.name] != null ? esc(String(ord[r.name])) : ''}"></td>
+      <td><select class="whUnitIn" data-item="${encodeURIComponent(r.name)}" style="font-size:12.5px;padding:3px">
+        ${WH_UNITS.map(u=>`<option value="${esc(u)}"${u === whOrderUnit(r.name) ? ' selected' : ''}>${esc(u)}</option>`).join('')}
+      </select></td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  const asked = Object.values(ord).filter(v => Number(v) > 0).length;
+  return {html, count: `${rows.length} صنف — مطلوب ${asked} صنف`};
+}
+
 // الجرد ونتيجته
 function whCountView(){
   const store = $('whStore').value;
@@ -5279,10 +5318,18 @@ function renderWh(){
     $('whCount').textContent = '';
     return;
   }
-  const view = whTab === 'balances' ? whBalancesView()
-    : whTab === 'compare' ? whCompareView()
-    : whTab === 'order' ? whOrderView()
-    : whCountView();
+  // لو حصل خطأ في بناء تبويب، نقول للمستخدم بدل ما يفضل شايف تبويب تاني
+  let view;
+  try{
+    view = whTab === 'balances' ? whBalancesView()
+      : whTab === 'compare' ? whCompareView()
+      : whTab === 'order' ? whOrderView()
+      : whCountView();
+  }catch(err){
+    $('whArea').innerHTML = `<div class="msg err">حصل خطأ في عرض التبويب ده: ${esc(err.message)}</div>`;
+    $('whCount').textContent = '';
+    return;
+  }
   $('whArea').innerHTML = view.html;
   $('whCount').textContent = view.count || '';
   bindWhInputs();
@@ -5335,11 +5382,23 @@ function bindWhInputs(){
       scheduleSave('whOrder', saveWhOrder, 'طلب النواقص');
       const asked = Object.values(whOrder[store] || {}).filter(x=>Number(x)>0).length;
       $('whCount').textContent = $('whCount').textContent.replace(/مطلوب \d+ صنف/, `مطلوب ${asked} صنف`);
+      // أيقونات المجموعات لازم تتحدّث على طول — من غير ما نعيد رسم الجدول
+      // (إعادة الرسم بتقفل الكيبورد وبتوديك أول الصفحة)
+      const bar = $('whFamBar');
+      if(bar){
+        bar.outerHTML = whFamilyBarHtml(store);
+        bindWhFamButtons();
+      }
     });
   });
+  bindWhFamButtons();
   document.querySelectorAll('[data-cmode]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ whCountMode = btn.dataset.cmode; renderWh(); });
   });
+}
+
+// أزرار صور المجموعات + مسح النواقص (بتتربط كل ما الشريط يتعاد بناؤه)
+function bindWhFamButtons(){
   const clr = $('whOrderClear');
   if(clr) clr.addEventListener('click', async ()=>{
     const store = $('whStore').value;
@@ -5542,12 +5601,12 @@ function whOrderRows(store){
 // شريط أيقونات العائلات: كل واحدة بتطلّع صورة ورقة النواقص بتاعتها وتشاركها
 function whFamilyBarHtml(store){
   const rows = whOrderRows(store);
-  if(!rows.length) return '<div class="msg warn" style="margin:8px 0">اكتب الكميات الأول وهتظهر لك أزرار صور المجموعات.</div>';
+  if(!rows.length) return '<div class="fam-bar" id="whFamBar"><div class="msg warn" style="margin:0">اكتب الكميات الأول وهتظهر لك أزرار صور المجموعات.</div></div>';
   const byFam = {};
   rows.forEach(r=>{ const f = whFamilyOf(r.main); byFam[f] = (byFam[f] || 0) + 1; });
   const icons = {kraft:'🪟', acc:'🧩', shutter:'🎞️', gevis:'🔑', doors:'🚪', other:'📦'};
   const ids = WH_FAMILIES.map(f=>f.id).concat('other').filter(f => byFam[f]);
-  return `<div class="fam-bar">` + ids.map(id =>
+  return `<div class="fam-bar" id="whFamBar">` + ids.map(id =>
     `<button class="fam-btn" data-fam="${id}">${icons[id] || '📦'} ${esc(whFamilyTitle(id))}
       <span class="fam-n">${byFam[id]}</span></button>`).join('') +
     `<button class="fam-btn ghost" id="whOrderClear" title="يفضّي كل الكميات المطلوبة في المخزن ده">
