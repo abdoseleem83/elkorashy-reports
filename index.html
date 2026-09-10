@@ -487,7 +487,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v57';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2079,11 +2079,18 @@ function itemSectorRows(months, opts){
       hint: byCode[code].items.join(' • '),      // الأسماء الكاملة في tooltip
       sectors: byCode[code].sectors,
     }));
-    if(opts.search){
-      const q = opts.search.trim();
-      if(q) rows = rows.filter(r => r.label.includes(q.toUpperCase()) || r.hint.includes(q));
+    // مفيش ولا صنف طلع منه كود (الأسماء عندك شكلها مختلف)؟ نرجّع الأسماء
+    // الكاملة بدل ما التقرير يطلع فاضي والمستخدم ميعرفش السبب.
+    if(!rows.length && names.length){
+      itemSectorRows.lastCodeMiss = true;
+    } else {
+      itemSectorRows.lastCodeMiss = false;
+      if(opts.search){
+        const q = opts.search.trim();
+        if(q) rows = rows.filter(r => r.label.includes(q.toUpperCase()) || r.hint.includes(q));
+      }
+      return rows;
     }
-    return rows;
   }
 
   let rows = names.map(item => ({
@@ -2096,6 +2103,29 @@ function itemSectorRows(months, opts){
     if(q) rows = rows.filter(r => r.label.includes(q));
   }
   return rows;
+}
+
+// بيبني صفوف تقرير الأصناف مع خطة إنقاذ: لو الكمية مفيهاش أرقام يرجع للقيمة،
+// ولو الكود مش طالع من الأسماء يرجع للأسماء الكاملة — وبيقول اللي حصل.
+function buildItemRows(metric, byCode, opts){
+  const notes = [];
+  let usedMetric = metric;
+  let rows = rowsForMetric(usedMetric, ()=> itemSectorRows(opts.months, Object.assign({byCode}, opts.args)));
+  if(itemSectorRows.lastCodeMiss){
+    notes.push('مقدرناش نطلّع كود من أسماء الأصناف (الكود المتوقع حروف إنجليزية وأرقام زي A06)'
+      + ' — التقرير بيعرض الأسماء الكاملة.');
+  }
+  // كميات فاضية؟ نجرب بالقيمة
+  const empty = !rows.length || rows.every(r => Object.values(r.sectors||{}).every(v => !v));
+  if(empty && (usedMetric === 'qty' || usedMetric === 'both')){
+    const valueRows = rowsForMetric('value', ()=> itemSectorRows(opts.months, Object.assign({byCode}, opts.args)));
+    if(valueRows.length){
+      rows = valueRows; usedMetric = 'value';
+      notes.push('مفيش كميات متخزنة للشهور دي، فالأرقام معروضة بالقيمة.'
+        + ' ارفع ملفات الشهور تاني واختار "استبدال" عشان الكميات تدخل.');
+    }
+  }
+  return {rows, metric: usedMetric, notes};
 }
 
 // بيرجّع صفوف جاهزة حسب المقياس المختار. في وضع "الاتنين" بنحسب الصفوف
@@ -2333,14 +2363,16 @@ function renderKpiCards(months){
 
 // شاشة تقرير الأصناف بالقطاع
 function renderItemsSectorTab(months, metric, qtyMissing){
+  // metric ممكن يتغيّر جوه لو الكمية مش متاحة
   const sheetSel = $('itemsSheet');
   const sheetId = sheetSel ? sheetSel.value : '';
   const secList = sheetId ? sectorsOfSheet(sheetId) : null;
-  const build = ()=> itemSectorRows(months, {
-    sectors: secList, cls: reportView.cls || null, search: reportView.search,
-    byCode: reportView.itemsByCode,
+  const built = buildItemRows(metric, reportView.itemsByCode, {
+    months,
+    args: {sectors: secList, cls: reportView.cls || null, search: reportView.search},
   });
-  const baseRows = rowsForMetric(metric, build);
+  const baseRows = built.rows;
+  metric = built.metric;
   const cols = (secList || SECTORS).filter(sec => baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
   const rows = sortRowsForTable('sector', baseRows, cols);
   const total = rows.reduce((a,r)=> a + rowGrandTotal('sector', r, cols), 0);
@@ -2348,11 +2380,11 @@ function renderItemsSectorTab(months, metric, qtyMissing){
     : (metric === 'both' ? ' — الرقم الصغير تحت كل قيمة هو الكمية' : '');
   $('reportCount').textContent = rows.length
     ? `${rows.length} صنف — إجمالي ${fmtNum(total)}${note}` : '';
-  const warn = qtyMissing
-    ? `<div class="msg warn">التقرير ده بيتعرض بالكمية عادةً، بس مفيش كميات متخزنة في
-       الشهور دي — الملفات دي اترفعت قبل ما التطبيق يقرا عمود الكمية. ارفعها تاني
-       واختار <b>"استبدال"</b> عشان الكميات تدخل. لحد كده الأرقام دي <b>قيمة</b>.</div>`
-    : '';
+  const allNotes = built.notes.slice();
+  if(qtyMissing) allNotes.unshift('التقرير ده بيتعرض بالكمية عادةً، بس مفيش كميات متخزنة في الشهور دي —'
+    + ' الملفات اترفعت قبل ما التطبيق يقرا عمود الكمية. ارفعها تاني واختار "استبدال".');
+  const warn = allNotes.length
+    ? `<div class="msg warn">${allNotes.map(esc).join('<br>')}</div>` : '';
   $('reportArea').innerHTML = warn + (rows.length
     ? buildTableHtml('sector', months, rows, null, {
         sortable:true, showClass: reportView.showClass, allRows: rows,
@@ -3022,13 +3054,14 @@ function generateExcel(includeMonthly, includeSector, opts){
     // شيت "الأصناف بالقطاع": كل صف صنف وكل عمود قطاع
     if(includeItems){
       const secList = sheetCols && sheetCols.length ? sheetCols : secCols;
-      const iRows = rowsForMetric(xlItemsMetric, ()=>
-        itemSectorRows(selectedMonths, {sectors: secList, filter: groupFilter(g),
-          byCode: reportView.itemsByCode}));
+      const builtX = buildItemRows(xlItemsMetric, reportView.itemsByCode, {
+        months: selectedMonths, args: {sectors: secList, filter: groupFilter(g)},
+      });
+      const iRows = builtX.rows;
       const iCols = secList.filter(sec => iRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
       if(iRows.length && iCols.length){
         const sorted = sortRowsForTable('sector', iRows, iCols);
-        const aoa = sectorAoa(sorted, iCols, null, withShowClass, true, xlItemsMetric === 'both');
+        const aoa = sectorAoa(sorted, iCols, null, withShowClass, true, builtX.metric === 'both');
         aoa[0][1] = reportView.itemsByCode ? 'كود الباب' : 'الصنف';
         XLSX.utils.book_append_sheet(wbOut,
           sheetWithHeader(aoa, g.title + ' — الأصناف بالقطاع', period, aoa[0].length),
@@ -4018,6 +4051,7 @@ async function generatePdf(includeMonthly, includeSector, opts){
   try{
     // ---- 1) بناء محتوى التقرير كله كـHTML، كل كتلة .blk نقطة قطع مسموحة ----
     let body = '';
+    const itemsEmpty = [];   // مجموعات جدول أصنافها طلع فاضي — للرسالة تحت
     for(const g of groups){
       const rows = rowsForMetric(exportMetric, ()=> groupRows(g, columns));
       if(!rows.length) continue;
@@ -4067,21 +4101,24 @@ async function generatePdf(includeMonthly, includeSector, opts){
       // تقرير الأصناف بالقطاع: كل صف صنف، وكل عمود قطاع من قطاعات المجموعة
       const addItemsTable = ()=>{
         const secList = sheetCols && sheetCols.length ? sheetCols : mainSectors();
-        const iRows = rowsForMetric(itemsMetric, ()=>
-          itemSectorRows(selectedMonths, {sectors: secList, filter: groupFilter(g),
-            byCode: reportView.itemsByCode}));
+        const built = buildItemRows(itemsMetric, reportView.itemsByCode, {
+          months: selectedMonths, args: {sectors: secList, filter: groupFilter(g)},
+        });
+        const iRows = built.rows;
         const iCols = secList.filter(sec => iRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
-        if(!iRows.length || !iCols.length) return;
+        if(!iRows.length || !iCols.length){ itemsEmpty.push(g.title); return; }
         const sorted = sortRowsForTable('sector', iRows, iCols);
         const tbl = buildTableHtml('sector', columns, sorted, null, {
           totalsFrom: sorted, showClass: withShowClass, sectorCols: iCols,
           ranks: withRanks, allRows: sorted, showAllSectorCols: true,
-          pdfBaseFont: pdfFont, qty: itemsMetric === 'both',
+          pdfBaseFont: pdfFont, qty: built.metric === 'both',
           labelHead: reportView.itemsByCode ? 'كود الباب' : 'الصنف',
         });
-        const what = itemsMetric === 'qty' ? 'بالكمية'
-          : (itemsMetric === 'both' ? '(القيمة والكمية تحتها)' : 'بالقيمة');
-        body += `<div class="blk">${head}<div class="sub-title">الأصناف بالقطاع ${what} — من الأكبر للأصغر</div>${tbl}</div>`;
+        const what = built.metric === 'qty' ? 'بالكمية'
+          : (built.metric === 'both' ? '(القيمة والكمية تحتها)' : 'بالقيمة');
+        const noteLine = built.notes.length
+          ? `<div class="sub-title" style="color:#b45309">${esc(built.notes.join(' — '))}</div>` : '';
+        body += `<div class="blk">${head}<div class="sub-title">الأصناف بالقطاع ${what} — من الأكبر للأصغر</div>${noteLine}${tbl}</div>`;
         head = '';
       };
 
@@ -4133,7 +4170,19 @@ async function generatePdf(includeMonthly, includeSector, opts){
       body += `<div style="height:12px"></div>`;
     }
 
-    if(!body){ alert(emptyGroupsMessage(groups, columns)); return; }
+    if(!body){
+      // الحالة الشائعة: المستخدم طالب "الأصناف بالقطاع" بس، والجدول ده طلع
+      // فاضي لسبب مختلف عن إن المجموعة نفسها فاضية.
+      if(includeItems && !includeMonthly && !includeSector && itemsEmpty.length){
+        alert('جدول "الأصناف بالقطاع" طلع فاضي للمجموعات: ' + itemsEmpty.join('، ') + '.\n\n'
+          + 'الأسباب المعتادة:\n'
+          + '• الأصناف مش متصنّفة على قطاعات الشيت (ابواب 70/80/90...) — راجع تبويب "الأصناف".\n'
+          + '• أو مفيش مبيعات على القطاعات دي في الشهور المختارة.\n\n'
+          + 'افتح تبويب "الأصناف بالقطاع" على الشاشة الأول — هيقولك السبب بالظبط.');
+        return;
+      }
+      alert(emptyGroupsMessage(groups, columns)); return;
+    }
 
     // بعد ما الجداول اتبنت عرفنا أوسع جدول محتاج كام بكسل عشان مفيش رقم يتقص.
     // العرض ده هو اللي بيتصوّر، وبيتفرد على عرض الصفحة — يعني الجدول الواسع
