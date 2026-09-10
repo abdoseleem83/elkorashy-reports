@@ -105,6 +105,19 @@
     .mod-btn .mod-sub{display:none}
   }
   .wh-num{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-weight:700;direction:ltr}
+  /* كروت الأصناف الناقصة: بتتعدّل في الشاشة على طول */
+  .unk-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    padding:10px 12px;margin-bottom:10px}
+  .unk-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .unk-i{background:var(--panel2);border:1px solid var(--border);border-radius:6px;
+    min-width:24px;text-align:center;font-size:12px}
+  .unk-name{font-weight:700;flex:1;min-width:160px}
+  .unk-bal{font-size:12px;color:var(--muted);margin:4px 0 8px}
+  .unk-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .unk-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+  .unk-grid input{width:100%;padding:6px 8px;font-size:13px}
+  @media(max-width:820px){ .unk-grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  @media(max-width:460px){ .unk-grid{grid-template-columns:1fr} }
   .wh-in{width:76px;padding:4px 6px;font-size:13px;text-align:center;direction:ltr}
   .grp-row td{background:#e7ebfa;font-weight:700}
   .opt-sec{font-size:12.5px;font-weight:700;color:var(--muted);margin:14px 0 6px}
@@ -380,7 +393,12 @@
       <button class="ghost" id="pdfMonthsAll">تحديد الكل</button>
       <button class="ghost" id="pdfMonthsNone">إلغاء الكل</button>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
-        <input type="checkbox" id="pdfQuarterMode" style="width:16px;height:16px"> اجمع الشهور في كوارترات (كل 3 شهور مع بعض)
+        تجميع الأعمدة:
+        <select id="pdfGroupMode" style="font-size:13px">
+          <option value="month">كل شهر عمود</option>
+          <option value="quarter">كوارترات (كل 3 شهور)</option>
+          <option value="year">سنوات (كل سنة عمود)</option>
+        </select>
       </label>
     </div>
   </div>
@@ -609,7 +627,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v65';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1708,24 +1726,28 @@ function customerSectorMonthlySeries(c, sector, months){
     return t;
   });
 }
-// ---- أعمدة مقارنة قابلة للاختيار (شهور مفردة أو كوارترات مجمّعة) — للـPDF/الإكسل بس ----
-// عمود = {key, label, months:[...]}. لو quarterMode=false كل شهر عمود لوحده، ولو true كل 3 شهور (ربع سنة تقويمي) بيتجمعوا في عمود واحد.
-function buildColumns(selectedMonths, quarterMode){
+// ---- أعمدة مقارنة قابلة للاختيار (شهور / كوارترات / سنين) — للـPDF/الإكسل بس ----
+// عمود = {key, label, months:[...]}. mode: 'month' كل شهر عمود، 'quarter' كل 3
+// شهور (ربع تقويمي)، 'year' كل سنة عمود واحد. (true/false لسه شغالين كـ
+// كوارتر/شهر عشان نداءات قديمة.)
+function buildColumns(selectedMonths, mode){
+  if(mode === true) mode = 'quarter';
+  if(!mode || mode === false) mode = 'month';
   const months = selectedMonths.slice().sort();
-  if(!quarterMode) return months.map(m => ({key:m, label:monthLabel(m), months:[m]}));
-  const byQuarter = {};
+  if(mode === 'month') return months.map(m => ({key:m, label:monthLabel(m), months:[m]}));
+  const buckets = {};
   months.forEach(m=>{
     const [y,mo] = m.split('-');
-    const q = Math.ceil(parseInt(mo,10)/3);
-    const key = `${y}-Q${q}`;
-    if(!byQuarter[key]) byQuarter[key] = [];
-    byQuarter[key].push(m);
+    const key = mode === 'year' ? y : `${y}-Q${Math.ceil(parseInt(mo,10)/3)}`;
+    if(!buckets[key]) buckets[key] = [];
+    buckets[key].push(m);
   });
-  return Object.keys(byQuarter).sort().map(key=>{
-    const [y,qs] = key.split('-Q');
-    return {key, label:`الربع ${qs} ${y}`, months: byQuarter[key].sort()};
+  return Object.keys(buckets).sort().map(key=>{
+    const label = mode === 'year' ? `سنة ${key}` : `الربع ${key.split('-Q')[1]} ${key.split('-Q')[0]}`;
+    return {key, label, months: buckets[key].sort()};
   });
 }
+function pdfGroupMode(){ return ($('pdfGroupMode') || {}).value || 'month'; }
 function customerSectorColumnSeries(c, sector, columns){
   const want = asSectorSet(sector);
   return columns.map(col => col.months.reduce((s,m)=>{
@@ -3157,7 +3179,7 @@ function generateExcel(includeMonthly, includeSector, opts){
 
   const checked = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(el=>el.value);
   const selectedMonths = checked.length ? checked : allMonths;
-  const columns = buildColumns(selectedMonths, $('pdfQuarterMode').checked);
+  const columns = buildColumns(selectedMonths, pdfGroupMode());
   const period = periodLabel(columns);
   // فترتين النمو من الشهور المختارة برضه، زي الـPDF بالظبط
   const growthOk = includeGrowth && ensureGrowthPeriods(selectedMonths.slice().sort());
@@ -4257,8 +4279,8 @@ async function generatePdf(includeMonthly, includeSector, opts){
 
   const checked = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(el=>el.value);
   const selectedMonths = checked.length ? checked : allMonths;
-  const quarterMode = $('pdfQuarterMode').checked;
-  const columns = buildColumns(selectedMonths, quarterMode);
+  const groupMode = pdfGroupMode();
+  const columns = buildColumns(selectedMonths, groupMode);
   // مهم: فترتين النمو بتتحسب من الشهور اللي اتحددت للتصدير، مش من كل الشهور.
   // قبل كده لو صدّرت تقرير عن 3 شهور كان النمو يقارن آخر شهرين من كل البيانات.
   const growthOk = includeGrowth && ensureGrowthPeriods(selectedMonths.slice().sort());
@@ -4656,7 +4678,7 @@ function whUnknownItems(){
     const qty = {};
     WAREHOUSES.forEach(w => { qty[w] = Number(whStoreBalances(w)[name]) || 0; });
     out.push({name, why, main: (it && it.main) || '', sub: (it && it.sub) || '',
-      color: (it && it.color) || '', qty});
+      roll: (it && Number(it.roll)) || 0, color: (it && it.color) || '', qty});
   });
   return out.sort((a,b)=> a.why.localeCompare(b.why,'ar') || a.name.localeCompare(b.name,'ar'));
 }
@@ -4672,9 +4694,36 @@ function renderWhUnknown(){
       + '<div class="msg ok">كل الأصناف اللي عندها أرصدة معروف محتوى لفتها ✅</div>';
     return;
   }
-  const rows = list.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td>
-    <td>${esc(r.why)}</td><td>${esc(r.main || '—')}</td>
-    ${WAREHOUSES.map(w=>`<td class="wh-num">${whFmt(r.qty[w])}</td>`).join('')}</tr>`).join('');
+  // كل صنف كارت فيه خاناته — بتتعدّل هنا على طول من غير إكسل
+  const allSubs = Array.from(new Set(Object.values(whCatalog).map(o=>o.sub).filter(Boolean)))
+    .sort((a,b)=> a.localeCompare(b,'ar'));
+  const allColors = Array.from(new Set(Object.values(whCatalog).map(o=>o.color).filter(Boolean)))
+    .sort((a,b)=> a.localeCompare(b,'ar'));
+  const rows = list.map((r,i)=>{
+    const key = encodeURIComponent(r.name);
+    const bal = WAREHOUSES.map(w=> `${esc(w)}: <b class="wh-num">${whFmt(r.qty[w])}</b>`).join(' · ');
+    return `<div class="unk-card" data-item="${key}">
+      <div class="unk-head"><span class="unk-i">${i+1}</span>
+        <span class="unk-name">${esc(r.name)}</span>
+        <span class="badge">${esc(r.why)}</span></div>
+      <div class="unk-bal">${bal}</div>
+      <div class="unk-grid">
+        <label>المجموعة الرئيسية
+          <input class="unkMain" list="whMainList" value="${esc(r.main)}" placeholder="اختار أو اكتب"></label>
+        <label>المجموعة الفرعية
+          <input class="unkSub" list="whSubList" value="${esc(r.sub)}" placeholder="اختار أو اكتب"></label>
+        <label>محتوي اللفة (قطعة في اللفة)
+          <input class="unkRoll wh-num" type="number" min="0" step="1"
+            value="${r.roll > 0 ? r.roll : ''}" placeholder="مثال: 25"></label>
+        <label>اللون
+          <input class="unkColor" list="whColorList" value="${esc(r.color)}" placeholder="اختياري"></label>
+      </div>
+    </div>`;
+  }).join('');
+  const dataLists = `
+    <datalist id="whMainList">${whGroups().map(g=>`<option value="${esc(g)}">`).join('')}</datalist>
+    <datalist id="whSubList">${allSubs.map(g=>`<option value="${esc(g)}">`).join('')}</datalist>
+    <datalist id="whColorList">${allColors.map(g=>`<option value="${esc(g)}">`).join('')}</datalist>`;
   box.innerHTML = `<div class="msg warn"><b>${list.length} صنف محتواه مش معروف</b> —
       اللفة/العود بتاعتهم بتتحسب غلط لحد ما تتحدّث.
       <div class="row" style="margin-top:8px">
@@ -4683,17 +4732,22 @@ function renderWhUnknown(){
         <button class="ghost" id="whUnkCopy">انسخ الأسماء</button>
       </div>
       <div id="whUnkList" style="display:${whUnkOpen ? 'block' : 'none'};margin-top:10px">
-        <div class="table-wrap" style="max-height:320px;overflow:auto">
-        <table><thead><tr><th>م</th><th>الصنف</th><th>السبب</th><th>المجموعة</th>
-          ${WAREHOUSES.map(w=>`<th>${esc(w)}</th>`).join('')}</tr></thead>
-          <tbody>${rows}</tbody></table></div>
-        <div class="sub" style="margin-top:8px">املا عمود <b>محتوي اللفه</b> (والمجموعات لو ناقصة)
-          في الملف اللي نزّلته وارفعه هنا — بيتدمج مع الدليل ومش بيمسحه.</div>
-        <div class="row" style="margin-top:6px">
-          <input type="file" id="whFixFile" accept=".xls,.xlsx">
-          <button id="whFixBtn" disabled>حدّث الأصناف دي</button>
+        ${dataLists}
+        <div class="sub">املا الخانات هنا على طول ودوس حفظ — أو نزّل الإكسل واملاه وارفعه تحت.</div>
+        <div style="max-height:460px;overflow:auto;margin-top:8px">${rows}</div>
+        <div class="row" style="margin-top:10px">
+          <button id="whUnkSave">احفظ التعديلات</button>
+          <span class="sub" id="whUnkHint">اللي هيتحفظ بس هو الأصناف اللي فيها محتوى لفة أو مجموعة.</span>
         </div>
-        <div id="whFixMsg">${whFixMsgHtml}</div>
+        <div id="whUnkSaveMsg">${whFixMsgHtml}</div>
+        <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+          <div class="sub">أو رفع ملف إكسل (بيتدمج مع الدليل ومش بيمسحه):</div>
+          <div class="row" style="margin-top:6px">
+            <input type="file" id="whFixFile" accept=".xls,.xlsx">
+            <button class="secondary" id="whFixBtn" disabled>حدّث من ملف</button>
+          </div>
+          <div id="whFixMsg"></div>
+        </div>
       </div></div>`;
   $('whUnkToggle').addEventListener('click', ()=>{
     whUnkOpen = !whUnkOpen;
@@ -4715,6 +4769,36 @@ function renderWhUnknown(){
     XLSX.utils.book_append_sheet(wb, ws, 'data');
     XLSX.writeFile(wb, 'اصناف-محتواها-مش-معروف.xlsx');
   });
+  $('whUnkSave').addEventListener('click', async ()=>{
+    const cards = Array.from(document.querySelectorAll('#whUnkList .unk-card'));
+    let saved = 0, skipped = 0;
+    cards.forEach(card=>{
+      const name = decodeURIComponent(card.dataset.item);
+      const main = card.querySelector('.unkMain').value.trim();
+      const sub  = card.querySelector('.unkSub').value.trim();
+      const roll = Number(card.querySelector('.unkRoll').value);
+      const color= card.querySelector('.unkColor').value.trim();
+      if(!main && !sub && !color && !(roll > 0)){ skipped++; return; }
+      const cur = whCatalog[name] || {main:'', sub:'', roll:0, color:''};
+      whCatalog[name] = {
+        main: main || cur.main, sub: sub || cur.sub,
+        roll: roll > 0 ? roll : (Number(cur.roll) || 0),
+        color: color || cur.color,
+      };
+      saved++;
+    });
+    if(!saved){
+      $('whUnkSaveMsg').innerHTML = '<div class="msg warn">مفيش حاجة اتكتبت — املا محتوى اللفة أو المجموعة الأول.</div>';
+      return;
+    }
+    $('whUnkSave').disabled = true; $('whUnkSave').textContent = 'بيحفظ...';
+    try{ await saveWhCatalog(); }catch(e){ scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف'); }
+    whUpdateLocalCache();
+    whFixMsgHtml = `<div class="msg ok">اتحفظ ${saved} صنف في الدليل.${skipped ? ' ' + skipped + ' صنف سيبته زي ما هو.' : ''}</div>`;
+    whUnkOpen = true;
+    renderWh();
+  });
+
   const ff = $('whFixFile'), fb = $('whFixBtn');
   ff.addEventListener('change', ()=>{ fb.disabled = !ff.files.length; });
   fb.addEventListener('click', async ()=>{
