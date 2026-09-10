@@ -393,7 +393,12 @@
       <button class="ghost" id="pdfMonthsAll">تحديد الكل</button>
       <button class="ghost" id="pdfMonthsNone">إلغاء الكل</button>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
-        <input type="checkbox" id="pdfQuarterMode" style="width:16px;height:16px"> اجمع الشهور في كوارترات (كل 3 شهور مع بعض)
+        تجميع الأعمدة:
+        <select id="pdfGroupMode" style="font-size:13px">
+          <option value="month">كل شهر عمود</option>
+          <option value="quarter">كوارترات (كل 3 شهور)</option>
+          <option value="year">سنوات (كل سنة عمود)</option>
+        </select>
       </label>
     </div>
   </div>
@@ -622,7 +627,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v64';
+const APP_VERSION = 'v65';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1721,24 +1726,28 @@ function customerSectorMonthlySeries(c, sector, months){
     return t;
   });
 }
-// ---- أعمدة مقارنة قابلة للاختيار (شهور مفردة أو كوارترات مجمّعة) — للـPDF/الإكسل بس ----
-// عمود = {key, label, months:[...]}. لو quarterMode=false كل شهر عمود لوحده، ولو true كل 3 شهور (ربع سنة تقويمي) بيتجمعوا في عمود واحد.
-function buildColumns(selectedMonths, quarterMode){
+// ---- أعمدة مقارنة قابلة للاختيار (شهور / كوارترات / سنين) — للـPDF/الإكسل بس ----
+// عمود = {key, label, months:[...]}. mode: 'month' كل شهر عمود، 'quarter' كل 3
+// شهور (ربع تقويمي)، 'year' كل سنة عمود واحد. (true/false لسه شغالين كـ
+// كوارتر/شهر عشان نداءات قديمة.)
+function buildColumns(selectedMonths, mode){
+  if(mode === true) mode = 'quarter';
+  if(!mode || mode === false) mode = 'month';
   const months = selectedMonths.slice().sort();
-  if(!quarterMode) return months.map(m => ({key:m, label:monthLabel(m), months:[m]}));
-  const byQuarter = {};
+  if(mode === 'month') return months.map(m => ({key:m, label:monthLabel(m), months:[m]}));
+  const buckets = {};
   months.forEach(m=>{
     const [y,mo] = m.split('-');
-    const q = Math.ceil(parseInt(mo,10)/3);
-    const key = `${y}-Q${q}`;
-    if(!byQuarter[key]) byQuarter[key] = [];
-    byQuarter[key].push(m);
+    const key = mode === 'year' ? y : `${y}-Q${Math.ceil(parseInt(mo,10)/3)}`;
+    if(!buckets[key]) buckets[key] = [];
+    buckets[key].push(m);
   });
-  return Object.keys(byQuarter).sort().map(key=>{
-    const [y,qs] = key.split('-Q');
-    return {key, label:`الربع ${qs} ${y}`, months: byQuarter[key].sort()};
+  return Object.keys(buckets).sort().map(key=>{
+    const label = mode === 'year' ? `سنة ${key}` : `الربع ${key.split('-Q')[1]} ${key.split('-Q')[0]}`;
+    return {key, label, months: buckets[key].sort()};
   });
 }
+function pdfGroupMode(){ return ($('pdfGroupMode') || {}).value || 'month'; }
 function customerSectorColumnSeries(c, sector, columns){
   const want = asSectorSet(sector);
   return columns.map(col => col.months.reduce((s,m)=>{
@@ -3170,7 +3179,7 @@ function generateExcel(includeMonthly, includeSector, opts){
 
   const checked = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(el=>el.value);
   const selectedMonths = checked.length ? checked : allMonths;
-  const columns = buildColumns(selectedMonths, $('pdfQuarterMode').checked);
+  const columns = buildColumns(selectedMonths, pdfGroupMode());
   const period = periodLabel(columns);
   // فترتين النمو من الشهور المختارة برضه، زي الـPDF بالظبط
   const growthOk = includeGrowth && ensureGrowthPeriods(selectedMonths.slice().sort());
@@ -4270,8 +4279,8 @@ async function generatePdf(includeMonthly, includeSector, opts){
 
   const checked = Array.from(document.querySelectorAll('.pdfMonthChk:checked')).map(el=>el.value);
   const selectedMonths = checked.length ? checked : allMonths;
-  const quarterMode = $('pdfQuarterMode').checked;
-  const columns = buildColumns(selectedMonths, quarterMode);
+  const groupMode = pdfGroupMode();
+  const columns = buildColumns(selectedMonths, groupMode);
   // مهم: فترتين النمو بتتحسب من الشهور اللي اتحددت للتصدير، مش من كل الشهور.
   // قبل كده لو صدّرت تقرير عن 3 شهور كان النمو يقارن آخر شهرين من كل البيانات.
   const growthOk = includeGrowth && ensureGrowthPeriods(selectedMonths.slice().sort());
