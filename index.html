@@ -473,6 +473,11 @@
       الرفعة الجديدة بتحل محل رصيد المخزن ده بالكامل.
     </div>
     <div id="whUploadMsg"></div>
+    <div id="whSyncLine" class="sub" style="margin-top:6px"></div>
+
+    <!-- الأصناف اللي التطبيق مش عارف محتوى لفتها (مش في الدليل أو اللفة فاضية).
+         بتظهر لوحدها عشان المستخدم يحدّثها بدل ما تفضل بترجع في كل تقرير. -->
+    <div id="whUnknownBox" style="margin-top:12px"></div>
 
     <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
       <div class="flex-between">
@@ -604,7 +609,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v61';
+const APP_VERSION = 'v62';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -657,6 +662,7 @@ let pendingNewItems = []; // items first seen this upload, for the info message
 let duplicateMonths = []; // شهور موجودة بالفعل في الرفعة الحالية — بتحتاج قرار استبدال/إضافة
 let replaceExisting = false;
 let lastSyncAt = 0; // آخر مزامنة ناجحة مع التخزين المركزي
+let offlineMode = false;  // آخر تحميل فشل فإحنا شغالين على نسخة الجهاز
 // "not found" = المفتاح مش موجود فعلًا على السيرفر (أول تشغيل).
 // أي رسالة تانية = عطل مؤقت، والسيرفر لسه شايل بيانات المستخدم.
 // الفرق ده مهم جدًا: الكتابة الافتراضية فوق مفتاح موجود بتمسح إعدادات المستخدم.
@@ -874,7 +880,10 @@ async function loadStorage(){
     });
     monthsData = fetched;
     loadedFromIndex = true;
-  }catch(e){ netFailed = true; monthsData = cachedSnapshot; }
+  }catch(e){
+    // مفتاح مش موجود (حساب لسه جديد) مش معناه إن النت واقع
+    netFailed = !isMissingKey(e); monthsData = cachedSnapshot;
+  }
   if(!loadedFromIndex){
     // ترحيل من الصيغة القديمة (مفتاح monthsData واحد) لو لسه موجودة
     try{
@@ -1016,6 +1025,7 @@ async function loadStorage(){
   if(typeof renderWh === 'function') renderWh();
 
   // لو المزامنة فشلت، منكتبش فوق الكاش المحلي بنسخة ناقصة
+  offlineMode = netFailed;
   if(!netFailed){
     updateLocalCache(true);
     try{ localStorage.removeItem('cache:classification'); localStorage.removeItem('cache:itemOverride'); }catch(e){}
@@ -4629,6 +4639,150 @@ function parseWhCount(wb){
   return {counts: out, filled, unknown: Array.from(new Set(unknown))};
 }
 
+// الأصناف اللي محتواها مش معروف: مش في الدليل خالص، أو في الدليل و"محتوي اللفه"
+// فاضي/صفر. بنطلّعها للمستخدم عشان يحدّثها — من غيرها اللفة/العود بتطلع غلط.
+function whUnknownItems(){
+  const seen = new Set(); const out = [];
+  whAllItemNames().forEach(name=>{
+    if(seen.has(name)) return; seen.add(name);
+    const it = whCatalog[name];
+    let why = '';
+    if(!it) why = 'مش في الدليل';
+    else if(!(Number(it.roll) > 0)) why = 'محتوى اللفة فاضي';
+    else if(!it.main) why = 'من غير مجموعة';
+    if(!why) return;
+    const qty = {};
+    WAREHOUSES.forEach(w => { qty[w] = Number(whStoreBalances(w)[name]) || 0; });
+    out.push({name, why, main: (it && it.main) || '', sub: (it && it.sub) || '',
+      color: (it && it.color) || '', qty});
+  });
+  return out.sort((a,b)=> a.why.localeCompare(b.why,'ar') || a.name.localeCompare(b.name,'ar'));
+}
+
+let whUnkOpen = false;      // القايمة مفتوحة ولا لأ (بتفضل مفتوحة بعد التحديث)
+let whFixMsgHtml = '';      // رسالة آخر تحديث — بتتعاد بعد إعادة الرسم
+function renderWhUnknown(){
+  const box = $('whUnknownBox'); if(!box) return;
+  if(!Object.keys(whCatalog).length){ box.innerHTML = ''; return; }
+  const list = whUnknownItems();
+  if(!list.length){
+    box.innerHTML = whFixMsgHtml
+      + '<div class="msg ok">كل الأصناف اللي عندها أرصدة معروف محتوى لفتها ✅</div>';
+    return;
+  }
+  const rows = list.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td>
+    <td>${esc(r.why)}</td><td>${esc(r.main || '—')}</td>
+    ${WAREHOUSES.map(w=>`<td class="wh-num">${whFmt(r.qty[w])}</td>`).join('')}</tr>`).join('');
+  box.innerHTML = `<div class="msg warn"><b>${list.length} صنف محتواه مش معروف</b> —
+      اللفة/العود بتاعتهم بتتحسب غلط لحد ما تتحدّث.
+      <div class="row" style="margin-top:8px">
+        <button class="ghost" id="whUnkToggle">${whUnkOpen ? 'اخفي القايمة' : 'اعرض القايمة'}</button>
+        <button class="secondary" id="whUnkExcel">نزّل القايمة Excel</button>
+        <button class="ghost" id="whUnkCopy">انسخ الأسماء</button>
+      </div>
+      <div id="whUnkList" style="display:${whUnkOpen ? 'block' : 'none'};margin-top:10px">
+        <div class="table-wrap" style="max-height:320px;overflow:auto">
+        <table><thead><tr><th>م</th><th>الصنف</th><th>السبب</th><th>المجموعة</th>
+          ${WAREHOUSES.map(w=>`<th>${esc(w)}</th>`).join('')}</tr></thead>
+          <tbody>${rows}</tbody></table></div>
+        <div class="sub" style="margin-top:8px">املا عمود <b>محتوي اللفه</b> (والمجموعات لو ناقصة)
+          في الملف اللي نزّلته وارفعه هنا — بيتدمج مع الدليل ومش بيمسحه.</div>
+        <div class="row" style="margin-top:6px">
+          <input type="file" id="whFixFile" accept=".xls,.xlsx">
+          <button id="whFixBtn" disabled>حدّث الأصناف دي</button>
+        </div>
+        <div id="whFixMsg">${whFixMsgHtml}</div>
+      </div></div>`;
+  $('whUnkToggle').addEventListener('click', ()=>{
+    whUnkOpen = !whUnkOpen;
+    $('whUnkList').style.display = whUnkOpen ? 'block' : 'none';
+    $('whUnkToggle').textContent = whUnkOpen ? 'اخفي القايمة' : 'اعرض القايمة';
+  });
+  $('whUnkCopy').addEventListener('click', ()=>{
+    const txt = list.map(r=> r.name).join('\n');
+    try{ navigator.clipboard.writeText(txt); $('whUnkCopy').textContent = 'اتنسخت ✔'; }
+    catch(e){ alert(txt); }
+  });
+  $('whUnkExcel').addEventListener('click', ()=>{
+    const aoa = [['اسم الصنف','المجموعة الرئيسية','المجموعة الفرعية','محتوي اللفه','اللون','السبب']]
+      .concat(list.map(r=> [r.name, r.main, r.sub, '', r.color, r.why]));
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:46},{wch:20},{wch:22},{wch:12},{wch:12},{wch:18}];
+    wb.Workbook = {Views:[{RTL:true}]};
+    XLSX.utils.book_append_sheet(wb, ws, 'data');
+    XLSX.writeFile(wb, 'اصناف-محتواها-مش-معروف.xlsx');
+  });
+  const ff = $('whFixFile'), fb = $('whFixBtn');
+  ff.addEventListener('change', ()=>{ fb.disabled = !ff.files.length; });
+  fb.addEventListener('click', async ()=>{
+    if(!ff.files.length) return;
+    $('whFixMsg').innerHTML = '<div class="msg warn">بيقرا الملف...</div>';
+    try{
+      const wb = XLSX.read(await ff.files[0].arrayBuffer(), {type:'array'});
+      const cat = parseWhCatalog(wb);
+      let added = 0, updated = 0, still = 0;
+      Object.entries(cat).forEach(([name, o])=>{
+        const old = whCatalog[name];
+        if(!old){ whCatalog[name] = o; added++; }
+        else {
+          // دمج: بناخد الجديد بس لو فيه قيمة، عشان ما نمسحش بيانات موجودة
+          if(Number(o.roll) > 0 && Number(o.roll) !== Number(old.roll)) { old.roll = Number(o.roll); updated++; }
+          if(o.main && o.main !== old.main) old.main = o.main;
+          if(o.sub) old.sub = o.sub;
+          if(o.color) old.color = o.color;
+        }
+        if(!(Number(whCatalog[name].roll) > 0)) still++;
+      });
+      try{ await saveWhCatalog(); }catch(e){ scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف'); }
+      whUpdateLocalCache();
+      let m = `<div class="msg ok">اتضاف ${added} صنف جديد، واتحدّث محتوى اللفة لـ ${updated} صنف.</div>`;
+      if(still) m += `<div class="msg warn">لسه ${still} صنف في الملف من غير محتوى لفة.</div>`;
+      // الرسالة بتتخزن الأول: renderWh بيعيد بناء اللوحة فالعنصر ده بيتغيّر
+      whFixMsgHtml = m; whUnkOpen = true;
+      renderWh();
+    }catch(e){
+      whFixMsgHtml = `<div class="msg err">${esc(e.message)}</div>`;
+      $('whFixMsg').innerHTML = whFixMsgHtml;
+    }
+  });
+}
+
+// سطر بيقول البيانات دي جاية منين وآخر رفع إمتى — عشان لما تفتح على جهاز
+// تاني تتأكد إن اللي قدامك هو المرفوع فعلًا مش نسخة قديمة على الجهاز.
+function renderWhSyncLine(){
+  const el = $('whSyncLine'); if(!el) return;
+  const parts = WAREHOUSES.map(w=>{
+    const b = whBalances[w];
+    return `${w}: ${b && b.date ? esc(b.date) : 'مفيش أرصدة مرفوعة'}`;
+  });
+  const src = offlineMode ? 'نسخة محفوظة على الجهاز (مفيش نت)' : 'التخزين المركزي';
+  el.innerHTML = `آخر رفع للأرصدة — ${parts.join(' · ')} — المصدر: <b>${src}</b>
+    <button class="ghost" id="whReloadBtn" style="padding:2px 10px;font-size:12px;margin-inline-start:8px">تحديث من السيرفر</button>`;
+  $('whReloadBtn').addEventListener('click', reloadWhFromServer);
+}
+
+// إعادة جلب بيانات المخازن من السيرفر من غير reload للصفحة كلها
+async function reloadWhFromServer(){
+  const btn = $('whReloadBtn'); if(btn){ btn.disabled = true; btn.textContent = 'بيحمّل...'; }
+  let failed = 0;
+  for(const [key, setter] of [
+    ['whCatalog',  v=>{ whCatalog  = v; }],
+    ['whBalances', v=>{ whBalances = v; }],
+    ['whOrder',    v=>{ whOrder    = v; }],
+    ['whCount',    v=>{ whCount    = v; }],
+  ]){
+    try{
+      const r = await window.storage.get(key);
+      setter(JSON.parse(r.value) || {});
+    }catch(e){ if(!isMissingKey(e)) failed++; }
+  }
+  if(!failed){ whUpdateLocalCache(); offlineMode = false; }
+  renderWh();
+  if(btn){ btn.disabled = false; }
+  if(failed) alert('مقدرناش نقرا بيانات المخازن من السيرفر دلوقتي — جرّب تاني.');
+}
+
 // ---- الشاشات ----
 function whFillSelect(el, list, all){
   if(!el) return;
@@ -4804,6 +4958,8 @@ function whCountView(){
 function renderWh(){
   if(!$('whArea')) return;
   whRenderChrome();
+  renderWhSyncLine();
+  renderWhUnknown();
   if(!Object.keys(whCatalog).length){
     $('whArea').innerHTML = '<div class="msg warn">ارفع <b>دليل الأصناف</b> الأول (شيت data) — منه بتتحسب المجموعات واللفة/العود.</div>';
     $('whCount').textContent = '';
