@@ -88,13 +88,22 @@
   /* شبكة خيارات التصدير: ٤ في الصف، وكل خيار بياخد عرض خانته كاملة عشان
      يبانوا مرتّبين تحت بعض مش بعرض عشوائي حسب طول الكلام. */
   /* شريط أيقونتين: المبيعات / المخازن */
-  .mod-bar{display:flex;gap:10px;margin:10px 0 16px;flex-wrap:wrap}
-  .mod-btn{display:flex;align-items:center;gap:10px;background:var(--panel);color:var(--text);
-    border:1px solid var(--border);border-radius:12px;padding:10px 16px;font-size:14px;
-    text-align:right;box-shadow:0 1px 2px rgba(0,0,0,.04);min-width:210px}
+  /* الأيقونتين جنب بعض دايمًا (حتى على الموبايل)، وكل واحدة قايمة منسدلة:
+     محتواها ما يبانش غير لما تدوس عليها، ودوسة تانية تقفلها. */
+  .mod-bar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 16px}
+  .mod-btn{display:flex;align-items:center;gap:8px;background:var(--panel);color:var(--text);
+    border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:14px;
+    text-align:right;box-shadow:0 1px 2px rgba(0,0,0,.04);min-width:0}
   .mod-btn.active{background:var(--thead);color:#fff;border-color:var(--thead)}
-  .mod-btn .mod-ico{font-size:22px;line-height:1}
-  .mod-btn .mod-sub{font-size:11.5px;opacity:.75;font-weight:400}
+  .mod-btn .mod-ico{font-size:22px;line-height:1;flex:none}
+  .mod-btn .mod-txt{flex:1;min-width:0}
+  .mod-btn .mod-sub{font-size:11px;opacity:.75;font-weight:400;display:block}
+  .mod-btn .mod-car{flex:none;font-size:12px;transition:transform .15s}
+  .mod-btn.active .mod-car{transform:rotate(180deg)}
+  @media(max-width:420px){
+    .mod-btn{padding:9px 10px;font-size:13px}
+    .mod-btn .mod-sub{display:none}
+  }
   .wh-num{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-weight:700;direction:ltr}
   .wh-in{width:76px;padding:4px 6px;font-size:13px;text-align:center;direction:ltr}
   .grp-row td{background:#e7ebfa;font-weight:700}
@@ -146,15 +155,17 @@
 </div>
 <!-- التطبيق قسمين: المبيعات والمخازن. كل واحد بشاشاته وتقاريره. -->
 <div class="mod-bar">
-  <button class="mod-btn active" data-mod="sales">
-    <span class="mod-ico">📊</span><span><b>المبيعات</b><br><span class="mod-sub">مقارنات وقطاعات ونمو</span></span>
+  <button class="mod-btn" data-mod="sales" aria-expanded="false" aria-controls="salesApp">
+    <span class="mod-ico">📊</span><span class="mod-txt"><b>المبيعات</b><span class="mod-sub">مقارنات وقطاعات ونمو</span></span><span class="mod-car">▾</span>
   </button>
-  <button class="mod-btn" data-mod="wh">
-    <span class="mod-ico">🏬</span><span><b>المخازن</b><br><span class="mod-sub">أرصدة ونواقص وجرد</span></span>
+  <button class="mod-btn" data-mod="wh" aria-expanded="false" aria-controls="whApp">
+    <span class="mod-ico">🏬</span><span class="mod-txt"><b>المخازن</b><span class="mod-sub">أرصدة ونواقص وجرد</span></span><span class="mod-car">▾</span>
   </button>
 </div>
 
-<div id="salesApp">
+<div id="modHint" class="sub" style="text-align:center;padding:18px 10px">اختار قسم من فوق عشان تفتحه 👆</div>
+
+<div id="salesApp" style="display:none">
 <div class="sub">ارفع ملف تصدير المحاسبة (xls خام) لكل شهر، والموقع يحسبلك مقارنة المبيعات الشهرية والمقارنة بالقطاع أوتوماتيك.</div>
 <div id="installBanner" class="card" style="display:none;background:var(--panel2);border-color:var(--accent)">
   <div class="flex-between">
@@ -593,7 +604,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v61';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4588,6 +4599,36 @@ function parseWhBalances(wb){
   return {items, skipped, unknown: Array.from(new Set(unknown))};
 }
 
+// ملف الجرد: اسم الصنف + الجرد الفعلي (بأي اسم من الأسماء الشائعة للعمود)
+function parseWhCount(wb){
+  const sheet = wb.Sheets[whFindSheet(wb, 'الجرد')];
+  const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:''});
+  const NAMES = ['الجرد الفعلي','الجرد','الفعلي','العدد الفعلي','جرد'];
+  let h = null, valCol = -1;
+  for(let i=0;i<Math.min(rows.length, 12);i++){
+    const idx = {};
+    rows[i].forEach((c, ci)=>{ idx[normName(c)] = ci; });
+    const nameCol = idx['اسم الصنف'] !== undefined ? idx['اسم الصنف'] : idx['الصنف'];
+    if(nameCol === undefined) continue;
+    for(const n of NAMES){ if(idx[n] !== undefined){ valCol = idx[n]; break; } }
+    if(valCol !== -1){ h = {row: i, nameCol}; break; }
+  }
+  if(!h) throw new Error('مش لاقي أعمدة "الصنف" و"الجرد الفعلي" في الملف. '
+    + 'نزّل ورقة الجرد من "تصدير Excel" واملا عمود الجرد الفعلي فيها.');
+  const out = {}; let filled = 0, unknown = [];
+  for(let i=h.row+1;i<rows.length;i++){
+    const name = normName(rows[i][h.nameCol]);
+    if(!name) continue;
+    const raw = rows[i][valCol];
+    if(raw === '' || raw === null || raw === undefined) continue;
+    const v = typeof raw === 'number' ? raw : Number(String(raw).replace(/,/g,''));
+    if(!isFinite(v)) continue;
+    out[name] = v; filled++;
+    if(!whCatalog[name]) unknown.push(name);
+  }
+  return {counts: out, filled, unknown: Array.from(new Set(unknown))};
+}
+
 // ---- الشاشات ----
 function whFillSelect(el, list, all){
   if(!el) return;
@@ -4720,7 +4761,19 @@ function whCountView(){
     if(diff !== 0) detail.push({name:r.name, main:r.main, book:r.qty, real:Number(v), diff});
   });
   const match = counted ? Math.round(((counted - shortItems - overItems) / counted) * 100) : 0;
-  let html = `<div class="kpi-row" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+  // الجرد ممكن يتعمل في إكسل بره (على الموبايل في المخزن) ويترفع هنا،
+  // بدل ما المستخدم يكتب ألف صنف بإيده.
+  let html = `<div class="msg warn" style="margin-bottom:12px">
+    <b>تقدر ترفع الجرد من إكسل:</b> نزّل ورقة الجرد من "تصدير Excel" فوق، املا عمود
+    <b>الجرد الفعلي</b>، وارفع الملف هنا تاني.
+    <div class="row" style="margin-top:8px">
+      <input type="file" id="whCountFile" accept=".xls,.xlsx">
+      <button id="whCountUpBtn" disabled>ارفع الجرد</button>
+      <button class="ghost" id="whCountClear">امسح الجرد الحالي</button>
+    </div>
+    <div id="whCountMsg"></div>
+  </div>
+  <div class="kpi-row" style="grid-template-columns:repeat(4,minmax(0,1fr))">
     <div class="kpi-card"><div class="kpi-title">أصناف اتجردت</div><div class="kpi-sum" style="font-size:20px">${counted}</div></div>
     <div class="kpi-card"><div class="kpi-title">أصناف عجز</div><div class="kpi-sum" style="font-size:20px;color:var(--danger)">${shortItems}</div>
       <div class="kpi-share">${shortQty.toLocaleString('en-US',{maximumFractionDigits:2})} قطعة</div></div>
@@ -4763,6 +4816,41 @@ function renderWh(){
   $('whArea').innerHTML = view.html;
   $('whCount').textContent = view.count || '';
   bindWhInputs();
+  if(whTab === 'count') bindWhCountUpload();
+}
+
+function bindWhCountUpload(){
+  const f = $('whCountFile'), btn = $('whCountUpBtn'), clr = $('whCountClear');
+  if(!f || !btn) return;
+  f.addEventListener('change', ()=>{ btn.disabled = !f.files.length; });
+  btn.addEventListener('click', async ()=>{
+    const store = $('whStore').value;
+    if(!f.files.length) return;
+    $('whCountMsg').innerHTML = '<div class="msg warn">بيقرا الملف...</div>';
+    try{
+      const wb = XLSX.read(await f.files[0].arrayBuffer(), {type:'array'});
+      const res = parseWhCount(wb);
+      if(!res.filled) throw new Error('عمود الجرد الفعلي فاضي في الملف كله.');
+      whCount[store] = res.counts;
+      try{ await saveWhCount(); }catch(e){ scheduleSave('whCount', saveWhCount, 'الجرد'); }
+      whUpdateLocalCache();
+      renderWh();
+      let m = `<div class="msg ok">اترفع جرد <b>${esc(store)}</b>: ${res.filled} صنف.</div>`;
+      if(res.unknown.length) m += `<div class="msg warn">${res.unknown.length} صنف في الملف مش في دليل الأصناف
+        (${esc(res.unknown.slice(0,5).join('، '))}${res.unknown.length>5?'...':''}) — اتسجّلوا برضه.</div>`;
+      $('whCountMsg').innerHTML = m;
+    }catch(e){
+      $('whCountMsg').innerHTML = `<div class="msg err">${esc(e.message)}</div>`;
+    }
+  });
+  if(clr) clr.addEventListener('click', async ()=>{
+    const store = $('whStore').value;
+    if(!confirm(`تمسح الجرد المدخّل لمخزن ${store}؟`)) return;
+    delete whCount[store];
+    try{ await saveWhCount(); }catch(e){ scheduleSave('whCount', saveWhCount, 'الجرد'); }
+    whUpdateLocalCache();
+    renderWh();
+  });
 }
 
 function bindWhInputs(){
@@ -4865,20 +4953,26 @@ $('whGroup').addEventListener('change', ()=>{
 });
 
 // ---- تبديل المبيعات/المخازن ----
+let activeModule = null;   // مفيش حاجة مفتوحة غير لما المستخدم يدوس
 function showModule(mod){
+  activeModule = mod;
   $('salesApp').style.display = mod === 'sales' ? '' : 'none';
   $('whApp').style.display = mod === 'wh' ? '' : 'none';
-  document.querySelectorAll('.mod-btn').forEach(b=> b.classList.toggle('active', b.dataset.mod === mod));
-  try{ localStorage.setItem('activeModule', mod); }catch(e){}
+  document.querySelectorAll('.mod-btn').forEach(b=>{
+    const on = b.dataset.mod === mod;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-expanded', on ? 'true' : 'false');
+  });
+  try{ localStorage.setItem('activeModule', mod || ''); }catch(e){}
+  $('modHint').style.display = mod ? 'none' : '';
   if(mod === 'wh') renderWh();
+  // الشارت لو اترسم والقسم مقفول بيطلع بعرض صفر، فبنعيد رسمه عند الفتح
+  if(mod === 'sales' && typeof renderCharts === 'function'){ try{ renderCharts(); }catch(e){} }
 }
 document.querySelectorAll('.mod-btn').forEach(b=>{
-  b.addEventListener('click', ()=> showModule(b.dataset.mod));
+  // دوسة تفتح، ودوسة تانية على نفس الأيقونة تقفل
+  b.addEventListener('click', ()=> showModule(activeModule === b.dataset.mod ? null : b.dataset.mod));
 });
-try{
-  const savedMod = localStorage.getItem('activeModule');
-  if(savedMod === 'wh') showModule('wh');
-}catch(e){}
 
 
 // ---- تصدير تقارير المخازن ----
