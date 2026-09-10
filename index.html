@@ -533,6 +533,7 @@
       <span style="flex:1"></span>
       <button class="ghost" id="whExcelBtn">تصدير Excel</button>
       <button class="ghost" id="whPdfBtn">تصدير PDF</button>
+      <button id="whImgBtn">تصدير صور</button>
     </div>
 
     <div id="whArea"><div class="sub">ارفع دليل الأصناف وأرصدة مخزن عشان يظهر التقرير.</div></div>
@@ -627,7 +628,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v66';
+const APP_VERSION = 'v67';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4579,6 +4580,8 @@ function whRows(store, opts){
     const qty = bal ? (Number(bal[name]) || 0) : 0;
     return {name, main: it.main || 'غير معروف', sub: it.sub || '', color: it.color || '', qty};
   }).filter(r=>{
+    // تصدير الأوردر بياخد كل الأصناف المطلوبة مهما كان الفلتر المعروض
+    if(opts.ignoreFilters) return true;
     if(q && !r.name.includes(q)) return false;
     if(g && r.main !== g) return false;
     if(sub && r.sub !== sub) return false;
@@ -5278,6 +5281,129 @@ document.querySelectorAll('.mod-btn').forEach(b=>{
   b.addEventListener('click', ()=> showModule(activeModule === b.dataset.mod ? null : b.dataset.mod));
 });
 
+
+// ---- ورقة النواقص كصورة ----
+// المطلوب: صورة (مش PDF) فيها م / الصنف / الكمية المطلوبة / ملاحظات، الصفوف
+// تحت عنوان مجموعتها، وفي الآخر إجمالي اللفف لكل مجموعة رئيسية.
+// والعائلات دي بتتصدّر مع بعض في صورة واحدة: كرافت + نيو، واكسسوارات + كومبن.
+const WH_FAMILIES = [
+  {id:'kraft', title:'كرافت لاين ونيو لاين', mains:['قطاعات كرافت لاين','نيو لاين']},
+  {id:'acc',   title:'اكسسوارات وكومبن', mains:['اكسسوارات pvc اكسا','اكسسوارات خارجيه','قطاعات PVC كومبن']},
+  {id:'shutter', title:'شاتر', mains:['شاتر']},
+  {id:'gevis',   title:'جيفيز', mains:['جيفيز']},
+  {id:'doors',   title:'ابواب WPC', mains:['ابواب WPC']},
+];
+function whFamilyOf(main){
+  const m = normName(main);
+  const f = WH_FAMILIES.find(fam => fam.mains.some(x => normName(x) === m));
+  return f ? f.id : 'other';
+}
+function whFamilyTitle(id){
+  const f = WH_FAMILIES.find(x => x.id === id);
+  return f ? f.title : 'مجموعات أخرى';
+}
+// وحدة الطلب: لفة للأصناف اللي ليها محتوى لفة، وقطعة لغيرها
+function whOrderUnit(name){ return whRoll(name) > 0 ? 'لفة' : 'قطعة'; }
+
+// صفوف الأوردر المطلوبة فعلًا (اللي المستخدم كتب قدامها رقم)
+function whOrderRows(store){
+  const ord = whOrder[store] || {};
+  return whRows(store, {applyZero:false, ignoreFilters:true})
+    .filter(r => Number(ord[r.name]) > 0)
+    .map(r => ({...r, want: Number(ord[r.name])}));
+}
+
+function whOrderSheetHtml(store, rows, title){
+  let html = `<div class="blk"><div class="grp-title">${esc(title)} — ${esc(store)}</div>
+    <div class="tbl-wrap"><table style="font-size:15px"><thead><tr>
+      <th style="width:7%">م</th><th style="width:53%">الصنف</th>
+      <th style="width:20%">الكمية المطلوبة</th><th style="width:20%">ملاحظات</th>
+    </tr></thead><tbody>`;
+  let lastKey = null, n = 0;
+  const totals = {};   // إجمالي اللفف لكل مجموعة رئيسية
+  rows.forEach(r=>{
+    const key = r.sub || r.main;
+    if(key !== lastKey){
+      html += `<tr class="grp-row"><td colspan="4" style="text-align:right">${esc(key)}</td></tr>`;
+      lastKey = key;
+    }
+    n++;
+    html += `<tr><td>${n}</td><td style="text-align:right">${esc(r.name)}</td>
+      <td><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(r.want)}</span>
+        ${esc(whOrderUnit(r.name))}</td><td></td></tr>`;
+    if(whRoll(r.name) > 0) totals[r.main] = (totals[r.main] || 0) + r.want;
+  });
+  html += '</tbody></table></div>';
+  const keys = Object.keys(totals);
+  if(keys.length){
+    html += `<table style="font-size:15px;margin-top:10px"><tbody>` +
+      keys.map(k => `<tr class="total-row"><td style="text-align:right">إجمالي لفف ${esc(k)}</td>
+        <td style="width:30%"><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(totals[k])}</span> لفة</td></tr>`).join('') +
+      `<tr class="total-row"><td style="text-align:right">الإجمالي</td>
+        <td><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(keys.reduce((a,k)=>a+totals[k],0))}</span> لفة</td></tr></tbody></table>`;
+  }
+  return html + '</div>';
+}
+
+// صورة PNG من HTML — بنفس ستايل تقارير الـPDF ورأسه
+async function whDownloadImage(bodyHtml, subtitle, fileName){
+  const headerHtml = `<div style="border-bottom:2px solid #1b3a8f;padding:0 0 8px;margin-bottom:10px;
+      display:flex;align-items:center;justify-content:space-between;gap:16px">
+    <div><div style="font-size:20px;font-weight:700">${esc(reportTitle())}</div>
+      <div style="font-size:12.5px;color:#444;margin-top:4px">${esc(subtitle)} — تاريخ التقرير ${esc(reportDateText())}</div></div>
+    <img src="${LOGO_HEAD}" style="height:46px;width:auto;display:block" alt=""></div>`;
+  const old = PDF_RENDER_W;
+  PDF_RENDER_W = 900;
+  try{
+    const res = await renderReportCanvas(`<div class="blk">${headerHtml}</div>` + bodyHtml);
+    const blob = await new Promise(r => res.canvas.toBlob(r, 'image/png'));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = safeFileName(fileName) + '.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+  } finally { PDF_RENDER_W = old; }
+}
+
+$('whImgBtn').addEventListener('click', async ()=>{
+  if(!Object.keys(whCatalog).length){ alert('ارفع دليل الأصناف الأول.'); return; }
+  if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
+  const store = $('whStore').value;
+  const btn = $('whImgBtn'); const label = btn.textContent;
+  exportBusy = true; setExportButtons(false); btn.textContent = 'بيجهّز...';
+  try{
+    if(whTab === 'order'){
+      const rows = whOrderRows(store);
+      if(!rows.length){ alert('مفيش أصناف مطلوبة — اكتب الكميات في تبويب طلب النواقص الأول.'); return; }
+      // كل عائلة صورة لوحدها
+      const byFam = {};
+      rows.forEach(r=>{ const f = whFamilyOf(r.main); (byFam[f] = byFam[f] || []).push(r); });
+      const order = WH_FAMILIES.map(f=>f.id).concat('other').filter(f => byFam[f]);
+      for(const fam of order){
+        const t = whFamilyTitle(fam);
+        btn.textContent = `بيجهّز ${t}...`;
+        await whDownloadImage(whOrderSheetHtml(store, byFam[fam], 'طلب النواقص — ' + t),
+          'طلب النواقص — ' + t, `نواقص-${t}-${store}`);
+        await new Promise(r=>setTimeout(r, 400));   // المتصفح بيرفض تنزيلات متلاصقة
+      }
+    } else {
+      const {aoa, title} = whExportAoa();
+      if(aoa.length < 2){ alert('مفيش بيانات في الجدول ده.'); return; }
+      const head = aoa[0], body = aoa.slice(1);
+      const tbl = `<div class="blk"><div class="grp-title">${esc(title)}</div>
+        <div class="tbl-wrap"><table style="font-size:13px"><thead><tr>` +
+        head.map(h=>`<th>${esc(h)}</th>`).join('') + '</tr></thead><tbody>' +
+        body.map(r=> '<tr>' + r.map((c,i)=>
+          `<td class="${i>=3?'num':''}" style="${i===1?'text-align:right':''}">${esc(c === '' || c == null ? '-' : (typeof c === 'number' ? c.toLocaleString('en-US') : String(c)))}</td>`
+        ).join('') + '</tr>').join('') + '</tbody></table></div></div>';
+      await whDownloadImage(tbl, title, title);
+    }
+  }catch(e){
+    alert('حصل خطأ في إنشاء الصورة: ' + e.message);
+  }finally{
+    exportBusy = false; setExportButtons(true); btn.textContent = label;
+  }
+});
 
 // ---- تصدير تقارير المخازن ----
 // كل تبويب بيطلّع الجدول اللي إنت شايفه: إكسل بأرقام حقيقية، وPDF بنفس
