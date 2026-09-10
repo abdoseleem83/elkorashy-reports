@@ -628,7 +628,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v67';
+const APP_VERSION = 'v68';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4840,6 +4840,7 @@ function renderWhUnknown(){
         main: main || cur.main, sub: sub || cur.sub,
         roll: roll > 0 ? roll : (Number(cur.roll) || 0),
         color: color || cur.color,
+        unit: cur.unit,
       };
       saved++;
     });
@@ -5017,12 +5018,14 @@ function whOrderView(){
   const store = $('whStore').value;
   const rows = whRows(store, {applyZero:false});
   const ord = whOrder[store] || {};
-  let html = `<div class="sub" style="margin-bottom:8px">اكتب الكمية المطلوبة قدام كل صنف — بتتحفظ لوحدها.
-    بعدين دوس <b>تصدير PDF</b> عشان تطبع ورقة الأوردر (بتطلع بالأصناف المطلوبة بس).
+  let html = `<div class="sub" style="margin-bottom:8px">اكتب الكمية المطلوبة قدام كل صنف واختار <b>الوحدة</b>
+    (لفة / قطعة / كرتونة / كيس / عود) — الاتنين بيتحفظوا لوحدهم، والوحدة بتفضل محفوظة للصنف في المرات الجاية.
+    بعدين دوس <b>تصدير صور</b> عشان تطلّع ورقة الأوردر صور (كل مجموعات مع بعض في صورة).
     <br>التبويب ده بيعرض <b>كل الأصناف</b> حتى اللي رصيدها صفر — دي بالظبط اللي محتاج تطلبها.
     استخدم البحث أو فلتر المجموعة عشان توصل بسرعة.</div>
     <div class="tbl-wrap"><table><thead><tr>
-      <th>م</th><th>الصنف</th><th>المجموعة الفرعية</th><th>الرصيد</th><th>لفة</th><th>عود</th><th>المطلوب</th>
+      <th>م</th><th>الصنف</th><th>المجموعة الفرعية</th><th>الرصيد</th><th>لفة</th><th>عود</th>
+      <th>المطلوب</th><th>الوحدة</th>
     </tr></thead><tbody>`;
   // الصفوف متجمّعة بالمجموعة الفرعية: سطر عنوان قبل كل مجموعة عشان وانت
   // بتعمل الطلبية تبقى ماشي مجموعة مجموعة من غير لخبطة.
@@ -5031,13 +5034,16 @@ function whOrderView(){
     const sp = whSplit(r.qty, r.name);
     const key = r.main + ' › ' + (r.sub || '—');
     if(key !== lastKey){
-      html += `<tr class="grp-row"><td colspan="7">${esc(key)}</td></tr>`;
+      html += `<tr class="grp-row"><td colspan="8">${esc(key)}</td></tr>`;
       lastKey = key;
     }
     html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td><td>${esc(r.sub || r.main)}</td>
       <td class="wh-num">${whFmt(r.qty)}</td><td class="wh-num">${whFmt(sp.rolls)}</td><td class="wh-num">${whFmt(sp.loose)}</td>
       <td><input type="number" min="0" step="1" class="wh-in whOrderIn" data-item="${encodeURIComponent(r.name)}"
-        value="${ord[r.name] != null ? esc(String(ord[r.name])) : ''}"></td></tr>`;
+        value="${ord[r.name] != null ? esc(String(ord[r.name])) : ''}"></td>
+      <td><select class="whUnitIn" data-item="${encodeURIComponent(r.name)}" style="font-size:12.5px;padding:3px">
+        ${WH_UNITS.map(u=>`<option value="${esc(u)}"${u === whOrderUnit(r.name) ? ' selected' : ''}>${esc(u)}</option>`).join('')}
+      </select></td></tr>`;
   });
   html += '</tbody></table></div>';
   const asked = Object.values(ord).filter(v => Number(v) > 0).length;
@@ -5169,6 +5175,15 @@ function bindWhInputs(){
       $('whCount').textContent = $('whCount').textContent.replace(/مطلوب \d+ صنف/, `مطلوب ${asked} صنف`);
     });
   });
+  document.querySelectorAll('.whUnitIn').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const name = decodeURIComponent(sel.getAttribute('data-item'));
+      if(!whCatalog[name]) whCatalog[name] = {main:'', sub:'', roll:0, color:''};
+      whCatalog[name].unit = sel.value;
+      scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف');
+      whUpdateLocalCache();
+    });
+  });
   document.querySelectorAll('.whCountIn').forEach(inp=>{
     inp.addEventListener('change', ()=>{
       const store = $('whStore').value;
@@ -5195,6 +5210,11 @@ $('whCatBtn').addEventListener('click', async ()=>{
     const cat = parseWhCatalog(wb);
     const n = Object.keys(cat).length;
     if(!n) throw new Error('الملف مفيهوش أصناف.');
+    // وحدات الطلب اللي المستخدم اختارها مش في ملف الدليل — منضيّعهاش
+    Object.keys(cat).forEach(k=>{
+      const old = whCatalog[k];
+      if(old && old.unit) cat[k].unit = old.unit;
+    });
     whCatalog = cat;
     try{ await saveWhCatalog(); }
     catch(e){ scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف'); }
@@ -5302,8 +5322,14 @@ function whFamilyTitle(id){
   const f = WH_FAMILIES.find(x => x.id === id);
   return f ? f.title : 'مجموعات أخرى';
 }
-// وحدة الطلب: لفة للأصناف اللي ليها محتوى لفة، وقطعة لغيرها
-function whOrderUnit(name){ return whRoll(name) > 0 ? 'لفة' : 'قطعة'; }
+// وحدة الطلب: المستخدم بيختارها لكل صنف من قايمة، والافتراضي لفة للأصناف
+// اللي ليها محتوى لفة وقطعة لغيرها. بتتخزن في دليل الأصناف فبتفضل محفوظة.
+const WH_UNITS = ['لفة','قطعة','كرتونة','كيس','عود'];
+function whOrderUnit(name){
+  const it = whCatalog[name];
+  const u = it && it.unit;
+  return (u && WH_UNITS.includes(u)) ? u : (whRoll(name) > 0 ? 'لفة' : 'قطعة');
+}
 
 // صفوف الأوردر المطلوبة فعلًا (اللي المستخدم كتب قدامها رقم)
 function whOrderRows(store){
@@ -5331,16 +5357,24 @@ function whOrderSheetHtml(store, rows, title){
     html += `<tr><td>${n}</td><td style="text-align:right">${esc(r.name)}</td>
       <td><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(r.want)}</span>
         ${esc(whOrderUnit(r.name))}</td><td></td></tr>`;
-    if(whRoll(r.name) > 0) totals[r.main] = (totals[r.main] || 0) + r.want;
+    // الإجمالي بيتجمّع لكل مجموعة × وحدة (مش كل حاجة "لفة")
+    const u = whOrderUnit(r.name);
+    const tk = r.main + '|' + u;
+    totals[tk] = (totals[tk] || 0) + r.want;
   });
   html += '</tbody></table></div>';
-  const keys = Object.keys(totals);
+  const keys = Object.keys(totals).sort();
   if(keys.length){
+    const byUnit = {};
+    keys.forEach(k => { const u = k.split('|')[1]; byUnit[u] = (byUnit[u] || 0) + totals[k]; });
     html += `<table style="font-size:15px;margin-top:10px"><tbody>` +
-      keys.map(k => `<tr class="total-row"><td style="text-align:right">إجمالي لفف ${esc(k)}</td>
-        <td style="width:30%"><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(totals[k])}</span> لفة</td></tr>`).join('') +
-      `<tr class="total-row"><td style="text-align:right">الإجمالي</td>
-        <td><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(keys.reduce((a,k)=>a+totals[k],0))}</span> لفة</td></tr></tbody></table>`;
+      keys.map(k => { const [main, u] = k.split('|');
+        return `<tr class="total-row"><td style="text-align:right">إجمالي ${esc(u === 'لفة' ? 'لفف' : u)} ${esc(main)}</td>
+        <td style="width:30%"><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(totals[k])}</span> ${esc(u)}</td></tr>`;
+      }).join('') +
+      Object.keys(byUnit).map(u => `<tr class="total-row"><td style="text-align:right">الإجمالي (${esc(u)})</td>
+        <td><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(byUnit[u])}</span> ${esc(u)}</td></tr>`).join('') +
+      `</tbody></table>`;
   }
   return html + '</div>';
 }
@@ -5430,8 +5464,9 @@ function whExportAoa(){
   if(whTab === 'order'){
     const ord = whOrder[store] || {};
     const rows = whRows(store, {applyZero:false}).filter(r => Number(ord[r.name]) > 0);
-    const aoa = [['م','الصنف','المجموعة','الرصيد','لفة','طلب الأوردر']];
-    rows.forEach((r,i)=> aoa.push([i+1, r.name, r.main, r.qty, whSplit(r.qty, r.name).rolls, Number(ord[r.name])]));
+    const aoa = [['م','الصنف','المجموعة','الرصيد','لفة','طلب الأوردر','الوحدة']];
+    rows.forEach((r,i)=> aoa.push([i+1, r.name, r.main, r.qty, whSplit(r.qty, r.name).rolls,
+      Number(ord[r.name]), whOrderUnit(r.name)]));
     return {aoa, title:`طلب أوردر النواقص — ${store}`, sheet:`أوردر-${store}`, onlyAsked:true};
   }
   const cnt = whCount[store] || {};
