@@ -295,6 +295,7 @@
       نزّلها كل ما تعمل تعديلات كتير — ملف صغير بيرجّع كل حاجة زي ما كانت.</div>
     <div class="row" style="margin-top:8px">
       <button class="secondary" id="backupBtn">نزّل نسخة احتياطية</button>
+      <button class="ghost" id="tokenBtn" title="كلمة سر التخزين المركزي — بتتخزن على الجهاز ده بس">كلمة سر التطبيق</button>
       <button class="secondary" id="restoreBtn">استرجع من ملف</button>
       <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
     </div>
@@ -562,7 +563,28 @@ const SEED_CUSTOMERS = [{"name":"SM - م مصطفي رمضان","class":"مبي�
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyOOLyOIBu8vl6LyTlCaEJJQceCP1l285yio0_aT18-xDBEKxFiyaEAtShuv1I3YUoNlQ/exec';
 // مفتاح مشترك اختياري: لو حطيت نفس القيمة في SHARED_TOKEN هنا وفي Code.gs، أي حد
 // معندوش المفتاح ده مش هيقدر يقرا أو يكتب حتى لو عرف رابط الـApps Script.
-const SHARED_TOKEN = '';
+// الكود ده منشور على GitHub Pages (مستودع عام)، فأي كلمة سر مكتوبة هنا في
+// الملف بيقدر أي حد يقراها. عشان كده كلمة السر بتتخزن **على الجهاز** بس:
+// كل جهاز بيدخّلها مرة واحدة من "كلمة سر التطبيق"، والسيرفر (Code.gs) هو
+// اللي بيرفض أي طلب من غيرها.
+let SHARED_TOKEN = '';
+try{ SHARED_TOKEN = localStorage.getItem('appToken') || ''; }catch(e){}
+function setAppToken(t){
+  SHARED_TOKEN = t || '';
+  try{
+    if(SHARED_TOKEN) localStorage.setItem('appToken', SHARED_TOKEN);
+    else localStorage.removeItem('appToken');
+  }catch(e){}
+}
+// السيرفر رفض الطلب: نطلب كلمة السر من المستخدم مرة واحدة ونعيد التحميل
+let tokenPromptOpen = false;
+function askAppToken(){
+  if(tokenPromptOpen) return;
+  tokenPromptOpen = true;
+  const t = prompt('التخزين المركزي محمي بكلمة سر. اكتب كلمة سر التطبيق:');
+  tokenPromptOpen = false;
+  if(t){ setAppToken(t.trim()); location.reload(); }
+}
 const NET_TIMEOUT_MS = 60000;
 const NET_RETRIES = 2;
 
@@ -612,17 +634,23 @@ async function apiFetch(url, options, opts){
   }
   throw lastErr;
 }
-const tokenParam = SHARED_TOKEN ? `&token=${encodeURIComponent(SHARED_TOKEN)}` : '';
+function tokenParam(){ return SHARED_TOKEN ? `&token=${encodeURIComponent(SHARED_TOKEN)}` : ''; }
 
 window.storage = {
   async get(key){
-    const data = await apiFetch(`${APPS_SCRIPT_URL}?action=get&key=${encodeURIComponent(key)}${tokenParam}`);
-    if(!data.ok) throw new Error(data.error || 'not found');
+    const data = await apiFetch(`${APPS_SCRIPT_URL}?action=get&key=${encodeURIComponent(key)}${tokenParam()}`);
+    if(!data.ok){
+      if(/unauthorized/i.test(data.error || '')) askAppToken();
+      throw new Error(data.error || 'not found');
+    }
     return {key, value: data.value, shared:true};
   },
   async set(key, value){
     const data = await apiFetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'set', key, value, token: SHARED_TOKEN})});
-    if(!data.ok) throw new Error(data.error || 'save failed');
+    if(!data.ok){
+      if(/unauthorized/i.test(data.error || '')) askAppToken();
+      throw new Error(data.error || 'save failed');
+    }
     return {key, value, shared:true};
   },
   async delete(key){
@@ -631,7 +659,7 @@ window.storage = {
     return {key, deleted:true, shared:true};
   },
   async list(prefix){
-    const data = await apiFetch(`${APPS_SCRIPT_URL}?action=list&prefix=${encodeURIComponent(prefix||'')}${tokenParam}`);
+    const data = await apiFetch(`${APPS_SCRIPT_URL}?action=list&prefix=${encodeURIComponent(prefix||'')}${tokenParam()}`);
     if(!data.ok) throw new Error(data.error || 'list failed');
     return {keys: data.keys || [], prefix, shared:true};
   }
@@ -641,7 +669,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v81';
+const APP_VERSION = 'v82';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -817,13 +845,19 @@ function monthLabel(m){
 }
 
 // تخمين احتياطي لصنف جديد لسه مش موجود في خريطة القطاعات (ITEM_SECTOR_SEED / itemOverride).
+// تخمين قطاع الصنف الجديد. الكلمات دي اتطلعت من دليل الأصناف الحقيقي
+// (١٢٤٣ صنف) واتقاست عليه: قبل كده كان بيغلط في كل أصناف "نيو لاين" (اسمها
+// NEW بالإنجليزي) وأغلب الشاتر (موتور/شرائح/سلك) والأبواب اللي اسمها "باب"
+// مفرد من غير WPC والحشوات.
+// الترتيب مهم: اسم الخامة (كرافت/NEW/kom) بيغلب على نوع القطعة (حلق/باب).
 function guessSector(itemName){
   const n = (itemName||'');
-  if(/wpc|ابواب/i.test(n)) return 'ابواب WPC';
   if(/كرافت/.test(n)) return 'قطاعات كرافت لاين';
-  if(/نيو\s*لاين/.test(n)) return 'نيو لاين';
+  if(/نيو\s*لاين|\bnew\b/i.test(n)) return 'نيو لاين';
   if(/كومبن|\bkom\b/i.test(n)) return 'قطاعات PVC كومبن';
-  if(/شاتر|بل[يى]?سيه/.test(n)) return 'شتر وبلسيه';
+  if(/شاتر|شتر|بل[يى]?سيه|موتور|شرائح|ريموت|ر[يى]?سيفر|رسيفر|استقبال|كوروبيني|جيرو|بوكس/.test(n)) return 'شتر وبلسيه';
+  if(/حشو/.test(n)) return 'حشوات';
+  if(/wpc|ابواب|أبواب|(^|\s)باب(\s|$)|حلوق|برور|ليمنيشن/i.test(n)) return 'ابواب WPC';
   return 'اكسسوارات';
 }
 
@@ -3833,6 +3867,17 @@ function renderOwnSectorsList(){
     });
   });
 }
+$('tokenBtn').addEventListener('click', ()=>{
+  const cur = SHARED_TOKEN ? '(متسجّلة على الجهاز ده)' : '(مش متسجّلة)';
+  const t = prompt('كلمة سر التطبيق ' + cur + ':\n\n'
+    + 'لازم تكون نفس اللي في SHARED_TOKEN جوه Code.gs على Apps Script.\n'
+    + 'سيبها فاضية وادوس موافق عشان تشيلها من الجهاز ده.', SHARED_TOKEN || '');
+  if(t === null) return;
+  setAppToken(t.trim());
+  alert(t.trim() ? 'اتسجّلت على الجهاز ده. هنعمل تحديث دلوقتي.' : 'اتشالت من الجهاز ده. هنعمل تحديث دلوقتي.');
+  location.reload();
+});
+
 $('backupBtn').addEventListener('click', ()=>{
   const data = JSON.stringify(settingsBackupObject(), null, 1);
   const a = document.createElement('a');
@@ -3854,7 +3899,11 @@ $('restoreFile').addEventListener('change', async (e)=>{
     renderReport();
     alert(`تم الاسترجاع من نسخة ${obj.savedAt ? new Date(obj.savedAt).toLocaleString('ar-EG') : ''}.`);
   }catch(err){
-    alert('الاسترجاع فشل: ' + err.message);
+    // رسالة بالعربي: خطأ JSON الإنجليزي كان بيخوّف من غير ما يفيد
+    const bad = /JSON|Unexpected|position/i.test(err.message || '');
+    alert(bad
+      ? 'الملف ده مش نسخة احتياطية صالحة — اتأكد إنك اخترت الملف اللي نزّلته من "نزّل نسخة احتياطية".'
+      : 'الاسترجاع فشل: ' + err.message);
   }
 });
 
