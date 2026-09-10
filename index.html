@@ -20,13 +20,17 @@
     --thead:#1b3a8f; --thead-text:#ffffff;   /* رأس الأعمدة أزرق بخط أبيض */
   }
   *{box-sizing:border-box}
-  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,sans-serif;margin:0;padding:24px;}
-  h1{font-size:20px;margin:0 0 4px}
-  h2{font-size:16px;margin:0 0 12px;color:var(--accent)}
-  .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+  /* أريال في كل حاجة — عربي وأرقام. الاحتياطي بيمشي على نفس المقاسات تقريبًا
+     لو الجهاز مفيهوش أريال. */
+  body{background:var(--bg);color:var(--text);
+    font-family:Arial,'Arial Unicode MS','Liberation Sans','Helvetica Neue',Helvetica,sans-serif;
+    font-size:14px;margin:0;padding:24px;}
+  h1{font-size:22px;margin:0 0 4px}
+  h2{font-size:17px;margin:0 0 12px;color:var(--accent)}
+  .sub{color:var(--muted);font-size:13.5px;margin-bottom:20px}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
   .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-  label{font-size:13px;color:var(--muted)}
+  label{font-size:13.5px;color:var(--muted)}
   input[type=file], input[type=month], select, input[type=text]{
     background:var(--panel2);border:1px solid var(--border);color:var(--text);
     border-radius:8px;padding:8px 10px;font-size:13px;
@@ -38,8 +42,8 @@
   button.secondary{background:var(--panel2);border:1px solid var(--border);color:var(--text)}
   button.ghost{background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 10px;font-size:12px}
   button:disabled{opacity:.5;cursor:not-allowed}
-  table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:10px}
-  th,td{border:1px solid var(--border);padding:6px 8px;text-align:center}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin-top:10px}
+  th,td{border:1px solid var(--border);padding:8px 9px;text-align:center}
   th{background:var(--thead);color:var(--thead-text);border-color:#2f4fa5;
      font-weight:700;position:sticky;top:0}
   tr:nth-child(even){background:#f8f9fc}
@@ -57,22 +61,22 @@
   .badge{font-size:11px;color:var(--muted)}
   select[multiple]{min-width:180px;min-height:90px}
   .chart-box{position:relative;height:260px;width:100%}
-  .num{font-family:Consolas,monospace}
+  .num{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-weight:700}
   .missing{color:var(--warn)}
   .total-row td{background:#e7ebfa;font-weight:700}
   /* ---- كروت "أعلى 3" فوق التقرير — شكل منصة التتويج ---- */
   .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:6px}
   .kpi-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;
     box-shadow:0 1px 2px rgba(0,0,0,.04)}
-  .kpi-title{font-size:13px;font-weight:700;color:var(--thead);margin-bottom:9px}
+  .kpi-title{font-size:14px;font-weight:700;color:var(--thead);margin-bottom:9px}
   .kpi-sum{font-family:Arial,Helvetica,sans-serif;direction:ltr;display:inline-block}
   .kpi-share{color:var(--muted);font-weight:400}
   .kpi-pod{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center}
   .kpi-p{border:1px solid var(--border);border-radius:10px;padding:9px 6px;background:var(--panel2)}
   .kpi-m{width:24px;height:24px;line-height:24px;border-radius:50%;margin:0 auto 6px;
     color:#fff;font-weight:700;font-size:12px}
-  .kpi-n{font-size:11.5px;height:31px;overflow:hidden;color:var(--text);line-height:1.3}
-  .kpi-v{font-size:13px;font-weight:700;font-family:Arial,Helvetica,sans-serif;direction:ltr;margin-top:3px}
+  .kpi-n{font-size:12.5px;height:34px;overflow:hidden;color:var(--text);line-height:1.3}
+  .kpi-v{font-size:14.5px;font-weight:700;font-family:Arial,Helvetica,sans-serif;direction:ltr;margin-top:3px}
   .kpi-chg{font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;direction:ltr;
     display:inline-block;margin-top:5px}
   .kpi-chg.up{background:#e7f7ef;color:#0a7a4a}
@@ -451,7 +455,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v51';
+const APP_VERSION = 'v52';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2446,8 +2450,8 @@ function drawBarChart(canvasId, labels, data, color){
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { color: '#6b7280' }, grid: { color: '#e3e5ec' } },
-        y: { ticks: { color: '#1c1f2a', font: { size: 11 } }, grid: { display: false } }
+        x: { ticks: { color: '#6b7280', font: { size: 12.5, family: 'Arial' } }, grid: { color: '#e3e5ec' } },
+        y: { ticks: { color: '#1c1f2a', font: { size: 12.5, family: 'Arial' } }, grid: { display: false } }
       }
     }
   });
@@ -3460,7 +3464,7 @@ const PDF_MARGIN = 10;            // مم — هامش الصفحة
 // (الخط والأرقام وارتفاع الصفوف) تطلع أكبر في الـPDF. المستخدم بيختار
 // المقاس من لوحة التصدير.
 // مقاس خط الجداول في التصدير. العرض بيتحسب بعد كده عشان الأرقام تدخل كلها.
-const PDF_FONT_BY_SIZE = {normal: 12, large: 14, xlarge: 16};
+const PDF_FONT_BY_SIZE = {normal: 13.5, large: 15.5, xlarge: 18};
 const PDF_WIDTH_BY_SIZE = {normal: 900, large: 800, xlarge: 700}; // أقل عرض مسموح
 let PDF_RENDER_W = PDF_WIDTH_BY_SIZE.large;
 // بيتملى وإحنا بنبني جداول التصدير: أوسع عرض محتاجينه عشان مفيش رقم يتقص
@@ -3483,8 +3487,8 @@ async function chartImage(labels, data, color, width, height){
         indexAxis:'y', responsive:false, animation:false, devicePixelRatio:1,
         plugins:{ legend:{display:false} },
         scales:{
-          x:{ ticks:{color:'#333', font:{size:12}}, grid:{color:'#ddd'} },
-          y:{ ticks:{color:'#111', font:{size:12}}, grid:{display:false} }
+          x:{ ticks:{color:'#333', font:{size:14, family:'Arial'}}, grid:{color:'#ddd'} },
+          y:{ ticks:{color:'#111', font:{size:14, family:'Arial'}}, grid:{display:false} }
         }
       }
     });
@@ -3512,7 +3516,7 @@ const PDF_STYLE = `
   /* صفوف أعلى شوية: الورقة كانت مزحومة والأرقام ملزوقة في بعضها */
   th,td{border:1px solid #999;padding:8px 6px;text-align:center;word-wrap:break-word;overflow-wrap:break-word;
     line-height:1.35}
-  th{background:#1b3a8f;color:#fff;border-color:#2f4fa5;font-weight:700;font-size:13px;padding:9px 6px}
+  th{background:#1b3a8f;color:#fff;border-color:#2f4fa5;font-weight:700;font-size:14.5px;padding:10px 6px}
   /* الأرقام: مايطلعش منها حاجة بره الخلية. الخط بيتحدد من fitStyle حسب عدد
      الأعمدة، والـoverflow ضمانة أخيرة لو رقم طلع أطول من المتوقع. */
   td.num{font-weight:700;direction:ltr;font-family:Arial,Helvetica,sans-serif;white-space:nowrap}
@@ -3520,38 +3524,39 @@ const PDF_STYLE = `
   /* عمود الاسم بالنسبة مش بالبكسل — عشان يفضل متزن مع أي مقاس خط */
   td:nth-child(2),th:nth-child(2){width:21%;text-align:right}
   .total-row td{background:#ddd;font-weight:700}
-  .grp-title{font-size:17px;font-weight:700;padding:9px 0 6px;border-bottom:1.5px solid #777;margin-bottom:6px}
-  .sub-title{font-size:13px;font-weight:700;color:#333;padding:6px 0 4px}
-  .chart-cap{font-size:12.5px;font-weight:700;color:#333;padding:6px 0 3px}
+  .grp-title{font-size:19px;font-weight:700;padding:10px 0 6px;border-bottom:1.5px solid #777;margin-bottom:6px}
+  .sub-title{font-size:14.5px;font-weight:700;color:#333;padding:6px 0 4px}
+  .chart-cap{font-size:13.5px;font-weight:700;color:#333;padding:6px 0 3px}
   .blk{margin-bottom:8px}
   /* كروت "أعلى 3" — نفس شكل الشاشة */
   .kpi-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:2px 0 4px}
   .kpi-card{border:1px solid #bbb;border-radius:8px;padding:7px 9px;background:#fff}
-  .kpi-title{font-size:11px;font-weight:700;color:#1b3a8f;margin-bottom:6px}
+  .kpi-title{font-size:12.5px;font-weight:700;color:#1b3a8f;margin-bottom:6px}
   .kpi-sum{font-family:Arial,Helvetica,sans-serif;direction:ltr;display:inline-block}
   .kpi-share{color:#555;font-weight:400}
   .kpi-pod{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;text-align:center}
   .kpi-p{border:1px solid #ccc;border-radius:7px;padding:6px 3px;background:#fafbff}
   .kpi-m{width:19px;height:19px;line-height:19px;border-radius:50%;margin:0 auto 4px;
     color:#fff;font-weight:700;font-size:10.5px}
-  .kpi-n{font-size:9.5px;height:26px;overflow:hidden;color:#222;line-height:1.35}
-  .kpi-v{font-size:11px;font-weight:700;font-family:Arial,Helvetica,sans-serif;direction:ltr;margin-top:2px}
-  .kpi-chg{font-size:9.5px;font-weight:700;border-radius:999px;padding:1px 5px;direction:ltr;
+  .kpi-n{font-size:11px;height:30px;overflow:hidden;color:#222;line-height:1.35}
+  .kpi-v{font-size:12.5px;font-weight:700;font-family:Arial,Helvetica,sans-serif;direction:ltr;margin-top:2px}
+  .kpi-chg{font-size:11px;font-weight:700;border-radius:999px;padding:1px 6px;direction:ltr;
     display:inline-block;margin-top:3px}
   .kpi-chg.up{background:#e7f7ef;color:#0a7a4a}
   .kpi-chg.down{background:#fdeaea;color:#c0392b}
   .kpi-chg.flat{background:#f0f1f6;color:#555;border:1px solid #ddd}
-  .kpi-note{font-size:10px;color:#555;margin:2px 0 4px}
+  .kpi-note{font-size:11.5px;color:#555;margin:2px 0 4px}
   /* شريط ذيل الصفحة — بيتصوّر زي الرأس عشان العربي يطلع صح */
   /* ٣ خانات: رقم الصفحة في النص بالظبط، والتاريخ على الجنب */
-  .pg-foot{height:26px;box-sizing:border-box;display:grid;align-items:center;
+  .pg-foot{height:30px;box-sizing:border-box;display:grid;align-items:center;
     grid-template-columns:1fr 1fr 1fr;border-top:1px solid #b9c0d4;padding:5px 6px 0;
-    font-size:11.5px;font-weight:700;color:#444;font-family:Tahoma,Arial,sans-serif}
+    font-size:13px;font-weight:700;color:#333;
+    font-family:Arial,'Arial Unicode MS','Liberation Sans',Helvetica,sans-serif}
   .pg-foot .mid{text-align:center}
   .pg-foot .end{text-align:left}
 `;
 // ارتفاع شريط الذيل بالبكسل (نفس اللي في .pg-foot فوق) — الحساب بيعتمد عليه
-const PDF_FOOT_H = 26;
+const PDF_FOOT_H = 30;
 
 // بيبني عنصر مخفي فيه التقرير كله، ويصوّره بـhtml2canvas مرة واحدة.
 // كل استدعاء لـhtml2canvas بينسخ الصفحة كلها، فاستدعاء واحد أسرع بمراحل من عشرات.
@@ -3559,7 +3564,9 @@ async function renderReportCanvas(html){
   const holder = document.createElement('div');
   holder.id = 'pdfHolder';
   holder.style.cssText = `position:fixed;left:-99999px;top:0;width:${PDF_RENDER_W}px;` +
-    `background:#fff;color:#111;font-family:Tahoma,Arial,sans-serif;direction:rtl;padding:0;margin:0;`;
+    `background:#fff;color:#111;` +
+    `font-family:Arial,'Arial Unicode MS','Liberation Sans',Helvetica,sans-serif;` +
+    `direction:rtl;padding:0;margin:0;`;
   holder.innerHTML = `<style>${PDF_STYLE}</style>${html}`;
   document.body.appendChild(holder);
   try{
