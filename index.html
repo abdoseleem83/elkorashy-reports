@@ -490,6 +490,7 @@
     <div class="row" id="whToolbar" style="margin-bottom:12px;gap:8px">
       <input type="text" id="whSearch" placeholder="بحث باسم الصنف..." style="min-width:190px">
       <select id="whGroup" title="المجموعة الرئيسية"></select>
+      <select id="whSub" title="المجموعة الفرعية"></select>
       <label class="chk" id="whStoreWrap" style="gap:6px">المخزن
         <select id="whStore"></select>
       </label>
@@ -592,7 +593,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v59';
+const APP_VERSION = 'v60';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4490,6 +4491,17 @@ function whGroups(){
   Object.values(whCatalog).forEach(o => { if(o.main) set.add(o.main); });
   return Array.from(set);
 }
+// المجموعات الفرعية: لو اخترت مجموعة رئيسية بترجع فرعياتها هي بس، عشان
+// القايمة ما تبقاش ٧٨ مجموعة فرعية مخلوطة.
+function whSubGroups(main){
+  const set = new Set();
+  Object.values(whCatalog).forEach(o => {
+    if(!o.sub) return;
+    if(main && o.main !== main) return;
+    set.add(o.sub);
+  });
+  return Array.from(set).sort((a,b)=> a.localeCompare(b,'ar'));
+}
 function whStoreBalances(store){ return (whBalances[store] && whBalances[store].items) || {}; }
 
 // كل الأصناف اللي هتظهر: من الدليل + أي صنف في الأرصدة مش في الدليل
@@ -4503,6 +4515,7 @@ function whRows(store, opts){
   opts = opts || {};
   const q = ($('whSearch').value || '').trim();
   const g = $('whGroup').value || '';
+  const sub = ($('whSub') || {}).value || '';
   const hideZero = $('whHideZero').checked;
   const bal = store ? whStoreBalances(store) : null;
   return whAllItemNames().map(name=>{
@@ -4512,12 +4525,15 @@ function whRows(store, opts){
   }).filter(r=>{
     if(q && !r.name.includes(q)) return false;
     if(g && r.main !== g) return false;
+    if(sub && r.sub !== sub) return false;
     if(hideZero && opts.applyZero !== false){
       if(store) return r.qty !== 0;
       return WAREHOUSES.some(w => (Number(whStoreBalances(w)[r.name]) || 0) !== 0);
     }
     return true;
-  }).sort((a,b)=> a.main.localeCompare(b.main,'ar') || a.name.localeCompare(b.name,'ar'));
+  }).sort((a,b)=> a.main.localeCompare(b.main,'ar')
+    || (a.sub||'').localeCompare(b.sub||'','ar')
+    || a.name.localeCompare(b.name,'ar'));
 }
 
 // ---- قراءة الملفات ----
@@ -4584,6 +4600,7 @@ function whRenderChrome(){
   whFillSelect($('whUploadStore'), WAREHOUSES);
   whFillSelect($('whStore'), WAREHOUSES);
   whFillSelect($('whGroup'), whGroups(), 'كل المجموعات');
+  whFillSelect($('whSub'), whSubGroups($('whGroup').value || ''), 'كل الفرعية');
   const n = Object.keys(whCatalog).length;
   $('whCatalogState').textContent = n ? `الدليل: ${n} صنف` : 'الدليل لسه مترفعش';
   $('whStoreWrap').style.display = whTab === 'compare' ? 'none' : '';
@@ -4664,11 +4681,19 @@ function whOrderView(){
     <br>التبويب ده بيعرض <b>كل الأصناف</b> حتى اللي رصيدها صفر — دي بالظبط اللي محتاج تطلبها.
     استخدم البحث أو فلتر المجموعة عشان توصل بسرعة.</div>
     <div class="tbl-wrap"><table><thead><tr>
-      <th>م</th><th>الصنف</th><th>المجموعة</th><th>الرصيد</th><th>لفة</th><th>عود</th><th>المطلوب</th>
+      <th>م</th><th>الصنف</th><th>المجموعة الفرعية</th><th>الرصيد</th><th>لفة</th><th>عود</th><th>المطلوب</th>
     </tr></thead><tbody>`;
+  // الصفوف متجمّعة بالمجموعة الفرعية: سطر عنوان قبل كل مجموعة عشان وانت
+  // بتعمل الطلبية تبقى ماشي مجموعة مجموعة من غير لخبطة.
+  let lastKey = null;
   rows.forEach((r,i)=>{
     const sp = whSplit(r.qty, r.name);
-    html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td><td>${esc(r.main)}</td>
+    const key = r.main + ' › ' + (r.sub || '—');
+    if(key !== lastKey){
+      html += `<tr class="grp-row"><td colspan="7">${esc(key)}</td></tr>`;
+      lastKey = key;
+    }
+    html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td><td>${esc(r.sub || r.main)}</td>
       <td class="wh-num">${whFmt(r.qty)}</td><td class="wh-num">${whFmt(sp.rolls)}</td><td class="wh-num">${whFmt(sp.loose)}</td>
       <td><input type="number" min="0" step="1" class="wh-in whOrderIn" data-item="${encodeURIComponent(r.name)}"
         value="${ord[r.name] != null ? esc(String(ord[r.name])) : ''}"></td></tr>`;
@@ -4828,9 +4853,15 @@ document.querySelectorAll('#whTabs .tab').forEach(t=>{
     renderWh();
   });
 });
-['whSearch','whGroup','whStore','whHideZero'].forEach(id=>{
+['whSearch','whStore','whHideZero','whSub'].forEach(id=>{
   const el = $(id);
   if(el) el.addEventListener(el.tagName === 'INPUT' && el.type === 'text' ? 'input' : 'change', renderWh);
+});
+$('whGroup').addEventListener('change', ()=>{
+  // تغيير المجموعة الرئيسية بيصفّر الفرعية — الفرعية اللي كانت مختارة
+  // غالبًا مش تابعة للرئيسية الجديدة
+  if($('whSub')) $('whSub').value = '';
+  renderWh();
 });
 
 // ---- تبديل المبيعات/المخازن ----
