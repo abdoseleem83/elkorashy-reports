@@ -669,7 +669,7 @@ window.storage = {
 // جملة اتقسمت جغرافيًا حسب المخزن الغالب (الإسكندرية / طنطا) بدل تصنيف عام واحد.
 const CLASS_OPTIONS = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا","موزع","مبيعات خاصة","عميل ابواب","مستبعد"];
 const WHOLESALE_CLASSES = ["مبيعات جملة الاسكندرية","مبيعات جملة طنطا"];
-const APP_VERSION = 'v82';
+const APP_VERSION = 'v83';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -5434,9 +5434,8 @@ function whOrderView(){
       <td class="wh-num">${whFmt(sp.rolls)}</td><td class="wh-num">${whFmt(sp.loose)}</td>
       <td><input type="number" min="0" step="1" class="wh-in whOrderIn" data-item="${encodeURIComponent(r.name)}"
         value="${ord[r.name] != null ? esc(String(ord[r.name])) : ''}"></td>
-      <td><select class="whUnitIn" data-item="${encodeURIComponent(r.name)}" style="font-size:12.5px;padding:3px">
-        ${WH_UNITS.map(u=>`<option value="${esc(u)}"${u === whOrderUnit(r.name) ? ' selected' : ''}>${esc(u)}</option>`).join('')}
-      </select></td></tr>`;
+      <td><select class="whUnitIn" data-item="${encodeURIComponent(r.name)}" style="font-size:12.5px;padding:3px"
+        ><option value="${esc(whOrderUnit(r.name))}">${esc(whOrderUnit(r.name))}</option></select></td></tr>`;
   });
   html += '</tbody></table></div>';
   const asked = Object.values(ord).filter(v => Number(v) > 0).length;
@@ -5639,6 +5638,17 @@ function bindWhFamButtons(){
     });
   });
   document.querySelectorAll('.whUnitIn').forEach(sel=>{
+    // باقي الوحدات بتتحط أول ما تفتح القايمة
+    const fill = ()=>{
+      if(sel.dataset.full) return;
+      sel.dataset.full = '1';
+      const cur = sel.value;
+      sel.innerHTML = WH_UNITS.map(u=>`<option value="${esc(u)}"${u===cur?' selected':''}>${esc(u)}</option>`).join('');
+      sel.value = cur;
+    };
+    sel.addEventListener('mousedown', fill);
+    sel.addEventListener('focus', fill);
+    sel.addEventListener('touchstart', fill, {passive:true});
     sel.addEventListener('change', ()=>{
       const name = decodeURIComponent(sel.getAttribute('data-item'));
       if(!whCatalog[name]) whCatalog[name] = {main:'', sub:'', roll:0, color:''};
