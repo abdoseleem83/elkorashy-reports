@@ -5569,7 +5569,6 @@ function whCountView(){
     <div class="row" style="margin-top:8px">
       <input type="file" id="whCountFile" accept=".xls,.xlsx">
       <button id="whCountUpBtn" disabled>ارفع الجرد</button>
-      <button class="ghost" id="whCountClear">امسح الجرد الحالي</button>
     </div>
     <div id="whCountMsg"></div>
   </div>
@@ -5589,7 +5588,10 @@ function whCountView(){
   if(whCountMode === 'result'){
     return {html: html + whCountResultHtml(detail), count: `عجز ${shortItems} · زيادة ${overItems}`};
   }
-  html += `<div class="sub" style="margin:10px 0 8px">اكتب الجرد الفعلي قدام كل صنف — بيتحفظ لوحده والنتيجة بتتحدّث فورًا.</div>
+  html += `<div class="row" style="justify-content:space-between;align-items:center;margin:10px 0 8px;gap:8px">
+    <div class="sub">اكتب الجرد الفعلي قدام كل صنف — بيتحفظ لوحده والنتيجة بتتحدّث فورًا.</div>
+    <button class="ghost" id="whCountClear" style="flex:0 0 auto">امسح كل أرقام الجرد (يدوي أو من إكسل) لمخزن ${esc(store)}</button>
+  </div>
   <div class="tbl-wrap"><table><thead><tr>
     <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة</th><th class="hide-sm">الرصيد</th>
     <th>لفة</th><th>عود</th><th>الجرد الفعلي</th><th>الفرق</th>
