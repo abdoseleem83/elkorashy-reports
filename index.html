@@ -168,6 +168,17 @@
     background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer}
   label.chk input{width:16px;height:16px;cursor:pointer}
 
+  /* ---- طيّ كروت الرفع على الموبايل ----
+     شاشة الموبايل كانت بتبدأ بكارت "رفع الملفات" اللي بياخد الشاشة كلها،
+     والتقرير نفسه تحت بعيد. دلوقتي الكارت ده بيتطوي والعنوان بيفضل زرار
+     تفتحه بيه وقت ما تحتاج ترفع. */
+  .card.foldable > .flex-between h2{cursor:pointer;user-select:none}
+  .card.foldable > .flex-between h2::after{content:' ▾';font-size:11px;opacity:.7}
+  .card.folded  > .flex-between h2::after{content:' ▸'}
+  @media (max-width: 760px){
+    .card.folded > *:not(.flex-between){display:none !important}
+  }
+
   @media (max-width: 640px){
     body{padding:10px}
     h1{font-size:17px}
@@ -193,6 +204,22 @@
     #unmatchedList .row span{min-width:auto}
     #chartsArea .row{flex-direction:column}
     #chartsArea canvas{max-height:220px}
+    /* شريط أدوات المخازن: كل عنصر بياخد نص العرض بدل ما يتزنق في سطر واحد */
+    #whToolbar{gap:6px}
+    #whToolbar > *{flex:1 1 calc(50% - 6px);min-width:0}
+    #whToolbar input[type=text], #whToolbar #whCount{flex:1 1 100%}
+    #whToolbar .msdrop, #whToolbar .msdrop-btn, #whToolbar select{width:100%}
+    #whToolbar label.chk{justify-content:flex-start}
+    /* أزرار التصدير الثلاثة في سطر واحد بدل ٣ سطور */
+    #whToolbar button{flex:1 1 calc(33.333% - 6px);width:auto;padding:10px 4px;font-size:12.5px}
+    /* الشرح الطويل فوق الجدول: أصغر عشان ما ياخدش نص الشاشة */
+    #whArea > .sub{font-size:11.5px;line-height:1.5}
+    .fam-btn{flex:1 1 calc(50% - 8px);justify-content:center}
+    /* خانات الإدخال أكبر شوية عشان الصباع */
+    .wh-in{width:100%;min-width:56px;padding:8px 4px;font-size:14px}
+    .whUnitIn{min-width:0;width:100%;padding:8px 2px;font-size:12.5px}
+    #whArea th, #whArea td{font-size:12px;padding:5px 3px}
+    #whArea td:nth-child(2){word-break:break-word}
   }
 </style>
 </head>
@@ -226,7 +253,7 @@
   </div>
 </div>
 
-<div class="card">
+<div class="card" id="salesUploadCard">
   <div class="flex-between">
     <h2 style="margin:0">1) رفع ملف شهر جديد</h2>
     <span class="badge" id="loadStatus">بيتحمّل البيانات المحفوظة...</span>
@@ -519,7 +546,7 @@
     <button type="button" class="refresh-ico" id="whMainRefreshBtn" title="تحديث بيانات المخازن من السيرفر">🔄</button>
   </div>
 
-  <div class="card">
+  <div class="card" id="whUploadCard">
     <div class="flex-between">
       <h2 style="margin:0">1) رفع الأرصدة</h2>
       <span class="badge" id="whCatalogState"></span>
@@ -613,14 +640,26 @@ function setAppToken(t){
     else localStorage.removeItem('appToken');
   }catch(e){}
 }
-// السيرفر رفض الطلب: نطلب كلمة السر من المستخدم مرة واحدة ونعيد التحميل
+// السيرفر رفض الطلب: بنطلب كلمة السر **مرة واحدة بس في الجلسة كلها**.
+// قبل كده كل مفتاح بيترفض كان بيفتح prompt جديد، فالمستخدم كان يلاقي الجهاز
+// "كل شويه يطلب باسورد". دلوقتي لو رفض أو غلط بنوقف الطلب ونسيب له زرار
+// "كلمة سر التطبيق" فوق يدخّلها وقت ما يحب.
 let tokenPromptOpen = false;
+let tokenAskedThisSession = false;
+let tokenBlocked = false;
+function showTokenNeeded(){
+  tokenBlocked = true;
+  const el = (typeof document !== 'undefined') && document.getElementById('loadStatus');
+  if(el) el.innerHTML = 'التخزين المركزي محمي بكلمة سر — دوس <b>كلمة سر التطبيق</b> فوق وادخّلها.';
+}
 function askAppToken(){
-  if(tokenPromptOpen) return;
+  if(tokenPromptOpen || tokenAskedThisSession) return;
   tokenPromptOpen = true;
+  tokenAskedThisSession = true;
   const t = prompt('التخزين المركزي محمي بكلمة سر. اكتب كلمة سر التطبيق:');
   tokenPromptOpen = false;
-  if(t){ setAppToken(t.trim()); location.reload(); }
+  if(t && t.trim()){ setAppToken(t.trim()); location.reload(); return; }
+  showTokenNeeded();
 }
 const NET_TIMEOUT_MS = 60000;
 const NET_RETRIES = 2;
@@ -718,7 +757,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v83';
+const APP_VERSION = 'v84';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1329,7 +1368,10 @@ async function loadStorage(){
          دوس "تحديث" لما النت يبقى أحسن.</div>`
       : '';
   }
-  $('loadStatus').textContent = netFailed
+  // السيرفر رفض الطلبات لأن كلمة السر ناقصة/غلط — الرسالة دي أهم من
+  // "مفيش اتصال"، لأن الحل عند المستخدم مش عند الشبكة.
+  if(tokenBlocked) showTokenNeeded();
+  else $('loadStatus').textContent = netFailed
     ? 'مفيش اتصال — شغّال على آخر نسخة محفوظة على الجهاز'
     : 'جاهز';
   $('appVersionBadge').textContent = APP_VERSION;
@@ -5302,28 +5344,100 @@ function renderWhSyncLine(){
   $('whReloadBtn').addEventListener('click', reloadWhFromServer);
 }
 
-// إعادة جلب بيانات المخازن من السيرفر من غير reload للصفحة كلها
+const WH_KEYS = ['whCatalog','whBalances','whOrder','whCount'];
+const WH_SETTERS = {
+  whCatalog:  v=>{ whCatalog  = v; },
+  whBalances: v=>{ whBalances = v; },
+  whOrder:    v=>{ whOrder    = v; },
+  whCount:    v=>{ whCount    = v; },
+};
+
+// إعادة جلب بيانات المخازن من السيرفر من غير reload للصفحة كلها.
+// الأربع مفاتيح بتتجاب **مع بعض** مش واحد ورا التاني (كانت ٤ طلبات متسلسلة).
 async function reloadWhFromServer(silent){
   const btn = $('whReloadBtn');
   if(btn && !silent){ btn.disabled = true; btn.textContent = 'بيحمّل...'; }
   let failed = 0;
-  for(const [key, setter] of [
-    ['whCatalog',  v=>{ whCatalog  = v; }],
-    ['whBalances', v=>{ whBalances = v; }],
-    ['whOrder',    v=>{ whOrder    = v; }],
-    ['whCount',    v=>{ whCount    = v; }],
-  ]){
+  await Promise.all(WH_KEYS.map(async key=>{
     try{
       const r = await window.storage.get(key);
-      setter(JSON.parse(r.value) || {});
+      WH_SETTERS[key](JSON.parse(r.value) || {});
+      if(dataVersions[key] != null) localVersions[key] = dataVersions[key];
     }catch(e){ if(!isMissingKey(e)) failed++; }
+  }));
+  if(!failed){
+    whUpdateLocalCache(); offlineMode = false; whSyncAt = Date.now();
+    localVersions.__at = Date.now();
+    try{ localStorage.setItem('cache:dataVersions', JSON.stringify(localVersions)); }catch(e){}
   }
-  if(!failed){ whUpdateLocalCache(); offlineMode = false; whSyncAt = Date.now(); }
   renderWh();
   const btn2 = $('whReloadBtn');
   if(btn2){ btn2.disabled = false; btn2.textContent = 'تحديث من السيرفر'; }
   if(failed && !silent) alert('مقدرناش نقرا بيانات المخازن من السيرفر دلوقتي — جرّب تاني.');
 }
+
+// ---- مزامنة سريعة للمخازن ----
+// المشكلة اللي كانت: جهاز يكتب نواقص، والجهاز التاني ما يشوفهاش غير لما يقفل
+// القسم ويفتحه تاني بعد دقيقة. دلوقتي وقسم المخازن مفتوح بنسأل السيرفر كل
+// ١٥ ثانية سؤال واحد صغير: "أختام البيانات اتغيّرت؟" (مفتاح dataVersions
+// لوحده). لو اتغيّر مفتاح من مفاتيح المخازن بس ساعتها بنجيب المفتاح ده.
+const WH_POLL_MS = 15000;
+let whPollTimer = null, whPolling = false;
+
+// فيه إنبوت المستخدم كاتب فيه دلوقتي؟ منعملش رندر يمسح اللي بيكتبه.
+function whUserTyping(){
+  const el = document.activeElement;
+  return !!(el && $('whArea') && $('whArea').contains(el)
+    && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName));
+}
+
+// بيرجّع true لو فيه حاجة اتحدّثت فعلًا
+async function whPullChanged(){
+  if(whPolling) return false;
+  // whDirty فيه دايمًا المفتاحين whOrder/whCount، المهم هو المخازن اللي
+  // جواهم — دي اللي معناها "فيه تعديل لسه ما اترفعش".
+  const dirtyStores = Object.values(whDirty || {}).some(d => d && Object.keys(d).length);
+  if(pendingSaveCount() || dirtyStores) return false;
+  whPolling = true;
+  try{
+    let srv;
+    try{
+      const r = await apiFetch(`${APPS_SCRIPT_URL}?action=get&key=dataVersions${tokenParam()}`,
+                               null, {retries:0});
+      if(!r || !r.ok) return false;
+      srv = JSON.parse(r.value) || {};
+    }catch(e){ return false; }
+    dataVersions = Object.assign({}, dataVersions, srv);
+    const need = WH_KEYS.filter(k => srv[k] != null && localVersions[k] !== srv[k]);
+    if(!need.length){ whSyncAt = Date.now(); return false; }
+    let failed = 0;
+    await Promise.all(need.map(async k=>{
+      try{
+        const r = await window.storage.get(k);
+        WH_SETTERS[k](JSON.parse(r.value) || {});
+        localVersions[k] = srv[k];
+      }catch(e){ if(!isMissingKey(e)) failed++; }
+    }));
+    if(!failed){
+      whUpdateLocalCache(); offlineMode = false; whSyncAt = Date.now();
+      localVersions.__at = Date.now();
+      try{ localStorage.setItem('cache:dataVersions', JSON.stringify(localVersions)); }catch(e){}
+    }
+    // المستخدم بيكتب دلوقتي؟ البيانات اتحدّثت في الذاكرة والرندر يستنى الدورة
+    // الجاية — أهم حاجة إن اللي بيكتبه ما يضيعش من تحت إيده.
+    if(!whUserTyping()) renderWh();
+    return true;
+  }finally{ whPolling = false; }
+}
+
+function whPollStart(){
+  whPollStop();
+  whPollTimer = setInterval(()=>{
+    if(document.visibilityState !== 'visible' || activeModule !== 'wh') return;
+    whPullChanged().catch(()=>{});
+  }, WH_POLL_MS);
+}
+function whPollStop(){ if(whPollTimer){ clearInterval(whPollTimer); whPollTimer = null; } }
 
 // ---- الشاشات ----
 // نفس الفكرة بس لقايمة الاختيار المتعدد الجديدة (checkboxes): بيحافظ على كل
@@ -5888,7 +6002,30 @@ function showModule(mod){
   activeModule = mod;
   $('salesApp').style.display = mod === 'sales' ? '' : 'none';
   $('whApp').style.display = mod === 'wh' ? '' : 'none';
-  document.querySelectorAll('.mod-btn').forEach(b=>{
+  if(mod !== 'wh' && typeof whPollStop === 'function') whPollStop();
+  // كروت الرفع بتتطوي على الموبايل (العنوان بيفضل زرار يفتحها).
+// على الشاشة الكبيرة كله مفتوح زي ما هو.
+function setupFoldableCards(){
+  const ids = ['salesUploadCard','whUploadCard'];
+  const small = window.matchMedia('(max-width: 760px)').matches;
+  ids.forEach(id=>{
+    const card = $(id); if(!card) return;
+    card.classList.add('foldable');
+    if(!card.dataset.foldBound){
+      card.dataset.foldBound = '1';
+      const h = card.querySelector('.flex-between h2');
+      if(h) h.addEventListener('click', ()=> card.classList.toggle('folded'));
+    }
+    // أول مرة بس: بعد كده احترم اختيار المستخدم
+    if(!card.dataset.foldInit){
+      card.dataset.foldInit = '1';
+      card.classList.toggle('folded', small);
+    }
+  });
+}
+setupFoldableCards();
+
+document.querySelectorAll('.mod-btn').forEach(b=>{
     const on = b.dataset.mod === mod;
     b.classList.toggle('active', on);
     b.setAttribute('aria-expanded', on ? 'true' : 'false');
@@ -5899,7 +6036,10 @@ function showModule(mod){
     renderWh();
     // فتح القسم = تأكيد إن اللي قدامك هو آخر حاجة مرفوعة من أي جهاز.
     // بس لو فيه تعديلات لسه في طابور الحفظ منزامنش عشان ما تضيعش.
-    if(Date.now() - whSyncAt > 60000 && !pendingSaveCount()) reloadWhFromServer(true);
+    whPollStart();
+    // سؤال الأختام رخيص (طلب واحد صغير) فبنسأله فورًا مع فتح القسم بدل ما
+    // نستنى دقيقة كاملة زي الأول.
+    whPullChanged().catch(()=>{});
   }
   // التقرير والشارت بيترسموا عند فتح القسم — رسمهم والقسم مقفول شغل ضايع،
   // والشارت كمان كان بيطلع بعرض صفر.
@@ -6278,6 +6418,9 @@ async function checkForUpdates(){
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState !== 'visible') return;
   checkForUpdates();
+  // رجعت للتطبيق وقسم المخازن مفتوح؟ اسأل الأختام فورًا — ده أسرع طريق
+  // تشوف بيه نواقص اتكتبت على جهاز تاني.
+  if(activeModule === 'wh' && typeof whPullChanged === 'function') whPullChanged().catch(()=>{});
   // فيه تعديلات لسه في طابور الحفظ؟ متزامنش دلوقتي. loadStorage بتكتب فوق
   // الخرايط اللي في الذاكرة بنسخة السيرفر، والحفظ المؤجل بعد كده كان
   // هيرفع نسخة السيرفر دي — يعني تعديل المستخدم يضيع من غير أي رسالة.
