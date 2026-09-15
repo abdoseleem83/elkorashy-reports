@@ -262,14 +262,22 @@ function handle_(e, method){
       var wipe = [];
       try{ wipe = JSON.parse(req.wipe || '[]') || []; }catch(err4){ wipe = []; }
       for(var w = 0; w < wipe.length; w++) delete base[wipe[w]];
-      for(var store in patch){
-        var items = patch[store];
-        if(!base[store]) base[store] = {};
-        for(var nm in items){
-          if(items[nm] === null) delete base[store][nm];
-          else base[store][nm] = items[nm];
+      // دمج على مستويين: لو القيمة القديمة والجديدة الاتنين كائنات بندمج
+      // المفاتيح جواهم (وnull جوه بيمسح)، غير كده بنحط الجديدة مكان القديمة.
+      // ده بيخدم whOrder/whCount (مخزن > صنف) و whCatalog (صنف > بيانات).
+      for(var k in patch){
+        var v = patch[k];
+        if(v === null){ delete base[k]; continue; }
+        if(v && typeof v === 'object' && !(v instanceof Array)
+           && base[k] && typeof base[k] === 'object' && !(base[k] instanceof Array)){
+          for(var nm in v){
+            if(v[nm] === null) delete base[k][nm];
+            else base[k][nm] = v[nm];
+          }
+          if(!Object.keys(base[k]).length) delete base[k];
+        } else {
+          base[k] = v;
         }
-        if(!Object.keys(base[store]).length) delete base[store];
       }
       var out = JSON.stringify(base);
       kvSetLocked_(req.key, out);

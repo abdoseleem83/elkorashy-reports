@@ -181,6 +181,9 @@
   .card.folded  > .flex-between h2::after{content:' ▸'}
   @media (max-width: 760px){
     .card.folded > *:not(.flex-between){display:none !important}
+    /* تنبيه الأصناف اللي محتواها مش معروف + سطر آخر مزامنة بيفضلوا ظاهرين
+       حتى والكارت متطوي — دول حاجات محتاج تشوفها من غير ما تفتح حاجة. */
+    .card.folded > #whUnknownBox, .card.folded > #whSyncLine{display:block !important}
   }
 
   @media (max-width: 640px){
@@ -773,7 +776,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v86';
+const APP_VERSION = 'v87';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1391,6 +1394,8 @@ async function loadStorage(){
     ? 'مفيش اتصال — شغّال على آخر نسخة محفوظة على الجهاز'
     : 'جاهز';
   $('appVersionBadge').textContent = APP_VERSION;
+  // البيانات وصلت: دلوقتي بس نقرّر نطوي كارت الرفع على الموبايل ولا لأ
+  try{ setupFoldableCards(); }catch(e){}
   renderMonthPills();
   if(activeModule === 'sales') renderReport();
 }
@@ -3851,6 +3856,10 @@ function settingsBackupObject(){
     warehouseForcing: warehouseForcingOn,
     itemOverrideDiff: diffFromSeed(itemOverride, ITEM_SECTOR_SEED),
     classificationDiff: diffFromSeed(classification, seedClassificationMap()),
+    // دليل أصناف المخازن: فيه المجموعات ومحتوى اللفة واللون **والوحدة** اللي
+    // انت مظبّطها بإيدك من لوحة "الأصناف اللي محتواها مش معروف". لو ضاع
+    // التخزين المركزي، من غير ده الشغل اليدوي ده مالوش نسخة يرجع منها.
+    whCatalog: whCatalog,
   };
 }
 async function restoreSettingsFrom(obj){
@@ -3861,9 +3870,20 @@ async function restoreSettingsFrom(obj){
   if(typeof obj.warehouseForcing === 'boolean') warehouseForcingOn = obj.warehouseForcing;
   if(obj.itemOverrideDiff) itemOverride = mergeWithSeed(ITEM_SECTOR_SEED, obj.itemOverrideDiff);
   if(obj.classificationDiff) classification = mergeWithSeed(seedClassificationMap(), obj.classificationDiff);
+  // الدليل بيتدمج مش بيحل محل اللي موجود: أي صنف جديد اترفع بعد النسخة
+  // الاحتياطية بيفضل مكانه، والنسخة بترجّع بيانات الأصناف اللي فيها.
+  let catalogRestored = 0;
+  if(obj.whCatalog && typeof obj.whCatalog === 'object'){
+    Object.keys(obj.whCatalog).forEach(n=>{
+      whCatalog[n] = Object.assign({}, whCatalog[n], obj.whCatalog[n]);
+      if(typeof whMarkCatDirty === 'function') whMarkCatDirty(n);
+      catalogRestored++;
+    });
+  }
   try{
     await saveSectors(); await saveSectorSheets(); await saveWarehouseForcing();
     await saveItemOverride(); await saveClassification();
+    if(catalogRestored){ await saveWhCatalog(); whUpdateLocalCache(); }
   }catch(e){
     // رجّع اللي كان قبل ما نلمس أي حاجة
     SECTORS = backup.sectors; sectorSheet = backup.sectorSheets;
@@ -4912,7 +4932,36 @@ loadStorage();
 //   whOrder    = طلب النواقص اللي المستخدم كتبه بإيده لكل مخزن.
 //   whCount    = الجرد الفعلي اللي المستخدم دخّله لكل مخزن.
 
-async function saveWhCatalog(){ await setKey('whCatalog', JSON.stringify(whCatalog)); }
+// الأصناف اللي اتعدّلت في الدليل من الجهاز ده (وحدة / محتوى لفة / مجموعة).
+// لو فيه أصناف متعلّمة بنبعتها بالدمج عشان جهازين يعدّلوا أصناف مختلفة في
+// نفس الوقت من غير ما حد يمسح شغل التاني. الرفع الكامل للدليل (ملف data)
+// بيفضل كتابة كاملة زي ما هو.
+let whCatDirty = {};
+function whMarkCatDirty(name){ if(name) whCatDirty[name] = true; }
+async function saveWhCatalog(){
+  const names = Object.keys(whCatDirty);
+  if(names.length && serverHasMerge !== false){
+    try{
+      const patch = {};
+      names.forEach(n=>{ patch[n] = whCatalog[n] === undefined ? null : whCatalog[n]; });
+      const r = await window.storage.merge('whCatalog', patch, []);
+      // نسخة السيرفر هي الأساس، بس أي صنف عندنا محلي والسيرفر ما شافهوش
+      // (مثلًا اترجّع من نسخة احتياطية أو اتضاف وإحنا أوفلاين) بيفضل مكانه
+      // بدل ما يختفي من غير ما حد ياخد باله.
+      const srvCat = JSON.parse(r.value) || {};
+      whCatalog = Object.assign({}, whCatalog, srvCat);
+      serverHasMerge = true;
+      whCatDirty = {};
+      bumpVersion('whCatalog');
+      return;
+    }catch(e){
+      if(!/unknown action/i.test(e && e.message || '')) throw e;
+      serverHasMerge = false;
+    }
+  }
+  await setKey('whCatalog', JSON.stringify(whCatalog));
+  whCatDirty = {};
+}
 async function saveWhBalances(){ await setKey('whBalances', JSON.stringify(whBalances)); }
 // الطلبية والجرد ممكن اتنين يشتغلوا فيهم في نفس الوقت (واحد في طنطا وواحد في
 // الإسكندرية). لو كل جهاز كتب نسخته كاملة، آخر واحد يحفظ يمسح شغل التاني.
@@ -4962,7 +5011,9 @@ async function saveWhMerged(key, local){
       serverHasMerge = true;
       bumpVersion(key);
       whDirty[key] = {};
-      return merged;
+      // نفس الفكرة: السيرفر بيكسب لأي مخزن موجود عنده، والمخازن اللي
+      // عندنا بس بتفضل (ما تختفيش من الشاشة من غير سبب).
+      return Object.assign({}, local, merged);
     }catch(e){
       if(!/unknown action/i.test(e && e.message || '')) throw e;
       // السيرفر لسه على نسخة قديمة مش عارفة الدمج — منجربش تاني في الجلسة دي
@@ -5002,8 +5053,11 @@ async function saveWhMerged(key, local){
   whDirty[key] = {};
   return server;
 }
-async function saveWhOrder(){ whOrder = await saveWhMerged('whOrder', whOrder); }
-async function saveWhCount(){ whCount = await saveWhMerged('whCount', whCount); }
+// بعد الحفظ بترجع النسخة المدمجة (فيها تعديلات الأجهزة التانية كمان)،
+// فبنكتبها في كاش الجهاز على طول — من غير كده الكاش كان بيفضل على النسخة
+// اللي قبل الدمج لحد أول حفظ جاي.
+async function saveWhOrder(){ whOrder = await saveWhMerged('whOrder', whOrder); whUpdateLocalCache(); }
+async function saveWhCount(){ whCount = await saveWhMerged('whCount', whCount); whUpdateLocalCache(); }
 
 function whItem(name){ return whCatalog[name] || null; }
 function whRoll(name){
@@ -5337,6 +5391,7 @@ function renderWhUnknown(){
         color: color || cur.color,
         unit: cur.unit,
       };
+      whMarkCatDirty(name);
       saved++;
     });
     whUnkDraft = {}; whUnkSaveDraft();
@@ -5371,6 +5426,7 @@ function renderWhUnknown(){
           if(o.sub) old.sub = o.sub;
           if(o.color) old.color = o.color;
         }
+        whMarkCatDirty(name);
         if(!(Number(whCatalog[name].roll) > 0)) still++;
       });
       try{ await saveWhCatalog(); }catch(e){ scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف'); }
@@ -6020,6 +6076,7 @@ function bindWhFamButtons(){
       const name = decodeURIComponent(sel.getAttribute('data-item'));
       if(!whCatalog[name]) whCatalog[name] = {main:'', sub:'', roll:0, color:''};
       whCatalog[name].unit = sel.value;
+      whMarkCatDirty(name);
       scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف');
       whUpdateLocalCache();
       whUpdateOrderSum();   // تغيير الوحدة بيغيّر توزيع الإجمالي
@@ -6060,6 +6117,7 @@ $('whCatBtn').addEventListener('click', async ()=>{
       if(old && old.unit) cat[k].unit = old.unit;
     });
     whCatalog = cat;
+    whCatDirty = {};   // رفعة دليل كاملة = كتابة كاملة مش دمج
     try{ await saveWhCatalog(); }
     catch(e){ scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف'); }
     whUpdateLocalCache();
@@ -6123,9 +6181,14 @@ function showModule(mod){
   // كروت الرفع بتتطوي على الموبايل (العنوان بيفضل زرار يفتحها).
 // على الشاشة الكبيرة كله مفتوح زي ما هو.
 function setupFoldableCards(){
-  const ids = ['salesUploadCard','whUploadCard'];
   const small = window.matchMedia('(max-width: 760px)').matches;
-  ids.forEach(id=>{
+  // أول استخدام (مفيش بيانات أصلًا) لازم كارت الرفع يفضل مفتوح — لو طويناه
+  // المستخدم الجديد مش هيلاقي مكان يرفع منه.
+  const cards = [
+    {id:'salesUploadCard', hasData: ()=> Object.keys(monthsData || {}).length > 0},
+    {id:'whUploadCard',    hasData: ()=> Object.keys(whCatalog  || {}).length > 0},
+  ];
+  cards.forEach(({id, hasData})=>{
     const card = $(id); if(!card) return;
     card.classList.add('foldable');
     if(!card.dataset.foldBound){
@@ -6134,10 +6197,16 @@ function setupFoldableCards(){
       if(h) h.addEventListener('click', ()=> card.classList.toggle('folded'));
     }
     // أول مرة بس: بعد كده احترم اختيار المستخدم
-    if(!card.dataset.foldInit){
-      card.dataset.foldInit = '1';
-      card.classList.toggle('folded', small);
+    if(card.dataset.foldInit) return;
+    let data = false;
+    try{ data = hasData(); }catch(e){}
+    if(!data){
+      // لسه مفيش بيانات: سيبه مفتوح ومتقفلش الباب، وجرّب تاني بعد التحميل
+      card.classList.remove('folded');
+      return;
     }
+    card.dataset.foldInit = '1';
+    card.classList.toggle('folded', small);
   });
 }
 setupFoldableCards();
