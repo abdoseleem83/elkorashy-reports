@@ -776,7 +776,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v88';
+const APP_VERSION = 'v89';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1444,21 +1444,35 @@ async function retryFailedMonths(){
 // بتتأجّل شوية: كل تغيير كان بيعمل JSON.stringify لكل البيانات (ممكن تبقى ميجابايت)،
 // فلما تظبط عشرين صنف ورا بعض كانت الواجهة بتتلج.
 let cacheTimer = null;
+// بيحاول يكتب شهور الكاش، ولو المساحة مش كفاية بيصغّر: من غير الشهور
+// المؤرشفة، وبعدين آخر ١٢ شهر، ٦، ٣... بدل ما يفشل خالص. بيرجّع عدد الشهور
+// اللي اتخزنت فعلًا.
+function writeMonthsCache(){
+  const tries = [];
+  tries.push(Object.keys(monthsData));                       // كله
+  const active = activeMonths();
+  if(active.length && active.length < Object.keys(monthsData).length) tries.push(active.slice());
+  const sorted = (active.length ? active : Object.keys(monthsData)).slice().sort();
+  [12, 6, 3, 1].forEach(n=>{ if(sorted.length > n) tries.push(sorted.slice(-n)); });
+  for(const keys of tries){
+    const obj = {};
+    keys.forEach(m => { if(monthsData[m]) obj[m] = monthsData[m]; });
+    try{
+      localStorage.setItem('cache:monthsData', JSON.stringify(obj));
+      return keys.length;
+    }catch(quota){ /* جرّب أصغر */ }
+  }
+  return 0;
+}
+
 function writeLocalCache(){
   cacheTimer = null;
+  // المفاتيح الصغيرة (التصنيفات والقطاعات) بتتكتب لوحدها بعيد عن الشهور.
+  // قبل كده كانوا جوه نفس الـtry، فلو الشهور كبرت على المتصفح كان الكاش كله
+  // بيضيع — يعني التطبيق يفتح أوفلاين من غير تصنيفات، وأختام النسخ ما
+  // بتتسجلش فكل فتحة تعيد تحميل كل حاجة من السيرفر.
   let ok = false;
   try{
-    try{
-      localStorage.setItem('cache:monthsData', JSON.stringify(monthsData));
-    }catch(quota){
-      // البيانات بتكبر كل شهر، ولما تعدّي حد المتصفح كان الكاش بيفشل في صمت
-      // ويفضل قديم للأبد. نجرب من غير الشهور المؤرشفة — هي أصلًا مش داخلة
-      // في التقارير — بدل ما نخسر الكاش كله.
-      const active = {};
-      activeMonths().forEach(m => { if(monthsData[m]) active[m] = monthsData[m]; });
-      localStorage.setItem('cache:monthsData', JSON.stringify(active));
-    }
-    // الأصناف والعملاء بيتخزنوا كفروق عن البذرة هنا كمان — أصغر بكتير وأسرع في القراءة
     localStorage.setItem('cache:classificationDiff', JSON.stringify(diffFromSeed(classification, seedClassificationMap())));
     localStorage.setItem('cache:itemOverrideDiff', JSON.stringify(diffFromSeed(itemOverride, ITEM_SECTOR_SEED)));
     localStorage.setItem('cache:sectorsList', JSON.stringify(SECTORS));
@@ -1467,8 +1481,10 @@ function writeLocalCache(){
     localStorage.setItem('cache:archivedYears', JSON.stringify(archivedYears));
     ok = true;
   }catch(e){}
+  try{ cachedMonthsCount = writeMonthsCache(); }catch(e){ cachedMonthsCount = 0; }
   if(ok && typeof flushVersionMarks === 'function') flushVersionMarks();
 }
+let cachedMonthsCount = null;   // آخر عدد شهور اتخزن في الكاش (للتشخيص)
 function updateLocalCache(immediate){
   if(cacheTimer) clearTimeout(cacheTimer);
   if(immediate){ writeLocalCache(); return; }
