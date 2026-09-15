@@ -776,7 +776,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v89';
+const APP_VERSION = 'v90';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -5712,8 +5712,20 @@ function whBalancesView(){
 }
 
 // مقارنة الفروع
-function whCompareView(){
+// صفوف تبويب المقارنة (الشاشة والتصدير بيستخدموها الاتنين).
+// التبويب بيعرض **باللفة**، فصنف رصيده ٣ قطع من لفة ١٠ بيتعرض "-".
+// "اخفي الأصناف اللي رصيدها صفر" لازم تخفي الصفوف اللي كل أرقامها المعروضة
+// أصفار — قبل كده كانت بتبص على الرصيد بالقطعة فتسيبها ظاهرة، والمستخدم
+// شايف صفوف كلها "-" والأيقونة مفعّلة.
+function whCompareRows(){
   const rows = whRows(null);
+  if(!$('whHideZero').checked) return rows;
+  return rows.filter(r => WAREHOUSES.some(w =>
+    whRollsOrPieces(whStoreBalances(w)[r.name], r.name) !== 0));
+}
+
+function whCompareView(){
+  const rows = whCompareRows();
   if(!rows.length) return {html:'<div class="sub">مفيش أصناف تطابق الفلتر.</div>', count:''};
   // المطلوب: طنطا / الاسكندريه / الإجمالي بس، والأرقام باللفف، والصفوف
   // متجمّعة: كل مجموعة رئيسية مع بعضها، وجواها كل مجموعة فرعية مع بعضها.
@@ -6453,8 +6465,8 @@ function whExportAoa(){
     return {aoa, title:`أرصدة ${store}`, sheet:`أرصدة-${store}`};
   }
   if(whTab === 'compare'){
-    // نفس شكل الشاشة: باللفف، ومتجمّعة رئيسية ثم فرعية
-    const rows = whRows(null);
+    // نفس شكل الشاشة: باللفف، ومتجمّعة رئيسية ثم فرعية، وبنفس الإخفاء
+    const rows = whCompareRows();
     const aoa = [['م','الصنف','المجموعة','المجموعة الفرعية', ...WAREHOUSES, 'الإجمالي']];
     rows.forEach((r,i)=>{
       const qs = WAREHOUSES.map(w => whRollsOrPieces(whStoreBalances(w)[r.name], r.name));
