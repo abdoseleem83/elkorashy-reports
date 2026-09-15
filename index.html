@@ -17,7 +17,14 @@
     --bg:#f3f4f8; --panel:#ffffff; --panel2:#f0f1f6; --border:#dcdfe8;
     --text:#1c1f2a; --muted:#6b7280; --accent:#3b5fe0; --accent2:#0f9d63;
     --danger:#dc2626; --warn:#b45309;
-    --thead:#1b3a8f; --thead-text:#ffffff;   /* رأس الأعمدة أزرق بخط أبيض */
+    --thead:#16307a; --thead-text:#ffffff;   /* رأس الأعمدة أزرق غامق بخط أبيض */
+    /* درجات الجداول: كل مستوى لون مختلف عن اللي فوقه عشان الورقة تتقرا
+       من بعيد — قبل كده المجموعة الرئيسية والفرعية والإجمالي كانوا بنفس
+       اللون الباهت فالتقرير كان شكله مسطّح. */
+    --row-alt:#eef1f9;        /* الصفوف المتبادلة */
+    --grp-bg:#d6e1f9;  --grp-text:#16307a;    /* المجموعة الفرعية / الإجمالي الجزئي */
+    --tot-bg:#2f4fa5;  --tot-text:#ffffff;    /* المجموعة الرئيسية / الإجمالي العام */
+    --grid:#c4cbe0;           /* خطوط الجدول */
   }
   *{box-sizing:border-box}
   /* أريال في كل حاجة — عربي وأرقام. الاحتياطي بيمشي على نفس المقاسات تقريبًا
@@ -43,10 +50,13 @@
   button.ghost{background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 10px;font-size:12px}
   button:disabled{opacity:.5;cursor:not-allowed}
   table{border-collapse:collapse;width:100%;font-size:14px;margin-top:10px}
-  th,td{border:1px solid var(--border);padding:8px 9px;text-align:center}
-  th{background:var(--thead);color:var(--thead-text);border-color:#2f4fa5;
+  /* ملحوظة: ألوان الجداول مكتوبة بقيم صريحة مش var() — html2canvas (اللي
+     بيعمل الـPDF والصور) مش بيحلّ المتغيرات في خلفيات الخلايا، فكان شريط
+     المجموعة يطلع رمادي بخط أبيض = مش مقروء. */
+  th,td{border:1px solid #c4cbe0;padding:8px 9px;text-align:center}
+  th{background:#16307a;color:#fff;border-color:#0e205c;
      font-weight:700;position:sticky;top:0}
-  tr:nth-child(even){background:#f8f9fc}
+  tr:nth-child(even){background:#eef1f9}
   .tbl-wrap{overflow:auto;max-height:520px;border-radius:8px}
   .pill{display:inline-block;background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:2px 10px;font-size:12px;margin:2px;color:var(--muted)}
   .pill.done{color:var(--accent2);border-color:var(--accent2)}
@@ -88,7 +98,13 @@
   /* الكمية تحت القيمة في نفس الخلية — عشان عدد الأعمدة ما يتضاعفش */
   .q2{display:block;font-size:.78em;color:#5b6376;font-weight:700;direction:ltr;margin-top:2px}
   .missing{color:var(--warn)}
-  .total-row td{background:#e7ebfa;font-weight:700}
+  /* شريط غامق بخط أبيض = مستوى المجموعة الرئيسية والإجمالي العام.
+     الأرقام الملوّنة جوه السطر ده (نمو +/-) بتستعمل نفس متغيرات الألوان،
+     فبنعيد تعريفها هنا بدرجات فاتحة عشان تبان على الأزرق الغامق بدل ما
+     الأخضر الغامق يختفي فيه. */
+  .total-row{--accent2:#6ff0b6; --danger:#ffb0b0; --muted:#cdd8f5}
+  .total-row td{background:#2f4fa5;color:#fff;font-weight:700;border-color:#24407f}
+  tr.total-row:nth-child(even) td{background:#2f4fa5}
   /* ---- كروت "أعلى 3" فوق التقرير — شكل منصة التتويج ---- */
   .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:6px}
   .kpi-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;
@@ -155,7 +171,9 @@
   .fam-btn{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;
     padding:9px 14px;border-radius:10px}
   .fam-btn .fam-n{background:rgba(255,255,255,.25);border-radius:20px;padding:0 8px;font-size:12px}
-  .grp-row td{background:#e7ebfa;font-weight:700}
+  /* أزرق فاتح بخط كحلي = مستوى المجموعة الفرعية وإجمالياتها */
+  .grp-row td{background:#d6e1f9;color:#16307a;font-weight:700;border-color:#aabde8}
+  tr.grp-row:nth-child(even) td{background:#d6e1f9}
   /* سطر إجمالي المطلوب فوق رأس جدول النواقص */
   .ord-sum-row th{background:#eef2ff;color:var(--thead);font-size:12.5px;padding:5px 6px;
     border-bottom:1px solid var(--border)}
@@ -776,7 +794,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v91';
+const APP_VERSION = 'v92';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4478,9 +4496,10 @@ const PDF_STYLE = `
   table{border-collapse:collapse;width:100%;font-size:14px;table-layout:fixed;margin:0;
     font-family:Arial,Helvetica,sans-serif;font-weight:700}
   /* صفوف أعلى شوية: الورقة كانت مزحومة والأرقام ملزوقة في بعضها */
-  th,td{border:1px solid #999;padding:8px 6px;text-align:center;word-wrap:break-word;overflow-wrap:break-word;
+  th,td{border:1px solid #c4cbe0;padding:8px 6px;text-align:center;word-wrap:break-word;overflow-wrap:break-word;
     line-height:1.35}
-  th{background:#1b3a8f;color:#fff;border-color:#2f4fa5;font-weight:700;font-size:14.5px;padding:10px 6px}
+  th{background:#16307a;color:#fff;border-color:#0e205c;font-weight:700;font-size:14.5px;padding:10px 6px}
+  tr:nth-child(even) td{background:#eef1f9}
   /* الأرقام: مايطلعش منها حاجة بره الخلية. الخط بيتحدد من fitStyle حسب عدد
      الأعمدة، والـoverflow ضمانة أخيرة لو رقم طلع أطول من المتوقع. */
   td.num{font-weight:700;direction:ltr;font-family:Arial,Helvetica,sans-serif;white-space:nowrap}
@@ -4488,8 +4507,16 @@ const PDF_STYLE = `
   th,td{overflow:hidden}
   /* عمود الاسم بالنسبة مش بالبكسل — عشان يفضل متزن مع أي مقاس خط */
   td:nth-child(2),th:nth-child(2){width:21%;text-align:right}
-  .total-row td{background:#ddd;font-weight:700}
-  .grp-title{font-size:19px;font-weight:700;padding:10px 0 6px;border-bottom:1.5px solid #777;margin-bottom:6px}
+  /* نفس تدرّج ألوان الشاشة بالظبط: شريط غامق للمجموعة الرئيسية والإجمالي،
+     وأزرق فاتح للمجموعة الفرعية وإجمالياتها. كان رمادي باهت فالورقة كانت
+     مسطّحة ومش واضح فيها مستويات التجميع. */
+  .total-row{--accent2:#6ff0b6; --danger:#ffb0b0; --muted:#cdd8f5}
+  .total-row td, tr.total-row:nth-child(even) td{background:#2f4fa5;color:#fff;
+    font-weight:700;border-color:#24407f}
+  .grp-row td, tr.grp-row:nth-child(even) td{background:#d6e1f9;color:#16307a;
+    font-weight:700;border-color:#aabde8}
+  .grp-title{font-size:19px;font-weight:700;padding:10px 0 6px;color:#16307a;
+    border-bottom:2px solid #16307a;margin-bottom:6px}
   .sub-title{font-size:14.5px;font-weight:700;color:#333;padding:6px 0 4px}
   .chart-cap{font-size:13.5px;font-weight:700;color:#333;padding:6px 0 3px}
   .blk{margin-bottom:8px}
@@ -6488,7 +6515,8 @@ function whExportAoa(){
       aoa.push(row); kinds.push(kind);
     };
     const flushSub  = ()=>{ if(lastSub  !== null) pushSum('إجمالي ' + lastSub,  sTot.slice(), 'sum'); };
-    const flushMain = ()=>{ if(lastMain !== null) pushSum('إجمالي ' + lastMain, mTot.slice(), 'sum'); };
+    // إجمالي المجموعة الرئيسية بنفس لون عنوانها (شريط غامق) زي الشاشة
+    const flushMain = ()=>{ if(lastMain !== null) pushSum('إجمالي ' + lastMain, mTot.slice(), 'summain'); };
     rows.forEach(r=>{
       if(r.main !== lastMain){
         flushSub(); flushMain();
@@ -6592,7 +6620,8 @@ $('whPdfBtn').addEventListener('click', async ()=>{
         const k = kindOf(i);
         if(k === 'main') return labelHtml(r, 'total-row');
         if(k === 'sub')  return labelHtml(r, 'grp-row');
-        if(k === 'sum')  return rowHtml(r, 'grp-row', true);
+        if(k === 'sum')     return rowHtml(r, 'grp-row', true);
+        if(k === 'summain') return rowHtml(r, 'total-row', true);
         return rowHtml(r);
       }).join('') + '</tbody></table></div>';
     // إجمالي تحت الجدول
