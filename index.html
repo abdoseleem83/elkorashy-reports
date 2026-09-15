@@ -156,6 +156,10 @@
     padding:9px 14px;border-radius:10px}
   .fam-btn .fam-n{background:rgba(255,255,255,.25);border-radius:20px;padding:0 8px;font-size:12px}
   .grp-row td{background:#e7ebfa;font-weight:700}
+  /* سطر إجمالي المطلوب فوق رأس جدول النواقص */
+  .ord-sum-row th{background:#eef2ff;color:var(--thead);font-size:12.5px;padding:5px 6px;
+    border-bottom:1px solid var(--border)}
+  .ord-sum-row #whOrdSum{font-size:14px;font-weight:700;text-align:center;background:#dbe4ff}
   .opt-sec{font-size:12.5px;font-weight:700;color:var(--muted);margin:14px 0 6px}
   .opt-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
   .opt-grid .chk{display:flex;align-items:center;gap:8px;width:100%;margin:0;
@@ -757,7 +761,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v84';
+const APP_VERSION = 'v85';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -5637,7 +5641,12 @@ function whOrderView(){
     <br>قدام كل صنف رصيده <b>لفة</b> و<b>عود</b> عشان تحدّد المطلوب وانت شايف اللي موجود.
     استخدم البحث أو فلتر المجموعة عشان توصل بسرعة، ولو عايز عمود المجموعة الفرعية يظهر اختار فرعية من الفلتر.</div>
     ${whFamilyBarHtml(store)}
-    <div class="tbl-wrap"><table><thead><tr>
+    <div class="tbl-wrap"><table><thead>
+    <tr class="ord-sum-row">
+      <th colspan="${subChosen ? 6 : 5}" style="text-align:left">إجمالي اللي كتبته:</th>
+      <th id="whOrdSum" class="wh-num">—</th><th></th>
+    </tr>
+    <tr>
       <th>م</th><th>الصنف</th>${subChosen ? '<th class="hide-sm">المجموعة الفرعية</th>' : ''}
       <th class="hide-sm">الرصيد</th><th>لفة</th><th>عود</th>
       <th>المطلوب</th><th>الوحدة</th>
@@ -5826,6 +5835,23 @@ function whUpdateCountRowAndKpis(inp){
   if(modeBadge) modeBadge.textContent = shortItems + overItems;
 }
 
+// إجمالي الكميات اللي المستخدم كاتبها في الشاشة المعروضة دلوقتي، متجمّعة
+// حسب الوحدة (لفة / قطعة / …) لأن جمع لفف مع أعواد مالوش معنى.
+function whUpdateOrderSum(){
+  const cell = $('whOrdSum');
+  if(!cell) return;
+  const byUnit = {};
+  document.querySelectorAll('.whOrderIn').forEach(inp=>{
+    const v = Number(inp.value);
+    if(!isFinite(v) || v === 0) return;
+    const name = decodeURIComponent(inp.getAttribute('data-item'));
+    const u = whOrderUnit(name);
+    byUnit[u] = (byUnit[u] || 0) + v;
+  });
+  const parts = Object.keys(byUnit).sort().map(u => `${whFmt(byUnit[u])} ${u}`);
+  cell.textContent = parts.length ? parts.join(' · ') : '—';
+}
+
 function bindWhInputs(){
   document.querySelectorAll('.whOrderIn').forEach(inp=>{
     inp.addEventListener('change', ()=>{
@@ -5846,8 +5872,10 @@ function bindWhInputs(){
         bar.outerHTML = whFamilyBarHtml(store);
         bindWhFamButtons();
       }
+      whUpdateOrderSum();
     });
   });
+  whUpdateOrderSum();
   bindWhFamButtons();
   document.querySelectorAll('[data-cmode]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ whCountMode = btn.dataset.cmode; renderWh(); });
@@ -5906,6 +5934,7 @@ function bindWhFamButtons(){
       whCatalog[name].unit = sel.value;
       scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف');
       whUpdateLocalCache();
+      whUpdateOrderSum();   // تغيير الوحدة بيغيّر توزيع الإجمالي
     });
   });
   document.querySelectorAll('.whCountIn').forEach(inp=>{
