@@ -776,7 +776,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v90';
+const APP_VERSION = 'v91';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -6465,14 +6465,52 @@ function whExportAoa(){
     return {aoa, title:`أرصدة ${store}`, sheet:`أرصدة-${store}`};
   }
   if(whTab === 'compare'){
-    // نفس شكل الشاشة: باللفف، ومتجمّعة رئيسية ثم فرعية، وبنفس الإخفاء
+    // نفس شكل الشاشة بالظبط: مجمّعة رئيسية ← فرعية بسطور عناوين (زي ورقة
+    // النواقص)، من غير عمودي المجموعة والمجموعة الفرعية — عناوين المجموعات
+    // بتغني عنهم وبتخلي الورقة أوسع وأوضح.
     const rows = whCompareRows();
-    const aoa = [['م','الصنف','المجموعة','المجموعة الفرعية', ...WAREHOUSES, 'الإجمالي']];
-    rows.forEach((r,i)=>{
+    const aoa = [['م','الصنف', ...WAREHOUSES, 'الإجمالي']];
+    const kinds = [null];                       // نوع كل صف: main / sub / sum / null
+    const width = WAREHOUSES.length + 3;
+    const zeros = ()=> WAREHOUSES.map(()=>0);
+    const sTot = zeros(), mTot = zeros();
+    let lastMain = null, lastSub = null, n = 0;
+    const pushLabel = (label, kind)=>{
+      const row = new Array(width).fill('');
+      row[1] = label;
+      aoa.push(row); kinds.push(kind);
+    };
+    const pushSum = (label, arr, kind)=>{
+      const row = new Array(width).fill('');
+      row[1] = label;
+      arr.forEach((v,k)=>{ row[2+k] = v; });
+      row[width-1] = arr.reduce((a,b)=>a+b,0);
+      aoa.push(row); kinds.push(kind);
+    };
+    const flushSub  = ()=>{ if(lastSub  !== null) pushSum('إجمالي ' + lastSub,  sTot.slice(), 'sum'); };
+    const flushMain = ()=>{ if(lastMain !== null) pushSum('إجمالي ' + lastMain, mTot.slice(), 'sum'); };
+    rows.forEach(r=>{
+      if(r.main !== lastMain){
+        flushSub(); flushMain();
+        lastMain = r.main; lastSub = null;
+        mTot.forEach((_,k)=> mTot[k] = 0);
+        pushLabel(r.main, 'main');
+      }
+      const sub = r.sub || '—';
+      if(sub !== lastSub){
+        flushSub();
+        lastSub = sub;
+        sTot.forEach((_,k)=> sTot[k] = 0);
+        pushLabel(sub, 'sub');
+      }
       const qs = WAREHOUSES.map(w => whRollsOrPieces(whStoreBalances(w)[r.name], r.name));
-      aoa.push([i+1, r.name, r.main, r.sub, ...qs, qs.reduce((a,b)=>a+b,0)]);
+      qs.forEach((q,k)=>{ sTot[k] += q; mTot[k] += q; });
+      n++;
+      aoa.push([n, r.name, ...qs, qs.reduce((a,b)=>a+b,0)]);
+      kinds.push(null);
     });
-    return {aoa, title:'مقارنة أرصدة الفروع (باللفة)', sheet:'مقارنة الفروع'};
+    flushSub(); flushMain();
+    return {aoa, kinds, numFrom:2, title:'مقارنة أرصدة الفروع (باللفة)', sheet:'مقارنة الفروع'};
   }
   if(whTab === 'order'){
     const ord = whOrder[store] || {};
@@ -6532,28 +6570,41 @@ $('whExcelBtn').addEventListener('click', ()=>{
 
 $('whPdfBtn').addEventListener('click', async ()=>{
   if(!Object.keys(whCatalog).length){ alert('ارفع دليل الأصناف الأول.'); return; }
-  const {aoa, title} = whExportAoa();
+  const {aoa, title, kinds, numFrom} = whExportAoa();
   if(aoa.length < 2){ alert('مفيش بيانات في الجدول ده.'); return; }
   if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
+  const numAt = numFrom == null ? 3 : numFrom;
   exportBusy = true; setExportButtons(false);
   const btn = $('whPdfBtn'); const label = btn.textContent; btn.textContent = 'بيجهّز...';
   try{
     const head = aoa[0], body = aoa.slice(1);
     // الأرقام على الشمال والأسماء على اليمين — زي جداول المبيعات
-    const rowHtml = (cells, cls)=> `<tr${cls?` class="${cls}"`:''}>` + cells.map((c,i)=>
-      `<td class="${i>=3?'num':''}" style="${i===1?'text-align:right':''}">${esc(c === '' || c == null ? '-' : (typeof c === 'number' ? c.toLocaleString('en-US') : String(c)))}</td>`).join('') + '</tr>';
+    // blank = الخانة الفاضية تفضل فاضية (سطور الإجماليات) بدل ما تتحط فيها "-"
+    const rowHtml = (cells, cls, blank)=> `<tr${cls?` class="${cls}"`:''}>` + cells.map((c,i)=>
+      `<td class="${i>=numAt?'num':''}" style="${i===1?'text-align:right':''}">${esc(c === '' || c == null ? (blank ? '' : '-') : (typeof c === 'number' ? c.toLocaleString('en-US') : String(c)))}</td>`).join('') + '</tr>';
+    // سطر عنوان مجموعة: خانة واحدة على عرض الجدول كله (زي ورقة النواقص)
+    const labelHtml = (cells, cls)=>
+      `<tr class="${cls}"><td colspan="${head.length}" style="text-align:right">${esc(cells[1])}</td></tr>`;
+    const kindOf = (i)=> kinds ? kinds[i+1] : null;   // +1 عشان صف الرأس
     let tbl = `<div class="tbl-wrap"><table style="font-size:13px"><thead><tr>` +
       head.map(h=>`<th>${esc(h)}</th>`).join('') + '</tr></thead><tbody>' +
-      body.map(r=> rowHtml(r)).join('') + '</tbody></table></div>';
+      body.map((r,i)=>{
+        const k = kindOf(i);
+        if(k === 'main') return labelHtml(r, 'total-row');
+        if(k === 'sub')  return labelHtml(r, 'grp-row');
+        if(k === 'sum')  return rowHtml(r, 'grp-row', true);
+        return rowHtml(r);
+      }).join('') + '</tbody></table></div>';
     // إجمالي تحت الجدول
     const numCols = head.length;
     const sums = new Array(numCols).fill('');
-    for(let c=3;c<numCols;c++){
-      const s = body.reduce((a,r)=> a + (typeof r[c] === 'number' ? r[c] : 0), 0);
+    for(let c=numAt;c<numCols;c++){
+      // سطور العناوين والإجماليات الجزئية مش بتتجمع تاني في الإجمالي العام
+      const s = body.reduce((a,r,i)=> a + (kindOf(i) ? 0 : (typeof r[c] === 'number' ? r[c] : 0)), 0);
       sums[c] = s;
     }
     sums[1] = 'الإجمالي';
-    tbl += `<table style="font-size:13px;margin-top:-1px"><tbody>${rowHtml(sums, 'total-row')}</tbody></table>`;
+    tbl += `<table style="font-size:13px;margin-top:-1px"><tbody>${rowHtml(sums, 'total-row', true)}</tbody></table>`;
     pdfNeededW = 0;
     PDF_RENDER_W = PDF_WIDTH_BY_SIZE.large;
     const html = `<div class="blk"><div class="grp-title">${esc(title)}</div>${tbl}</div>`;
