@@ -119,6 +119,17 @@ function kvSet_(key, value){
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try{
+    kvSetLocked_(key, value);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// نفس الكتابة بالظبط بس من غير ما تاخد القفل — بتتنادى من جوه قفل مأخود
+// أصلًا (زي action=merge). القفل مش reentrant مضمون في Apps Script، فأخذه
+// مرتين في نفس التنفيذ ممكن يعلّق لحد المهلة.
+function kvSetLocked_(key, value){
+  {
     var sh = getSheet_();
     var str = String(value);
     var raw = [];
@@ -149,8 +160,6 @@ function kvSet_(key, value){
       for(var j = 0; j < surplus.length; j++) sh.deleteRow(surplus[j]);
     }
     SpreadsheetApp.flush();
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -230,6 +239,44 @@ function handle_(e, method){
     if(!req.key) return jsonOut_({ok:false, error:'الحفظ وصل من غير مفتاح'});
     kvSet_(req.key, req.value == null ? '' : req.value);
     return jsonOut_({ok:true, key:req.key});
+  }
+  // دمج ذرّي: التطبيق بيبعت التعديلات بتاعته بس (مش الخريطة كلها)، والسيرفر
+  // بيقرا آخر نسخة ويدمج عليها ويكتب — كله جوه قفل واحد. من غير ده لو جهازين
+  // حفظوا في نفس اللحظة، اللي يكتب الأخير كان بيمسح تعديل التاني.
+  // شكل الـpatch: {"المخزن": {"اسم الصنف": رقم أو null للمسح}}
+  // و wipe: ["المخزن"] بيمسح المخزن كله قبل الدمج.
+  if(action === 'merge'){
+    if(!req.key) return jsonOut_({ok:false, error:'الدمج وصل من غير مفتاح'});
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try{
+      var cur = kvGet_(req.key);
+      if(cur === PARTIAL_) return jsonOut_({ok:false, error:'busy: write in progress'});
+      var base = {};
+      if(cur !== null){
+        try{ base = JSON.parse(cur) || {}; }catch(err2){ base = {}; }
+      }
+      var patch = {};
+      try{ patch = JSON.parse(req.patch || '{}') || {}; }
+      catch(err3){ return jsonOut_({ok:false, error:'patch مش JSON صالح'}); }
+      var wipe = [];
+      try{ wipe = JSON.parse(req.wipe || '[]') || []; }catch(err4){ wipe = []; }
+      for(var w = 0; w < wipe.length; w++) delete base[wipe[w]];
+      for(var store in patch){
+        var items = patch[store];
+        if(!base[store]) base[store] = {};
+        for(var nm in items){
+          if(items[nm] === null) delete base[store][nm];
+          else base[store][nm] = items[nm];
+        }
+        if(!Object.keys(base[store]).length) delete base[store];
+      }
+      var out = JSON.stringify(base);
+      kvSetLocked_(req.key, out);
+      return jsonOut_({ok:true, key:req.key, value: out});
+    } finally {
+      lock.releaseLock();
+    }
   }
   if(action === 'delete'){
     if(!req.key) return jsonOut_({ok:false, error:'المسح وصل من غير مفتاح'});
