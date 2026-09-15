@@ -776,7 +776,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v87';
+const APP_VERSION = 'v88';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -854,6 +854,25 @@ function esc(v){
 }
 
 function normName(n){ return (n||"").toString().trim().replace(/\s+/g,' '); }
+
+// أرقام عربية/فارسية (١٢٣ / ۱۲۳) بتتحوّل لأرقام عادية، والفاصلة العشرية
+// العربية (٫) والفاصل الألفي (٬ أو ,) بيتشالوا. من غير ده السطر اللي فيه
+// رقم عربي كان بيتعدّ "مش رقم صالح" ويتشال في صمت.
+function normDigits(v){
+  return String(v)
+    .replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x06F0))
+    .replace(/\u066B/g, '.')            // الفاصلة العشرية العربية
+    .replace(/[\u066C,\s]/g, '');       // الفاصل الألفي والمسافات
+}
+// أي قيمة رقمية جاية من ملف: بترجع رقم أو null
+function cellNum(v){
+  if(typeof v === 'number') return isFinite(v) ? v : null;
+  const t = normDigits(normName(v));
+  if(t === '') return null;
+  const n = Number(t);
+  return isFinite(n) ? n : null;
+}
 
 // حفظ "على قد ما ينفع": فشل الحفظ أثناء التحميل الأولي (مثلًا مفيش نت) مينفعش
 // يوقف باقي التحميل — الصفحة لازم تكمل شغل بالبيانات المحلية.
@@ -1711,13 +1730,7 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
   }
   // الرقم ممكن ييجي نص ("1,234.5") لو الملف اتفتح واتحفظ من برنامج تاني.
   // قبل كده السطر ده كان بيتلغي في صمت والمبلغ يختفي من غير أي رسالة.
-  const toNum = (v)=>{
-    if(typeof v === 'number') return isFinite(v) ? v : null;
-    const t = normName(v).replace(/,/g,'');
-    if(t === '') return null;
-    const n = Number(t);
-    return isFinite(n) ? n : null;
-  };
+  const toNum = cellNum;
   const byMonth = {}; // month -> customer -> item -> {cat, net, wh}
   const newItems = new Set();
   let skippedRows = 0, noMonthRows = 0;
@@ -5188,8 +5201,8 @@ function parseWhBalances(wb){
     const name = normName(rows[i][nameCol]);
     if(!name) continue;
     const raw = rows[i][balCol];
-    const v = typeof raw === 'number' ? raw : Number(String(raw).replace(/,/g,''));
-    if(!isFinite(v)){ skipped++; continue; }
+    const v = cellNum(raw);
+    if(v === null){ skipped++; continue; }
     items[name] = (items[name] || 0) + v;   // الصنف ممكن يتكرر في الملف
     if(!whCatalog[name]) unknown.push(name);
   }
@@ -5218,8 +5231,8 @@ function parseWhCount(wb){
     if(!name) continue;
     const raw = rows[i][valCol];
     if(raw === '' || raw === null || raw === undefined) continue;
-    const v = typeof raw === 'number' ? raw : Number(String(raw).replace(/,/g,''));
-    if(!isFinite(v)) continue;
+    const v = cellNum(raw);
+    if(v === null) continue;   // cellNum بترجّع null مش NaN
     out[name] = v; filled++;
     if(!whCatalog[name]) unknown.push(name);
   }
@@ -6436,9 +6449,13 @@ function whExportAoa(){
   if(whTab === 'order'){
     const ord = whOrder[store] || {};
     const rows = whRows(store, {applyZero:false}).filter(r => Number(ord[r.name]) > 0);
-    const aoa = [['م','الصنف','المجموعة','الرصيد','لفة','طلب الأوردر','الوحدة']];
-    rows.forEach((r,i)=> aoa.push([i+1, r.name, r.main, r.qty, whSplit(r.qty, r.name).rolls,
-      Number(ord[r.name]), whOrderUnit(r.name)]));
+    // نفس أعمدة الشاشة بنفس الأسماء (كان اسمه "طلب الأوردر" ومفيش عمود عود)
+    const aoa = [['م','الصنف','المجموعة','الرصيد','لفة','عود','المطلوب','الوحدة']];
+    rows.forEach((r,i)=>{
+      const sp = whSplit(r.qty, r.name);
+      aoa.push([i+1, r.name, r.main, r.qty, sp.rolls, sp.loose,
+        Number(ord[r.name]), whOrderUnit(r.name)]);
+    });
     return {aoa, title:`طلب أوردر النواقص — ${store}`, sheet:`أوردر-${store}`, onlyAsked:true};
   }
   const cnt = whCount[store] || {};
