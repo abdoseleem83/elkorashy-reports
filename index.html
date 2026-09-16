@@ -239,6 +239,9 @@
     #whToolbar button{flex:1 1 calc(33.333% - 6px);width:auto;padding:10px 4px;font-size:12.5px}
     /* الشرح الطويل فوق الجدول: أصغر عشان ما ياخدش نص الشاشة */
     #whArea > .sub{font-size:11.5px;line-height:1.5}
+    /* عنوان "التصدير..." ياخد سطر لوحده والأزرار تحته في صف واحد */
+    #whArea .row > .sub{flex:1 1 100%}
+    #whArea .fam-bar{width:100%}
     .fam-btn{flex:1 1 calc(50% - 8px);justify-content:center}
     /* خانات الإدخال أكبر شوية عشان الصباع */
     .wh-in{width:100%;min-width:56px;padding:8px 4px;font-size:14px}
@@ -794,7 +797,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v93';
+const APP_VERSION = 'v94';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4975,8 +4978,17 @@ let whOrder = {};     // مخزن -> {اسم: كمية مطلوبة}
 let whCount = {};     // مخزن -> {اسم: الجرد الفعلي}
 let whTab = 'balances';
 let whCountMode = 'entry';   // 'entry' إدخال الجرد | 'result' نتيجة الجرد (عجز/زيادة)
-// نطاق تصدير الجرد: 'all' كل الجرد | 'short' العجز بس | 'over' الزيادة بس
-let whCountScope = 'all';
+// نطاق تصدير الجرد — **اختيار متعدد**: ['short'] أو ['over'] أو الاتنين مع
+// بعض، أو ['all'] لكل الجرد. "كل الجرد" لوحده (ورقة كل الأصناف) فلما
+// تختاره بيلغي التانيين والعكس.
+let whCountScope = ['all'];
+function whScopeOn(k){ return whCountScope.indexOf(k) !== -1; }
+function whToggleScope(k){
+  if(k === 'all'){ whCountScope = ['all']; return; }
+  let next = whCountScope.filter(x => x !== 'all');
+  next = whScopeOn(k) ? next.filter(x => x !== k) : next.concat(k);
+  whCountScope = next.length ? next : ['all'];   // مفيش اختيار = كل الجرد
+}
 
 loadStorage();
 
@@ -5925,13 +5937,13 @@ function whCountView(){
       <span class="fam-n"${whCountMode === 'result' ? '' : ' style="background:var(--panel2)"'}>${shortItems + overItems}</span></button>
   </div>
   <div class="row" style="align-items:center;gap:8px;margin:0 0 10px">
-    <span class="sub" style="margin:0">التصدير (Excel / PDF):</span>
+    <span class="sub" style="margin:0">التصدير (Excel / PDF) — تقدر تختار أكتر من واحد:</span>
     <div class="fam-bar" style="margin:0;flex:1">
-      <button class="fam-btn${whCountScope === 'all' ? '' : ' ghost'}" data-cscope="all">📄 كل الجرد</button>
-      <button class="fam-btn${whCountScope === 'short' ? '' : ' ghost'}" data-cscope="short">🔻 العجز بس
-        <span class="fam-n"${whCountScope === 'short' ? '' : ' style="background:var(--panel2)"'}>${shortItems}</span></button>
-      <button class="fam-btn${whCountScope === 'over' ? '' : ' ghost'}" data-cscope="over">🔺 الزيادة بس
-        <span class="fam-n"${whCountScope === 'over' ? '' : ' style="background:var(--panel2)"'}>${overItems}</span></button>
+      <button class="fam-btn${whScopeOn('all') ? '' : ' ghost'}" data-cscope="all">📄 كل الجرد</button>
+      <button class="fam-btn${whScopeOn('short') ? '' : ' ghost'}" data-cscope="short">${whScopeOn('short') ? '☑' : '☐'} 🔻 العجز
+        <span class="fam-n"${whScopeOn('short') ? '' : ' style="background:var(--panel2)"'}>${shortItems}</span></button>
+      <button class="fam-btn${whScopeOn('over') ? '' : ' ghost'}" data-cscope="over">${whScopeOn('over') ? '☑' : '☐'} 🔺 الزيادة
+        <span class="fam-n"${whScopeOn('over') ? '' : ' style="background:var(--panel2)"'}>${overItems}</span></button>
     </div>
   </div>`;
   if(whCountMode === 'result'){
@@ -5952,7 +5964,7 @@ function whCountView(){
     <button class="ghost" id="whCountClear" style="flex:0 0 auto">امسح كل أرقام الجرد (يدوي أو من إكسل) لمخزن ${esc(store)}</button>
   </div>
   <div class="tbl-wrap"><table><thead><tr>
-    <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة</th><th class="hide-sm">الرصيد</th>
+    <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة</th><th>الرصيد</th>
     <th>لفة</th><th>عود</th><th>الجرد الفعلي</th><th>الفرق</th>
   </tr></thead><tbody>`;
   tblRows.forEach((r,i)=>{
@@ -5963,7 +5975,7 @@ function whCountView(){
     const dCol = diff === null || diff === 0 ? '' : (diff > 0 ? 'color:var(--accent2)' : 'color:var(--danger)');
     html += `<tr><td>${i+1}</td><td style="text-align:right">${esc(r.name)}</td>
       <td class="hide-sm">${esc(r.main)}</td>
-      <td class="wh-num hide-sm">${whFmt(r.qty)}</td>
+      <td class="wh-num">${whFmt(r.qty)}</td>
       <td class="wh-num">${whFmt(sp.rolls)}</td><td class="wh-num">${whFmt(sp.loose)}</td>
       <td><input type="number" step="1" class="wh-in whCountIn" data-item="${encodeURIComponent(r.name)}" data-qty="${r.qty}"
         value="${v != null ? esc(String(v)) : ''}"></td>
@@ -6117,7 +6129,7 @@ function bindWhInputs(){
     btn.addEventListener('click', ()=>{ whCountMode = btn.dataset.cmode; renderWh(); });
   });
   document.querySelectorAll('[data-cscope]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{ whCountScope = btn.dataset.cscope; renderWh(); });
+    btn.addEventListener('click', ()=>{ whToggleScope(btn.dataset.cscope); renderWh(); });
   });
 }
 
@@ -6581,13 +6593,15 @@ function whExportAoa(){
   }
   const cnt = whCount[store] || {};
   const rows = whRows(store, {applyZero:false});
-  // المستخدم بيختار قبل التصدير: كل الجرد / العجز بس / الزيادة بس
-  const scope = whCountScope;
-  const scopeName = scope === 'short' ? 'العجز' : (scope === 'over' ? 'الزيادة' : '');
-  const inScope = (diff)=> scope === 'all' ? true
-    : (scope === 'short' ? diff < 0 : diff > 0);
+  // المستخدم بيختار قبل التصدير: كل الجرد، أو العجز و/أو الزيادة مع بعض
+  const wantShort = whScopeOn('short'), wantOver = whScopeOn('over');
+  const partial = wantShort || wantOver;          // مش "كل الجرد"
+  const scopeName = (wantShort && wantOver) ? 'العجز والزيادة'
+    : (wantShort ? 'العجز' : (wantOver ? 'الزيادة' : ''));
+  const inScope = (diff)=> !partial ? true
+    : ((wantShort && diff < 0) || (wantOver && diff > 0));
 
-  if(whCountMode === 'result' || scope !== 'all'){
+  if(whCountMode === 'result' || partial){
     // نتيجة الجرد: العجز مع بعض، وبعده الزيادة — والمطابق مش بيتصدّر
     const aoa = [['م','الصنف','المجموعة','الرصيد','الفعلي','الفرق','النوع']];
     const det = [];
@@ -6600,8 +6614,8 @@ function whExportAoa(){
     const push = (list, kind)=> list
       .sort((a,b)=> (a.main||'').localeCompare(b.main||'','ar') || Math.abs(b.diff) - Math.abs(a.diff))
       .forEach((r,i)=> aoa.push([aoa.length, r.name, r.main, r.book, r.real, r.diff, kind]));
-    if(scope !== 'over')  push(det.filter(r=>r.diff < 0), 'عجز');
-    if(scope !== 'short') push(det.filter(r=>r.diff > 0), 'زيادة');
+    if(!partial || wantShort) push(det.filter(r=>r.diff < 0), 'عجز');
+    if(!partial || wantOver)  push(det.filter(r=>r.diff > 0), 'زيادة');
     const t = scopeName ? `نتيجة الجرد — ${scopeName} — ${store}` : `نتيجة الجرد — ${store}`;
     return {aoa, title:t, sheet: (scopeName ? `${scopeName}-${store}` : `نتيجة-${store}`)};
   }
