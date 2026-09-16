@@ -794,7 +794,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v92';
+const APP_VERSION = 'v93';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4975,6 +4975,8 @@ let whOrder = {};     // مخزن -> {اسم: كمية مطلوبة}
 let whCount = {};     // مخزن -> {اسم: الجرد الفعلي}
 let whTab = 'balances';
 let whCountMode = 'entry';   // 'entry' إدخال الجرد | 'result' نتيجة الجرد (عجز/زيادة)
+// نطاق تصدير الجرد: 'all' كل الجرد | 'short' العجز بس | 'over' الزيادة بس
+let whCountScope = 'all';
 
 loadStorage();
 
@@ -5882,6 +5884,8 @@ function whOrderView(){
 // الجرد ونتيجته
 function whCountView(){
   const store = $('whStore').value;
+  // الملخّص (عجز/زيادة/نسبة المطابقة) بيتحسب على كل الأصناف اللي داخلة في
+  // الفلتر — إخفاء الأصفار بيغيّر الجدول اللي قدامك بس، مش النتيجة.
   const rows = whRows(store, {applyZero:false});
   const cnt = whCount[store] || {};
   let counted = 0, shortQty = 0, overQty = 0, shortItems = 0, overItems = 0;
@@ -5919,10 +5923,30 @@ function whCountView(){
     <button class="fam-btn${whCountMode === 'entry' ? '' : ' ghost'}" data-cmode="entry">📝 إدخال الجرد</button>
     <button class="fam-btn${whCountMode === 'result' ? '' : ' ghost'}" data-cmode="result">📊 نتيجة الجرد
       <span class="fam-n"${whCountMode === 'result' ? '' : ' style="background:var(--panel2)"'}>${shortItems + overItems}</span></button>
+  </div>
+  <div class="row" style="align-items:center;gap:8px;margin:0 0 10px">
+    <span class="sub" style="margin:0">التصدير (Excel / PDF):</span>
+    <div class="fam-bar" style="margin:0;flex:1">
+      <button class="fam-btn${whCountScope === 'all' ? '' : ' ghost'}" data-cscope="all">📄 كل الجرد</button>
+      <button class="fam-btn${whCountScope === 'short' ? '' : ' ghost'}" data-cscope="short">🔻 العجز بس
+        <span class="fam-n"${whCountScope === 'short' ? '' : ' style="background:var(--panel2)"'}>${shortItems}</span></button>
+      <button class="fam-btn${whCountScope === 'over' ? '' : ' ghost'}" data-cscope="over">🔺 الزيادة بس
+        <span class="fam-n"${whCountScope === 'over' ? '' : ' style="background:var(--panel2)"'}>${overItems}</span></button>
+    </div>
   </div>`;
   if(whCountMode === 'result'){
     return {html: html + whCountResultHtml(detail), count: `عجز ${shortItems} · زيادة ${overItems}`};
   }
+  // الجدول بيحترم "اخفي الأصناف اللي رصيدها صفر"، بس أي صنف انت جردته فعلًا
+  // بيفضل ظاهر عشان تقدر تعدّله أو تشيله.
+  const tblRows = (()=>{
+    if(!$('whHideZero').checked) return rows;
+    const kept = rows.filter(r => r.qty !== 0);
+    const have = new Set(kept.map(r=>r.name));
+    const extra = rows.filter(r => !have.has(r.name) && cnt[r.name] !== undefined && cnt[r.name] !== '');
+    return kept.concat(extra).sort((a,b)=> a.main.localeCompare(b.main,'ar')
+      || (a.sub||'').localeCompare(b.sub||'','ar') || a.name.localeCompare(b.name,'ar'));
+  })();
   html += `<div class="row" style="justify-content:space-between;align-items:center;margin:10px 0 8px;gap:8px">
     <div class="sub">اكتب الجرد الفعلي قدام كل صنف — بيتحفظ لوحده والنتيجة بتتحدّث فورًا.</div>
     <button class="ghost" id="whCountClear" style="flex:0 0 auto">امسح كل أرقام الجرد (يدوي أو من إكسل) لمخزن ${esc(store)}</button>
@@ -5931,7 +5955,7 @@ function whCountView(){
     <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة</th><th class="hide-sm">الرصيد</th>
     <th>لفة</th><th>عود</th><th>الجرد الفعلي</th><th>الفرق</th>
   </tr></thead><tbody>`;
-  rows.forEach((r,i)=>{
+  tblRows.forEach((r,i)=>{
     const sp = whSplit(r.qty, r.name);
     const v = cnt[r.name];
     const diff = (v === undefined || v === '') ? null : Number(v) - r.qty;
@@ -5946,7 +5970,7 @@ function whCountView(){
       <td class="wh-num whCountDiff" style="${dCol}">${dTxt}</td></tr>`;
   });
   html += '</tbody></table></div>';
-  return {html, count: `${rows.length} صنف — اتجرد ${counted}`};
+  return {html, count: `${tblRows.length} صنف — اتجرد ${counted}`};
 }
 
 function renderWh(){
@@ -6091,6 +6115,9 @@ function bindWhInputs(){
   bindWhFamButtons();
   document.querySelectorAll('[data-cmode]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ whCountMode = btn.dataset.cmode; renderWh(); });
+  });
+  document.querySelectorAll('[data-cscope]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ whCountScope = btn.dataset.cscope; renderWh(); });
   });
 }
 
@@ -6554,7 +6581,13 @@ function whExportAoa(){
   }
   const cnt = whCount[store] || {};
   const rows = whRows(store, {applyZero:false});
-  if(whCountMode === 'result'){
+  // المستخدم بيختار قبل التصدير: كل الجرد / العجز بس / الزيادة بس
+  const scope = whCountScope;
+  const scopeName = scope === 'short' ? 'العجز' : (scope === 'over' ? 'الزيادة' : '');
+  const inScope = (diff)=> scope === 'all' ? true
+    : (scope === 'short' ? diff < 0 : diff > 0);
+
+  if(whCountMode === 'result' || scope !== 'all'){
     // نتيجة الجرد: العجز مع بعض، وبعده الزيادة — والمطابق مش بيتصدّر
     const aoa = [['م','الصنف','المجموعة','الرصيد','الفعلي','الفرق','النوع']];
     const det = [];
@@ -6562,15 +6595,17 @@ function whExportAoa(){
       const v = cnt[r.name];
       if(v === undefined || v === '') return;
       const diff = Number(v) - r.qty;
-      if(diff !== 0) det.push({name:r.name, main:r.main, book:r.qty, real:Number(v), diff});
+      if(diff !== 0 && inScope(diff)) det.push({name:r.name, main:r.main, book:r.qty, real:Number(v), diff});
     });
     const push = (list, kind)=> list
       .sort((a,b)=> (a.main||'').localeCompare(b.main||'','ar') || Math.abs(b.diff) - Math.abs(a.diff))
       .forEach((r,i)=> aoa.push([aoa.length, r.name, r.main, r.book, r.real, r.diff, kind]));
-    push(det.filter(r=>r.diff < 0), 'عجز');
-    push(det.filter(r=>r.diff > 0), 'زيادة');
-    return {aoa, title:`نتيجة الجرد — ${store}`, sheet:`نتيجة-${store}`};
+    if(scope !== 'over')  push(det.filter(r=>r.diff < 0), 'عجز');
+    if(scope !== 'short') push(det.filter(r=>r.diff > 0), 'زيادة');
+    const t = scopeName ? `نتيجة الجرد — ${scopeName} — ${store}` : `نتيجة الجرد — ${store}`;
+    return {aoa, title:t, sheet: (scopeName ? `${scopeName}-${store}` : `نتيجة-${store}`)};
   }
+
   const aoa = [['م','الصنف','المجموعة','الرصيد (برنامج)','لفة','عود','الجرد الفعلي','الفرق']];
   rows.forEach((r,i)=>{
     const sp = whSplit(r.qty, r.name);
