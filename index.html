@@ -797,7 +797,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v99';
+const APP_VERSION = 'v100';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -5855,6 +5855,28 @@ function whColorPivot(rows){
   return {colors, groups};
 }
 
+// لون العمود من اسم اللون نفسه: كل عمود بيعبّر عن لونه (بيج بيج، رمادي
+// رمادي… إلخ). bg = شريط الرأس، head = لون الخط فيه، soft = خلفية خفيفة
+// لخانات الأرقام عشان الأرقام تفضل مقروءة.
+const WH_COLOR_SKIN = {
+  'ابيض':  {bg:'#ffffff', head:'#16307a', soft:'#ffffff', line:'#9db2ea'},
+  'بيج':   {bg:'#e0cfa9', head:'#4a3718', soft:'#f6efe0', line:'#c9b184'},
+  'اسود':  {bg:'#3a3f4a', head:'#ffffff', soft:'#e6e8ec', line:'#2a2e36'},
+  'أسود':  {bg:'#3a3f4a', head:'#ffffff', soft:'#e6e8ec', line:'#2a2e36'},
+  'رمادي': {bg:'#c2c7d0', head:'#1f2430', soft:'#eceef2', line:'#a8aeba'},
+  'خشبي':  {bg:'#a9764a', head:'#ffffff', soft:'#f1e3d6', line:'#8b5f39'},
+  'بني':   {bg:'#8a5a3b', head:'#ffffff', soft:'#eeded3', line:'#6f462c'},
+  'ذهبي':  {bg:'#d9b44a', head:'#3a2d00', soft:'#f8f0d8', line:'#bf9a32'},
+  'فضي':   {bg:'#d5d9df', head:'#23262d', soft:'#f1f3f6', line:'#b9bec7'},
+  'احمر':  {bg:'#c94a4a', head:'#ffffff', soft:'#f8e3e3', line:'#a93a3a'},
+  'ازرق':  {bg:'#3f63c9', head:'#ffffff', soft:'#e4eaf9', line:'#2f4fa5'},
+  'اخضر':  {bg:'#3f9c6a', head:'#ffffff', soft:'#e2f3ea', line:'#2f7d53'},
+  'زجاج':  {bg:'#cfe4ef', head:'#123', soft:'#f0f8fc', line:'#a9cbdd'},
+};
+function whColorSkin(c){
+  return WH_COLOR_SKIN[normName(c)] || {bg:'#2f4fa5', head:'#ffffff', soft:'#eef1f9', line:'#24407f'};
+}
+
 // ألوان قطاع معيّن (اللي فيه أصناف فعلًا) — كل قطاع بيتعرض بألوانه هو بس
 // بدل ما كل الجداول تاخد كل الألوان وتطلع أعمدة فاضية ومزحومة.
 function whGroupColors(g, allColors){
@@ -5870,9 +5892,16 @@ function whColorGroupTable(g, colors, opts){
   const width = 1 + C.length * S.length + 1;
   const zeros = ()=> C.map(()=> S.map(()=>0));
   const addTo = (acc, it)=> C.forEach((c,ci)=> S.forEach((w,si)=>{ acc[ci][si] += (it.q[c] && it.q[c][w]) || 0; }));
-  const cells = (acc)=>{
+  const skin = (c)=> whColorSkin(c);
+  // قطاع كل أصنافه من غير لون؟ رأس من سطر واحد ومفيش تلوين أعمدة
+  const plain = C.length === 1 && C[0] === '—';
+  const cells = (acc, plainRow)=>{
     let h = '';
-    C.forEach((c,ci)=> S.forEach((w,si)=>{ h += `<td class="wh-num">${whFmt(acc[ci][si])}</td>`; }));
+    C.forEach((c,ci)=> S.forEach((w,si)=>{
+      const sk = skin(c);
+      const st = (plain || plainRow) ? '' : `background:${sk.soft}`;
+      h += `<td class="wh-num" style="${st}">${whFmt(acc[ci][si])}</td>`;
+    }));
     h += `<td class="wh-num">${whFmt(acc.reduce((a,r)=>a + r.reduce((x,y)=>x+y,0), 0))}</td>`;
     return h;
   };
@@ -5883,33 +5912,28 @@ function whColorGroupTable(g, colors, opts){
     rows += `<tr><td style="text-align:right">${esc(it.base)}</td>${cells(acc)}</tr>`;
   });
   const total = gTot.reduce((a,r)=>a + r.reduce((x,y)=>x+y,0), 0);
-  // قطاع كل أصنافه من غير لون؟ رأس من سطر واحد (مفيش داعي لشريط لون فاضي)
-  const plain = C.length === 1 && C[0] === '—';
-  // جدول واسع (ألوان كتير)؟ أسماء مختصرة وخط أصغر — أسماء المخازن الطويلة
-  // كانت بتتكسر حرف ورا حرف في الأعمدة الضيقة.
+  // جدول واسع (ألوان كتير)؟ خط أصغر وحشو أقل — بس الأسماء بتفضل كاملة
+  // (الاختصار كان بياكل "الاسكندريه")، و white-space:nowrap بيمنع التكسير.
   const wide = !plain && C.length * S.length >= 6;
-  const shortStore = (w)=>{
-    if(!wide) return w;
-    if(/اسكندر/.test(w)) return 'إسك.';
-    if(/المصنع/.test(w)) return 'مصنع';
-    return w.length > 6 ? w.slice(0,5) + '.' : w;
-  };
-  const totalLabel = wide ? 'الكل' : 'الإجمالي';
   const head = plain
     ? `<tr><th>الصنف</th>${S.map(w=>`<th>${esc(w)}</th>`).join('')}<th>الإجمالي</th></tr>`
     : `<tr><th rowspan="2">الصنف</th>
-        ${C.map(c=>`<th colspan="${S.length}">${esc(c)}</th>`).join('')}
-        <th rowspan="2">${totalLabel}</th></tr>
-      <tr>${C.map(()=> S.map(w=>`<th>${esc(shortStore(w))}</th>`).join('')).join('')}</tr>`;
+        ${C.map(c=>{ const sk = skin(c);
+          return `<th colspan="${S.length}" style="background:${sk.bg};color:${sk.head};border-color:${sk.line}">${esc(c)}</th>`;
+        }).join('')}
+        <th rowspan="2">الإجمالي</th></tr>
+      <tr>${C.map(c=>{ const sk = skin(c);
+          return S.map(w=>`<th style="background:${sk.bg};color:${sk.head};border-color:${sk.line}">${esc(w)}</th>`).join('');
+        }).join('')}</tr>`;
   const wideCss = wide
-    ? `<style>.wide-cmp th{font-size:11.5px;padding:5px 2px;white-space:nowrap}
-       .wide-cmp td{font-size:12px;padding:5px 3px}
-       .wide-cmp td:first-child,.wide-cmp th:first-child{width:24%}</style>` : '';
+    ? `<style>.wide-cmp th{font-size:11px;padding:5px 2px;white-space:nowrap}
+       .wide-cmp td{font-size:11.5px;padding:5px 2px;white-space:nowrap}
+       .wide-cmp td:first-child,.wide-cmp th:first-child{width:23%;white-space:normal}</style>` : '';
   const html = `${wideCss}<div class="blk${opts.breakPage ? ' pdf-break' : ''}">
     <div class="grp-title" style="font-size:16px">◆ ${esc(g.main)}</div>
     <div class="tbl-wrap"><table class="${wide ? 'wide-cmp' : ''}"><thead>${head}
     </thead><tbody>${rows}
-      <tr class="total-row"><td style="text-align:right">إجمالي ${esc(g.main)}</td>${cells(gTot)}</tr>
+      <tr class="total-row"><td style="text-align:right">إجمالي ${esc(g.main)}</td>${cells(gTot, true)}</tr>
     </tbody></table></div></div>`;
   return {html, total, width};
 }
