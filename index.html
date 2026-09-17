@@ -797,7 +797,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v95';
+const APP_VERSION = 'v96';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4972,6 +4972,10 @@ $('appLogo').src = LOGO_HEAD;
 let activeModule = null;   // مفيش قسم مفتوح غير لما المستخدم يدوس
 
 const WAREHOUSES = ['طنطا','الاسكندريه','المصنع'];
+// "مقارنة الفروع" للفروع اللي بتبيع بس — المصنع مخزن إنتاج، وجوده في
+// المقارنة كان بيخبط الصورة. باقي الشاشات (الأرصدة/النواقص/الجرد) بتشوف
+// كل المخازن عادي.
+const COMPARE_STORES = WAREHOUSES.filter(w => w !== 'المصنع');
 let whCatalog = {};   // اسم الصنف -> {main, sub, roll, color}
 let whBalances = {};  // مخزن -> {date, items:{اسم: رصيد بالقطعة}}
 let whOrder = {};     // مخزن -> {اسم: كمية مطلوبة}
@@ -5761,7 +5765,7 @@ function whBalancesView(){
 function whCompareRows(){
   const rows = whRows(null);
   if(!$('whHideZero').checked) return rows;
-  return rows.filter(r => WAREHOUSES.some(w =>
+  return rows.filter(r => COMPARE_STORES.some(w =>
     whRollsOrPieces(whStoreBalances(w)[r.name], r.name) !== 0));
 }
 
@@ -5772,9 +5776,9 @@ function whCompareView(){
   // متجمّعة: كل مجموعة رئيسية مع بعضها، وجواها كل مجموعة فرعية مع بعضها.
   let html = `<div class="sub" style="margin-bottom:8px">الأرقام <b>باللفة</b> (الصنف اللي مالوش محتوى لفة بيتحسب بالقطعة).</div>
     <div class="tbl-wrap"><table><thead><tr>
-    <th>م</th><th>الصنف</th>${WAREHOUSES.map(w=>`<th>${esc(w)}</th>`).join('')}<th>الإجمالي</th>
+    <th>م</th><th>الصنف</th>${COMPARE_STORES.map(w=>`<th>${esc(w)}</th>`).join('')}<th>الإجمالي</th>
   </tr></thead><tbody>`;
-  const zero = ()=> WAREHOUSES.map(()=>0);
+  const zero = ()=> COMPARE_STORES.map(()=>0);
   const gTot = zero(), sTot = zero(), mTot = zero();
   let lastMain = null, lastSub = null, n = 0;
   const out = [];
@@ -5789,16 +5793,16 @@ function whCompareView(){
       flushSub(); flushMain();
       lastMain = r.main; lastSub = null;
       mTot.forEach((_,k)=> mTot[k] = 0);
-      out.push(`<tr class="total-row"><td colspan="${WAREHOUSES.length + 3}" style="text-align:right">${esc(r.main)}</td></tr>`);
+      out.push(`<tr class="total-row"><td colspan="${COMPARE_STORES.length + 3}" style="text-align:right">${esc(r.main)}</td></tr>`);
     }
     const sub = r.sub || '—';
     if(sub !== lastSub){
       flushSub();
       lastSub = sub;
       sTot.forEach((_,k)=> sTot[k] = 0);
-      out.push(`<tr class="grp-row"><td colspan="${WAREHOUSES.length + 3}" style="text-align:right">${esc(sub)}</td></tr>`);
+      out.push(`<tr class="grp-row"><td colspan="${COMPARE_STORES.length + 3}" style="text-align:right">${esc(sub)}</td></tr>`);
     }
-    const qs = WAREHOUSES.map(w => whRollsOrPieces(whStoreBalances(w)[r.name], r.name));
+    const qs = COMPARE_STORES.map(w => whRollsOrPieces(whStoreBalances(w)[r.name], r.name));
     qs.forEach((q,k)=>{ sTot[k] += q; mTot[k] += q; gTot[k] += q; });
     n++;
     out.push(`<tr><td>${n}</td><td style="text-align:right">${esc(r.name)}</td>` +
@@ -6535,10 +6539,10 @@ function whExportAoa(){
     // النواقص)، من غير عمودي المجموعة والمجموعة الفرعية — عناوين المجموعات
     // بتغني عنهم وبتخلي الورقة أوسع وأوضح.
     const rows = whCompareRows();
-    const aoa = [['م','الصنف', ...WAREHOUSES, 'الإجمالي']];
+    const aoa = [['م','الصنف', ...COMPARE_STORES, 'الإجمالي']];
     const kinds = [null];                       // نوع كل صف: main / sub / sum / null
-    const width = WAREHOUSES.length + 3;
-    const zeros = ()=> WAREHOUSES.map(()=>0);
+    const width = COMPARE_STORES.length + 3;
+    const zeros = ()=> COMPARE_STORES.map(()=>0);
     const sTot = zeros(), mTot = zeros();
     let lastMain = null, lastSub = null, n = 0;
     const pushLabel = (label, kind)=>{
@@ -6570,7 +6574,7 @@ function whExportAoa(){
         sTot.forEach((_,k)=> sTot[k] = 0);
         pushLabel(sub, 'sub');
       }
-      const qs = WAREHOUSES.map(w => whRollsOrPieces(whStoreBalances(w)[r.name], r.name));
+      const qs = COMPARE_STORES.map(w => whRollsOrPieces(whStoreBalances(w)[r.name], r.name));
       qs.forEach((q,k)=>{ sTot[k] += q; mTot[k] += q; });
       n++;
       aoa.push([n, r.name, ...qs, qs.reduce((a,b)=>a+b,0)]);
