@@ -852,7 +852,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v102';
+const APP_VERSION = 'v103';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -6558,14 +6558,24 @@ function finMonthLabel(m){
   return `${FIN_MONTH_NAMES[Number(mm)-1] || mm} ${y}`;
 }
 function finMonths(){ return Object.keys(finData).sort(); }
+function finYears(){ return [...new Set(finMonths().map(m => String(m).slice(0,4)))].sort(); }
+// الفترة ممكن تكون: '' (كل اللي مرفوع) أو 'y:2026' (سنة كاملة) أو '2026-03' (شهر)
 function finSelectedMonths(){
   const all = finMonths();
-  return finPeriodSel ? all.filter(m => m === finPeriodSel) : all;
+  if(!finPeriodSel) return all;
+  if(finPeriodSel.indexOf('y:') === 0){
+    const y = finPeriodSel.slice(2);
+    return all.filter(m => String(m).slice(0,4) === y);
+  }
+  return all.filter(m => m === finPeriodSel);
 }
-// الشهور من أول السنة لحد الشهر المختار (للمركز المالي والأرباح المرحلة)
+// الشهور من أول *نفس السنة* لحد الشهر المختار. لازم نقفل على السنة عشان
+// أرباح سنة فاتت ما تتحسبش على السنة الجديدة.
 function finMonthsUpTo(m){
   const all = finMonths();
-  return m ? all.filter(x => x <= m) : all;
+  if(!m) return all;
+  const y = String(m).slice(0,4);
+  return all.filter(x => x <= m && String(x).slice(0,4) === y);
 }
 
 // ---- قراءة الملف ----
@@ -6580,13 +6590,18 @@ function parseFinWorkbook(wb){
   if(!rows) throw new Error('مش لاقي ميزان المراجعة — لازم يكون فيه عمودين Account_Code و Account_Name.');
   const {r, h} = rows;
   const idx = FIN_COLS.map(c => h.idx[c]);
+  // الكود لازم يبقى مرة واحدة: لو الملف فيه صف مكرر بنجمّعه بدل ما يتحسب مرتين.
   const out = [];
+  const seen = new Map();
   for(let i=h.row+1;i<r.length;i++){
     const code = normName(r[i][idx[0]]);
     if(!code) continue;
     const name = normName(r[i][idx[1]]);
     const nums = idx.slice(2).map(ci => ci === undefined ? 0 : (cellNum(r[i][ci]) || 0));
-    out.push([code, name].concat(nums));
+    const prev = seen.get(code);
+    if(prev){ for(let k=2;k<8;k++) prev[k] = (Number(prev[k])||0) + (Number(nums[k-2])||0); continue; }
+    const row = [code, name].concat(nums);
+    seen.set(code, row); out.push(row);
   }
   if(!out.length) throw new Error('الملف مفيهوش حسابات.');
   return out;
@@ -6594,10 +6609,14 @@ function parseFinWorkbook(wb){
 // الشهر من اسم الملف: 1-2026 / 2026-01 / 01_2026
 function finMonthFromName(fileName){
   const n = String(fileName || '').replace(/\.[a-z]+$/i,'');
+  const mk = (y, mo)=>{
+    const k = Number(mo);
+    return (k >= 1 && k <= 12) ? `${y}-${String(k).padStart(2,'0')}` : '';
+  };
   let m = n.match(/(20\d\d)[^\d]{1,3}(\d{1,2})(?!\d)/);
-  if(m) return `${m[1]}-${String(Number(m[2])).padStart(2,'0')}`;
+  if(m && mk(m[1], m[2])) return mk(m[1], m[2]);
   m = n.match(/(\d{1,2})[^\d]{1,3}(20\d\d)/);
-  if(m) return `${m[2]}-${String(Number(m[1])).padStart(2,'0')}`;
+  if(m && mk(m[2], m[1])) return mk(m[2], m[1]);
   return '';
 }
 
@@ -6623,11 +6642,19 @@ function finLeaves(rows){
 function finRowsOf(months){
   const acc = new Map();
   months.forEach(m=>{
+    // الأول نجمّع صفوف الشهر نفسه (لو الملف فيه كود متكرر) — بالحركة
+    // *وبالرصيد الختامي* مع بعض، بعدين ندمج الشهر ده على اللي قبله.
+    const one = new Map();
     (finData[m] || []).forEach(r=>{
-      const cur = acc.get(r[0]);
-      if(!cur){ acc.set(r[0], r.slice()); return; }
-      for(let i = 2; i < 8; i++) cur[i] = (Number(cur[i])||0) + (Number(r[i])||0);
-      // الرصيد الختامي مش بيتجمع — بناخد بتاع آخر شهر
+      const d = one.get(r[0]);
+      if(!d){ one.set(r[0], r.slice()); return; }
+      for(let i = 2; i < 8; i++) d[i] = (Number(d[i])||0) + (Number(r[i])||0);
+    });
+    one.forEach((r, code)=>{
+      const cur = acc.get(code);
+      if(!cur){ acc.set(code, r.slice()); return; }
+      // أول المدة بتاع أول شهر، الحركة بتتجمع، والرصيد الختامي بتاع آخر شهر
+      for(let i = 4; i < 6; i++) cur[i] = (Number(cur[i])||0) + (Number(r[i])||0);
       cur[6] = Number(r[6])||0; cur[7] = Number(r[7])||0;
     });
   });
@@ -6662,13 +6689,28 @@ function finIncome(months){
   const othDisc   = pick('44', finCr);
   const othFreight= pick('45', finCr);
   const expenses  = pick('31', finDr);
+  // أي حساب إيراد (4) أو تكلفة/مصروف (3) مش داخل في التصنيفات فوق كان بيضيع
+  // من القائمة خالص. دلوقتي بنلمّه في بند "أخرى" عشان صافي الربح يفضل صح
+  // لو ظهرت أكواد جديدة في شهور جاية.
+  const named = ['41','43','44','45','31','32','33','35'];
+  const isNamed = (code)=> named.some(pf => finStarts(code, pf));
+  const pickRest = (root, val)=> leaves
+    .filter(r => finStarts(r[0], root) && !isNamed(r[0]))
+    .map(r => ({code:r[0], name:r[1], v: val(r)}))
+    .filter(x => x.v !== 0)
+    .sort((a,b)=> Math.abs(b.v) - Math.abs(a.v));
+  const othRev = pickRest('4', finCr);
+  const othExp = pickRest('3', finDr);
+  // حسابات مالهاش علاقة بقائمة الدخل ولا بالميزانية (لا 1 ولا 2 ولا 3 ولا 4)
+  const stray = leaves.filter(r => !/^[1234]/.test(r[0]) && (finDr(r) !== 0 || finClose(r) !== 0))
+    .map(r => ({code:r[0], name:r[1], v: finDr(r)}));
 
   const totalSales = sum(sales);
   const netSales   = totalSales - sum(returns) - sum(discAllow);
   const totalCost  = sum(cost);
   const grossProfit= netSales - totalCost;
-  const otherInc   = sum(othVar) + sum(othDisc) + sum(othFreight);
-  const totalExp   = sum(expenses);
+  const otherInc   = sum(othVar) + sum(othDisc) + sum(othFreight) + sum(othRev);
+  const totalExp   = sum(expenses) + sum(othExp);
   const netProfit  = grossProfit + otherInc - totalExp;
 
   // مساهمة الفروع: مبيعات وتكلفة كل فرع
@@ -6685,6 +6727,7 @@ function finIncome(months){
   })).sort((a,b)=> b.sales - a.sales);
 
   return {sales, returns, discAllow, cost, othVar, othDisc, othFreight, expenses,
+    othRev, othExp, stray,
     totalSales, netSales, totalCost, grossProfit, otherInc, totalExp, netProfit,
     margin: totalSales ? netProfit / totalSales : 0, branches, sum};
 }
@@ -6694,53 +6737,95 @@ function finIncome(months){
 function finBalance(month){
   const months = finMonthsUpTo(month);
   const last = months[months.length - 1];
-  const rows = last ? (finData[last] || []) : [];
+  const rows = last ? finRowsOf([last]) : [];
   const leaves = finLeaves(rows);
-  const bal = (code)=> leaves.filter(r => finStarts(r[0], code))
-    .reduce((a,r)=> a + finClose(r), 0);
-  const detail = (code)=> leaves.filter(r => finStarts(r[0], code) && finClose(r) !== 0)
-    .map(r => ({code:r[0], name:r[1], v: finClose(r)}));
-  // حساب زي العملاء/الموردين بيتقسم: أرصدة مدينة (أصول) ودائنة (التزامات)
-  const split = (code)=>{
-    const d = detail(code);
-    return {dr: d.filter(x=>x.v > 0).reduce((a,x)=>a+x.v,0),
-            cr: -d.filter(x=>x.v < 0).reduce((a,x)=>a+x.v,0), items: d};
+  // كل حساب بيتاخد مرة واحدة بس، وفي الآخر أي حساب فاضل تحت 1 أو 2 بنحطه
+  // في بند "أخرى" — قبل كده كان بيختفي خالص ويطلع فرق توازن من غير سبب واضح.
+  const used = new Set();
+  const take = (code)=>{
+    const out = leaves.filter(r => finStarts(r[0], code) && !used.has(r[0]));
+    out.forEach(r => used.add(r[0]));
+    return out;
   };
-  const fixedCodes = [...new Set(leaves.filter(r=>finStarts(r[0],'11')).map(r=>r[0].slice(0,4)))].sort();
-  const fixed = fixedCodes.map(c=>({code:c, name: (rows.find(r=>r[0]===c)||[])[1] || c, v: bal(c)}))
-    .filter(x=>x.v !== 0);
-  const cust = split('1202'), supp = split('2201');
-  const cash = detail('1201'), custody = detail('1208');
+  const balOf   = (list)=> list.reduce((a,r)=> a + finClose(r), 0);
+  const detailOf= (list)=> list.filter(r => finClose(r) !== 0)
+    .map(r => ({code:r[0], name:r[1], v: finClose(r)}));
+  const neg = (items)=> items.map(x => ({code:x.code, name:x.name, v: -x.v}));
+
+  // الأصول الثابتة (11xx) — مجمّعة على مستوى الأربع خانات
+  const fixedRows = take('11');
+  const fixedCodes = [...new Set(fixedRows.map(r => String(r[0]).slice(0,4)))].sort();
+  const fixed = fixedCodes.map(c=>({
+    code: c, name: (rows.find(r => r[0] === c) || [])[1] || c,
+    v: balOf(fixedRows.filter(r => finStarts(r[0], c))),
+  })).filter(x => x.v !== 0);
+
+  // العملاء والموردين بيتقسموا: الأرصدة المدينة أصول والدائنة التزامات
+  const split = (list)=>{
+    const d = detailOf(list);
+    return {dr: d.filter(x => x.v > 0).reduce((a,x)=> a+x.v, 0),
+            cr: -d.filter(x => x.v < 0).reduce((a,x)=> a+x.v, 0), items: d};
+  };
+  const cust = split(take('1202')), supp = split(take('2201'));
+  const one = (code, name, wantDetail)=>{
+    const l = take(code);
+    const o = {code, name, v: balOf(l)};
+    if(wantDetail) o.items = detailOf(l);
+    return o;
+  };
   const cur = [
-    {code:'1201', name:'الخزائن', v: bal('1201'), items: cash},
-    {code:'1206', name:'البنوك', v: bal('1206')},
+    one('1201', 'الخزائن', true),
+    one('1206', 'البنوك'),
     {code:'1202', name:'العملاء - أرصدة مدينة', v: cust.dr},
-    {code:'1203', name:'المخازن', v: bal('1203')},
-    {code:'1204', name:'مدينون متنوعون', v: bal('1204')},
-    {code:'1207', name:'سلف العاملين', v: bal('1207')},
-    {code:'1208', name:'العهد', v: bal('1208'), items: custody},
-    {code:'1209', name:'أرصدة مدينة أخرى', v: bal('1209')},
+    one('1203', 'المخازن'),
+    one('1204', 'مدينون متنوعون'),
+    one('1207', 'سلف العاملين'),
+    one('1208', 'العهد', true),
+    one('1209', 'أرصدة مدينة أخرى'),
     {code:'2201', name:'دفعات مقدمة لموردين', v: supp.dr},
-  ].filter(x => x.v !== 0 || (x.items && x.items.length));
+  ];
+  const restAssets = take('1');
+  if(restAssets.length) cur.push({code:'', name:'أصول أخرى',
+    v: balOf(restAssets), items: detailOf(restAssets)});
+
+  // الأرباح المرحلة من أرصدة آخر المدة نفسها (3 و4) — كده الرقم مضبوط حتى
+  // لو المستخدم رفع نص السنة بس، والقائمة بتتوازن من غير فروق وهمية.
+  const pl = leaves.filter(r => /^[34]/.test(r[0]));
+  const retained = -pl.reduce((a,r)=> a + finClose(r), 0);
   const inc = finIncome(months);
+
   const equity = [
-    {code:'2101', name:'رأس المال', v: -bal('2101')},
-    {code:'2106', name:'جاري الشركاء', v: -bal('2106')},
-    {code:'', name:'الأرباح المرحلة (من قائمة الدخل)', v: inc.netProfit},
-  ].filter(x=>x.v !== 0);
+    {code:'2101', name:'رأس المال', v: -balOf(take('2101'))},
+    {code:'2106', name:'جاري الشركاء', v: -balOf(take('2106'))},
+  ];
+  const restEq = take('21');
+  if(restEq.length) equity.push({code:'', name:'حقوق ملكية أخرى',
+    v: -balOf(restEq), items: neg(detailOf(restEq))});
+  equity.push({code:'', name:'الأرباح المرحلة (نتيجة النشاط)', v: retained});
+
   const liab = [
     {code:'2201', name:'الموردون - أرصدة دائنة', v: supp.cr},
-    {code:'2207', name:'مستحقات', v: -bal('2207')},
+    one('2207', 'مستحقات'),
     {code:'1202', name:'العملاء - أرصدة دائنة (مقدمات)', v: cust.cr},
-  ].filter(x=>x.v !== 0);
-  const tFixed = fixed.reduce((a,x)=>a+x.v,0);
-  const tCur = cur.reduce((a,x)=>a+x.v,0);
-  const tEq = equity.reduce((a,x)=>a+x.v,0);
-  const tLiab = liab.reduce((a,x)=>a+x.v,0);
-  return {month: last, fixed, cur, equity, liab,
+  ];
+  liab[1].v = -liab[1].v;
+  const restLiab = take('2');
+  if(restLiab.length) liab.push({code:'', name:'التزامات أخرى',
+    v: -balOf(restLiab), items: neg(detailOf(restLiab))});
+
+  const keep = (x)=> x.v !== 0 || (x.items && x.items.length);
+  const fx = fixed.filter(keep), cr2 = cur.filter(keep),
+        eq2 = equity.filter(keep), lb2 = liab.filter(keep);
+  const tFixed = fx.reduce((a,x)=>a+x.v,0);
+  const tCur   = cr2.reduce((a,x)=>a+x.v,0);
+  const tEq    = eq2.reduce((a,x)=>a+x.v,0);
+  const tLiab  = lb2.reduce((a,x)=>a+x.v,0);
+  return {month: last, fixed: fx, cur: cr2, equity: eq2, liab: lb2,
     tFixed, tCur, tAssets: tFixed + tCur, tEq, tLiab, tEqLiab: tEq + tLiab,
-    diff: (tFixed + tCur) - (tEq + tLiab)};
+    diff: (tFixed + tCur) - (tEq + tLiab),
+    retained, periodProfit: inc.netProfit, stray: inc.stray};
 }
+
 
 
 // ---- العرض ----
@@ -6755,11 +6840,22 @@ function finSection(title, items, total, totalLabel){
   if(totalLabel != null) h += finLine(totalLabel, total, 'total-row', 1);
   return h;
 }
+function finPeriodLabel(months){
+  if(!finPeriodSel) return `كل الشهور (${months.length})`;
+  if(finPeriodSel.indexOf('y:') === 0) return `سنة ${finPeriodSel.slice(2)} (${months.length} شهر)`;
+  return finMonthLabel(finPeriodSel);
+}
+// تنبيه لو فيه حسابات برّه كل التصنيفات — أحسن من إنها تضيع في صمت
+function finWarn(I){
+  if(!I.stray || !I.stray.length) return '';
+  const list = I.stray.slice(0,8).map(x => `${x.code} ${x.name}`).join('، ');
+  return `<div class="msg warn">فيه ${I.stray.length} حساب كوده مش بادئ بـ 1 أو 2 أو 3 أو 4، فمش داخل في أي قائمة: ${esc(list)}${I.stray.length>8?' …':''}</div>`;
+}
 function finIncomeView(){
   const months = finSelectedMonths();
   if(!months.length) return {html:'<div class="sub">مفيش بيانات للفترة دي.</div>', count:''};
   const I = finIncome(months);
-  const period = finPeriodSel ? finMonthLabel(finPeriodSel) : `كل الشهور (${months.length})`;
+  const period = finPeriodLabel(months);
   const kpi = `<div class="kpi-row" style="grid-template-columns:repeat(4,minmax(0,1fr))">
     <div class="kpi-card"><div class="kpi-title">إجمالي المبيعات</div>
       <div class="kpi-sum" style="font-size:19px">${finFmt(I.totalSales)}</div></div>
@@ -6778,8 +6874,9 @@ function finIncomeView(){
   t += finSection('2) تكلفة البضاعة المباعة', I.cost, I.totalCost, 'إجمالي تكلفة البضاعة المباعة');
   t += finLine('مجمل الربح', I.grossProfit, 'total-row', 1);
   t += finSection('3) إيرادات أخرى',
-    [].concat(I.othVar, I.othDisc, I.othFreight), I.otherInc, 'إجمالي الإيرادات الأخرى');
-  t += finSection('4) المصروفات العمومية', I.expenses, I.totalExp, 'إجمالي المصروفات العمومية');
+    [].concat(I.othVar, I.othDisc, I.othFreight, I.othRev), I.otherInc, 'إجمالي الإيرادات الأخرى');
+  t += finSection('4) المصروفات العمومية',
+    [].concat(I.expenses, I.othExp), I.totalExp, 'إجمالي المصروفات العمومية');
   t += `<tr class="grp-row"><td colspan="2" style="text-align:right">5) صافي الربح</td></tr>`;
   t += finLine('صافي الربح', I.netProfit, 'total-row', 1);
   t += '</tbody></table></div>';
@@ -6797,7 +6894,7 @@ function finIncomeView(){
     <td class="wh-num">${finFmt(bs.s)}</td><td class="wh-num">${finFmt(bs.c)}</td>
     <td class="wh-num">${finFmt(bs.g)}</td><td class="wh-num">${bs.s?((bs.g/bs.s)*100).toFixed(1):'0.0'}%</td></tr>`;
   b += '</tbody></table></div>';
-  return {html: kpi + t + b, count: `قائمة الدخل — ${period}`};
+  return {html: finWarn(I) + kpi + t + b, count: `قائمة الدخل — ${period}`};
 }
 
 // تفاصيل فرعية: كل بند وتحته حساباته بالكود
@@ -6805,10 +6902,12 @@ function finDetailView(){
   const months = finSelectedMonths();
   if(!months.length) return {html:'<div class="sub">مفيش بيانات للفترة دي.</div>', count:''};
   const I = finIncome(months);
+  const period = finPeriodLabel(months);
   const blocks = [
     ['المبيعات', I.sales], ['مردود المبيعات', I.returns], ['خصم مسموح به', I.discAllow],
     ['تكلفة البضاعة المباعة', I.cost], ['إيرادات متنوعة', I.othVar], ['خصم مكتسب', I.othDisc],
-    ['إيرادات النقل', I.othFreight], ['المصروفات العمومية', I.expenses],
+    ['إيرادات النقل', I.othFreight], ['إيرادات أخرى غير مصنفة', I.othRev],
+    ['المصروفات العمومية', I.expenses], ['مصروفات أخرى غير مصنفة', I.othExp],
   ];
   let h = `<div class="tbl-wrap"><table><thead><tr><th>الكود</th><th>الحساب</th><th>القيمة</th></tr></thead><tbody>`;
   blocks.forEach(([title, items])=>{
@@ -6823,7 +6922,7 @@ function finDetailView(){
   });
   h += '</tbody></table></div>';
   const n = blocks.reduce((a,[,items])=>a+items.length, 0);
-  return {html: h, count: `${n} حساب فرعي`};
+  return {html: finWarn(I) + h, count: `${n} حساب فرعي`};
 }
 
 function finBalanceView(){
@@ -6851,7 +6950,11 @@ function finBalanceView(){
   h += `<tr class="total-row"><td colspan="2" style="text-align:right">فرق التوازن (المفروض صفر)</td>
     <td class="wh-num" style="color:${Math.abs(B.diff)<1?'inherit':'var(--danger)'}">${finFmt(B.diff)}</td></tr>`;
   h += '</tbody></table></div>';
-  return {html: h, count: `المركز المالي كما في ${finMonthLabel(B.month)}`};
+  let note = finWarn(B);
+  if(Math.abs(B.retained - B.periodProfit) > 1){
+    note += `<div class="msg warn">الأرباح المرحلة في الميزان (${finFmt(B.retained)}) مختلفة عن أرباح الشهور المرفوعة (${finFmt(B.periodProfit)}) — يعني فيه شهور من نفس السنة لسه مترفعتش.</div>`;
+  }
+  return {html: note + h, count: `المركز المالي كما في ${finMonthLabel(B.month)}`};
 }
 
 function renderFin(){
@@ -6860,17 +6963,28 @@ function renderFin(){
   const sel = $('finPeriod');
   const months = finMonths();
   const cur = finPeriodSel;
-  sel.innerHTML = `<option value="">كل الشهور</option>` +
-    months.map(m => `<option value="${esc(m)}">${esc(finMonthLabel(m))}</option>`).join('');
-  sel.value = months.includes(cur) ? cur : '';
+  const years = finYears();
+  let opts = `<option value="">كل الشهور</option>`;
+  years.forEach(y=>{
+    opts += `<optgroup label="${esc(y)}"><option value="y:${esc(y)}">كل شهور ${esc(y)}</option>` +
+      months.filter(m => String(m).slice(0,4) === y)
+        .map(m => `<option value="${esc(m)}">${esc(finMonthLabel(m))}</option>`).join('') +
+      `</optgroup>`;
+  });
+  sel.innerHTML = opts;
+  const valid = [''].concat(years.map(y=>'y:'+y), months);
+  sel.value = valid.includes(cur) ? cur : '';
   finPeriodSel = sel.value;
   document.querySelectorAll('#finTabs .tab').forEach(t=>{
     t.classList.toggle('active', t.dataset.ftab === finTab);
   });
   $('finState').textContent = months.length ? `${months.length} شهر مرفوع` : 'مفيش بيانات';
   $('finMonthsLine').innerHTML = months.length
-    ? 'الشهور المرفوعة: ' + months.map(m=>`<span class="pill">${esc(finMonthLabel(m))}</span>`).join('')
+    ? 'الشهور المرفوعة: ' + months.map(m=>`<span class="pill">${esc(finMonthLabel(m))} <a href="#" data-delmonth="${esc(m)}" title="امسح ميزان الشهر ده" style="color:var(--danger);text-decoration:none;font-weight:700">✕</a></span>`).join('')
     : '';
+  $('finMonthsLine').querySelectorAll('[data-delmonth]').forEach(a=>{
+    a.addEventListener('click', (ev)=>{ ev.preventDefault(); finDeleteMonth(a.dataset.delmonth); });
+  });
   if(!months.length){
     $('finArea').innerHTML = '<div class="msg warn">ارفع ميزان مراجعة شهر واحد على الأقل.</div>';
     $('finCount').textContent = '';
@@ -6889,7 +7003,48 @@ function renderFin(){
 }
 
 // ---- الحفظ والتحميل ----
-async function saveFinData(){ await setKey('finData', JSON.stringify(finData)); }
+// أي شهر اتغيّر أو اتمسح من الجهاز ده. بنبعت التعديل ده بس للسيرفر عشان
+// لو جهاز تاني رفع شهر في نفس اللحظة ما يتمسحش.
+let finDirty = {};
+async function saveFinData(){
+  const months = Object.keys(finDirty);
+  if(!months.length){ await setKey('finData', JSON.stringify(finData)); return; }
+  if(serverHasMerge !== false){
+    try{
+      const patch = {};
+      months.forEach(m=>{ patch[m] = finDirty[m] === 'del' ? null : (finData[m] || null); });
+      const r = await window.storage.merge('finData', patch, []);
+      const merged = JSON.parse(r.value) || {};
+      serverHasMerge = true; bumpVersion('finData'); finDirty = {};
+      finData = merged; finUpdateLocalCache();
+      return;
+    }catch(e){
+      if(!/unknown action/i.test(e && e.message || '')) throw e;
+      serverHasMerge = false;   // سيرفر قديم — نكمّل بالطريقة القديمة
+    }
+  }
+  let server = null;
+  try{ const r = await window.storage.get('finData'); server = JSON.parse(r.value) || {}; }
+  catch(e){ server = isMissingKey(e) ? {} : null; }
+  if(server === null){ await setKey('finData', JSON.stringify(finData)); finDirty = {}; return; }
+  months.forEach(m=>{
+    if(finDirty[m] === 'del') delete server[m];
+    else if(finData[m]) server[m] = finData[m];
+  });
+  await setKey('finData', JSON.stringify(server));
+  finData = server; finDirty = {}; finUpdateLocalCache();
+}
+async function finDeleteMonth(m){
+  if(!m || !finData[m]) return;
+  if(!confirm(`متأكد إنك عايز تمسح ميزان ${finMonthLabel(m)}؟`)) return;
+  delete finData[m];
+  finDirty[m] = 'del';
+  if(finPeriodSel === m) finPeriodSel = '';
+  finUpdateLocalCache();
+  try{ await saveFinData(); }
+  catch(e){ scheduleSave('finData', saveFinData, 'القوائم المالية'); }
+  renderFin();
+}
 function finUpdateLocalCache(){
   try{ localStorage.setItem('cache:finData', JSON.stringify(finData)); }catch(e){}
 }
@@ -6921,6 +7076,7 @@ if($('finFile')){
       const rows = parseFinWorkbook(wb);
       const isNew = !finData[month];
       finData[month] = rows;
+      finDirty[month] = 1;
       finUpdateLocalCache();
       try{ await saveFinData(); }
       catch(e){ scheduleSave('finData', saveFinData, 'القوائم المالية'); }
@@ -6944,9 +7100,17 @@ if($('finFile')){
 }
 
 // ---- التصدير ----
+// الأرقام العشرية بتطلع من الحساب بذيل زي 3438260.059999999 — بنقرّبها
+// لقرشين قبل التصدير عشان ملف الإكسل يبقى نضيف.
+function finRoundAoa(aoa){
+  aoa.forEach(r => r.forEach((v, i)=>{
+    if(typeof v === 'number' && isFinite(v)) r[i] = Math.round(v * 100) / 100;
+  }));
+  return aoa;
+}
 function finExportAoa(){
   const months = finSelectedMonths();
-  const period = finPeriodSel ? finMonthLabel(finPeriodSel) : 'كل الشهور';
+  const period = finPeriodLabel(months);
   if(finTab === 'balance'){
     const B = finBalance(months[months.length-1]);
     const aoa = [['الكود','البند','الرصيد']];
@@ -6962,21 +7126,22 @@ function finExportAoa(){
     push('رابعاً: الالتزامات المتداولة'); rows(B.liab); aoa.push(['','إجمالي الالتزامات المتداولة', B.tLiab]);
     aoa.push(['','إجمالي حقوق الملكية والالتزامات', B.tEqLiab]);
     aoa.push(['','فرق التوازن', B.diff]);
-    return {aoa, numFrom:2, title:`المركز المالي — ${finMonthLabel(B.month)}`, sheet:'المركز المالي'};
+    return {aoa: finRoundAoa(aoa), numFrom:2, title:`المركز المالي — ${finMonthLabel(B.month)}`, sheet:'المركز المالي'};
   }
   const I = finIncome(months);
   if(finTab === 'detail'){
     const aoa = [['الكود','الحساب','القيمة']];
     const blocks = [['المبيعات', I.sales], ['مردود المبيعات', I.returns], ['خصم مسموح به', I.discAllow],
       ['تكلفة البضاعة المباعة', I.cost], ['إيرادات متنوعة', I.othVar], ['خصم مكتسب', I.othDisc],
-      ['إيرادات النقل', I.othFreight], ['المصروفات العمومية', I.expenses]];
+      ['إيرادات النقل', I.othFreight], ['إيرادات أخرى غير مصنفة', I.othRev],
+      ['المصروفات العمومية', I.expenses], ['مصروفات أخرى غير مصنفة', I.othExp]];
     blocks.forEach(([t, items])=>{
       if(!items.length) return;
       aoa.push(['', t, '']);
       items.forEach(x=> aoa.push([x.code, x.name, x.v]));
       aoa.push(['', 'إجمالي ' + t, I.sum(items)]);
     });
-    return {aoa, numFrom:2, title:`تفاصيل القوائم الفرعية — ${period}`, sheet:'تفاصيل فرعية'};
+    return {aoa: finRoundAoa(aoa), numFrom:2, title:`تفاصيل القوائم الفرعية — ${period}`, sheet:'تفاصيل فرعية'};
   }
   const aoa = [['البند','القيمة']];
   const sec = (t, items, total, tl)=>{
@@ -6990,8 +7155,8 @@ function finExportAoa(){
   aoa.push(['   صافي المبيعات', I.netSales]);
   sec('2) تكلفة البضاعة المباعة', I.cost, I.totalCost, 'إجمالي تكلفة البضاعة المباعة');
   aoa.push(['   مجمل الربح', I.grossProfit]);
-  sec('3) إيرادات أخرى', [].concat(I.othVar, I.othDisc, I.othFreight), I.otherInc, 'إجمالي الإيرادات الأخرى');
-  sec('4) المصروفات العمومية', I.expenses, I.totalExp, 'إجمالي المصروفات العمومية');
+  sec('3) إيرادات أخرى', [].concat(I.othVar, I.othDisc, I.othFreight, I.othRev), I.otherInc, 'إجمالي الإيرادات الأخرى');
+  sec('4) المصروفات العمومية', [].concat(I.expenses, I.othExp), I.totalExp, 'إجمالي المصروفات العمومية');
   aoa.push(['5) صافي الربح', '']);
   aoa.push(['   صافي الربح', I.netProfit]);
   aoa.push(['   هامش صافي الربح', I.margin]);
@@ -6999,7 +7164,7 @@ function finExportAoa(){
   aoa.push(['مساهمة الفروع', '']);
   aoa.push(['الفرع', 'صافي المبيعات', 'التكلفة', 'مجمل الربح']);
   I.branches.forEach(x=> aoa.push([x.branch, x.sales, x.cost, x.gross]));
-  return {aoa, numFrom:1, title:`قائمة الدخل — ${period}`, sheet:'قائمة الدخل'};
+  return {aoa: finRoundAoa(aoa), numFrom:1, title:`قائمة الدخل — ${period}`, sheet:'قائمة الدخل'};
 }
 if($('finExcelBtn')){
   $('finExcelBtn').addEventListener('click', ()=>{
