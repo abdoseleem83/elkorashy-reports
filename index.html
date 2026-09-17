@@ -797,7 +797,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v98';
+const APP_VERSION = 'v99';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4580,6 +4580,10 @@ async function renderReportCanvas(html){
     // مش مضمون وبيدي أرقام غلط.
     const hostTop = holder.getBoundingClientRect().top;
     const ends = [];
+    // قطع إجباري: أي عنصر عليه .pdf-break لازم يبدأ صفحة جديدة (بنستخدمه
+    // عشان كل قطاع يطلع في ورقة لوحده، ولو القطاع أخد أكتر من ورقة اللي
+    // بعده ما يتلزقش في آخرها).
+    const breaks = [];
     holder.querySelectorAll('.blk').forEach(el => {
       ends.push({y: el.getBoundingClientRect().bottom - hostTop, thead: null});
     });
@@ -4592,6 +4596,11 @@ async function renderReportCanvas(html){
         ends.push({y: row.getBoundingClientRect().bottom - hostTop, thead: {top, bottom}});
       });
     });
+    holder.querySelectorAll('.pdf-break').forEach(el => {
+      const y = el.getBoundingClientRect().top - hostTop;
+      if(y > 1) breaks.push(y);
+    });
+    breaks.sort((a,b)=> a - b);
     ends.sort((a,b)=> a.y - b.y);
     const canvas = await html2canvas(holder, {
       scale: PDF_SCALE,
@@ -4604,7 +4613,7 @@ async function renderReportCanvas(html){
     // من العنصر (فراغ زايد تحت)، والحساب بالارتفاع كان بيوسّع نقط القطع فيتقطع
     // الجدول في نص صف. العرض دايمًا مضبوط، والمقياس واحد في الاتجاهين.
     const k = canvas.width / (holder.scrollWidth || 1);
-    return {canvas, stops: ends.map(e => ({
+    return {canvas, breaks: breaks.map(y => y * k), stops: ends.map(e => ({
       y: e.y * k,
       thead: e.thead ? {top: e.thead.top * k, bottom: e.thead.bottom * k} : null,
     }))};
@@ -4646,7 +4655,8 @@ async function renderPdfFromHtml(body, opts){
     const headRes = await renderReportCanvas(`<div class="blk">${headerHtml}</div>`);
     const headCanvas = headRes.canvas;
     const contentRes = await renderReportCanvas(body);
-    const { canvas, stops } = contentRes;
+    const { canvas, stops, breaks } = contentRes;
+    const breaksPx = (breaks || []).slice();
 
     // ---- 3) التوزيع على الصفحات عند نقط القطع بس ----
     const { jsPDF } = window.jspdf;
@@ -4693,13 +4703,18 @@ async function renderPdfFromHtml(body, opts){
     const availPx = (bottomY - rowsTop) / pxToMm;
 
     const limit = cursor + availPx;
+    // فيه قطع إجباري قبل نهاية الصفحة؟ اقطع عنده بالظبط عشان اللي بعده
+    // يبدأ في ورقة جديدة.
+    const forced = breaksPx.find(y => y > cursor + MIN_SLICE_PX && y <= limit);
     // آخر نقطة قطع مسموحة جوه المساحة المتاحة
     let cut = 0;
-    for(const v of stopsPx){ if(v.y > cursor + MIN_SLICE_PX && v.y + BLEED <= limit) cut = v.y + BLEED; }
+    if(forced){ cut = forced; }
+    else for(const v of stopsPx){ if(v.y > cursor + MIN_SLICE_PX && v.y + BLEED <= limit) cut = v.y + BLEED; }
     // كتلة أطول من صفحة كاملة (نادر) — نقطعها بالمساحة عشان ما ندخلش في لوب
     if(!cut) cut = Math.min(limit, contentEnd);
-    // الباقي بعد القطع ضئيل؟ خده مع الصفحة دي بدل ما نفتحله صفحة لوحده
-    if(cut >= contentEnd - MIN_SLICE_PX) cut = contentEnd;
+    // الباقي بعد القطع ضئيل؟ خده مع الصفحة دي بدل ما نفتحله صفحة لوحده —
+    // إلا لو فيه قطع إجباري جاي، ساعتها لازم نحترمه.
+    if(cut >= contentEnd - MIN_SLICE_PX && !breaksPx.some(y => y > cut + MIN_SLICE_PX)) cut = contentEnd;
     // الصفحة بتتفتح هنا، بعد ما اتأكدنا إن فيه محتوى فعلاً
     if(!first) pdf.addPage();
     first = false;
@@ -5001,7 +5016,7 @@ function whBaseName(name){
 }
 function whColorOf(name){
   const it = whCatalog[name];
-  return (it && it.color) || 'بدون لون';
+  return (it && it.color) || '—';
 }
 
 // نطاق تصدير الجرد — **اختيار متعدد**: ['short'] أو ['over'] أو الاتنين مع
@@ -5840,14 +5855,19 @@ function whColorPivot(rows){
   return {colors, groups};
 }
 
-// مقارنة الألوان: رأس من سطرين (لون فوق ومخازنه تحت)، وبعدين عمود "اللفة"
-// لكل لون، وفي الآخر "الكل".
-function whColorCompareView(){
-  const rows = whCompareRows();
-  if(!rows.length) return {html:'<div class="sub">مفيش أصناف تطابق الفلتر.</div>', count:''};
-  const {colors, groups} = whColorPivot(rows);
-  const S = COMPARE_STORES, C = colors;
-  const width = 1 + C.length * S.length + 1;   // الصنف + (لون×مخزن) + الإجمالي
+// ألوان قطاع معيّن (اللي فيه أصناف فعلًا) — كل قطاع بيتعرض بألوانه هو بس
+// بدل ما كل الجداول تاخد كل الألوان وتطلع أعمدة فاضية ومزحومة.
+function whGroupColors(g, allColors){
+  return allColors.filter(c => g.items.some(it => it.q[c] &&
+    COMPARE_STORES.some(w => (it.q[c][w] || 0) !== 0)));
+}
+
+// جدول قطاع واحد في مقارنة الألوان (بيستخدمه العرض على الشاشة والـPDF).
+function whColorGroupTable(g, colors, opts){
+  opts = opts || {};
+  const S = COMPARE_STORES;
+  const C = colors.length ? colors : ['—'];
+  const width = 1 + C.length * S.length + 1;
   const zeros = ()=> C.map(()=> S.map(()=>0));
   const addTo = (acc, it)=> C.forEach((c,ci)=> S.forEach((w,si)=>{ acc[ci][si] += (it.q[c] && it.q[c][w]) || 0; }));
   const cells = (acc)=>{
@@ -5856,30 +5876,61 @@ function whColorCompareView(){
     h += `<td class="wh-num">${whFmt(acc.reduce((a,r)=>a + r.reduce((x,y)=>x+y,0), 0))}</td>`;
     return h;
   };
-  let html = whCompareModeBar() + `<div class="sub" style="margin-bottom:8px">الأرقام <b>باللفة</b>، والصنف في سطر واحد
-    وأعمدته حسب اللون، و<b>الإجمالي</b> = مجموع الصنف في كل الألوان والفروع.</div>
-    <div class="tbl-wrap"><table><thead>
-    <tr><th rowspan="2">الصنف</th>
-      ${C.map(c=>`<th colspan="${S.length}">${esc(c)}</th>`).join('')}
-      <th rowspan="2">الإجمالي</th></tr>
-    <tr>${C.map(()=> S.map(w=>`<th>${esc(w)}</th>`).join('')).join('')}</tr>
-    </thead><tbody>`;
-  const gAll = zeros();
-  groups.forEach(g=>{
-    const gTot = zeros();
-    html += `<tr class="total-row"><td colspan="${width}" style="text-align:right">◆ ${esc(g.main)}</td></tr>`;
-    g.items.forEach(it=>{
-      const acc = zeros(); addTo(acc, it); addTo(gTot, it); addTo(gAll, it);
-      html += `<tr><td style="text-align:right">${esc(it.base)}</td>${cells(acc)}</tr>`;
-    });
-    html += `<tr class="total-row"><td style="text-align:right">إجمالي ${esc(g.main)}</td>${cells(gTot)}</tr>`;
+  const gTot = zeros();
+  let rows = '';
+  g.items.forEach(it=>{
+    const acc = zeros(); addTo(acc, it); addTo(gTot, it);
+    rows += `<tr><td style="text-align:right">${esc(it.base)}</td>${cells(acc)}</tr>`;
   });
-  html += `<tr class="total-row"><td style="text-align:right">الإجمالي العام</td>${cells(gAll)}</tr>`;
-  html += '</tbody></table></div>';
-  const n = groups.reduce((a,g)=> a + g.items.length, 0);
-  return {html, count: `${n} صنف × ${C.length} لون — بالّلفة`};
+  const total = gTot.reduce((a,r)=>a + r.reduce((x,y)=>x+y,0), 0);
+  // قطاع كل أصنافه من غير لون؟ رأس من سطر واحد (مفيش داعي لشريط لون فاضي)
+  const plain = C.length === 1 && C[0] === '—';
+  // جدول واسع (ألوان كتير)؟ أسماء مختصرة وخط أصغر — أسماء المخازن الطويلة
+  // كانت بتتكسر حرف ورا حرف في الأعمدة الضيقة.
+  const wide = !plain && C.length * S.length >= 6;
+  const shortStore = (w)=>{
+    if(!wide) return w;
+    if(/اسكندر/.test(w)) return 'إسك.';
+    if(/المصنع/.test(w)) return 'مصنع';
+    return w.length > 6 ? w.slice(0,5) + '.' : w;
+  };
+  const totalLabel = wide ? 'الكل' : 'الإجمالي';
+  const head = plain
+    ? `<tr><th>الصنف</th>${S.map(w=>`<th>${esc(w)}</th>`).join('')}<th>الإجمالي</th></tr>`
+    : `<tr><th rowspan="2">الصنف</th>
+        ${C.map(c=>`<th colspan="${S.length}">${esc(c)}</th>`).join('')}
+        <th rowspan="2">${totalLabel}</th></tr>
+      <tr>${C.map(()=> S.map(w=>`<th>${esc(shortStore(w))}</th>`).join('')).join('')}</tr>`;
+  const wideCss = wide
+    ? `<style>.wide-cmp th{font-size:11.5px;padding:5px 2px;white-space:nowrap}
+       .wide-cmp td{font-size:12px;padding:5px 3px}
+       .wide-cmp td:first-child,.wide-cmp th:first-child{width:24%}</style>` : '';
+  const html = `${wideCss}<div class="blk${opts.breakPage ? ' pdf-break' : ''}">
+    <div class="grp-title" style="font-size:16px">◆ ${esc(g.main)}</div>
+    <div class="tbl-wrap"><table class="${wide ? 'wide-cmp' : ''}"><thead>${head}
+    </thead><tbody>${rows}
+      <tr class="total-row"><td style="text-align:right">إجمالي ${esc(g.main)}</td>${cells(gTot)}</tr>
+    </tbody></table></div></div>`;
+  return {html, total, width};
 }
 
+// مقارنة الألوان: كل قطاع في جدول لوحده بألوانه، وفي الآخر إجمالي عام.
+function whColorCompareView(){
+  const rows = whCompareRows();
+  if(!rows.length) return {html:'<div class="sub">مفيش أصناف تطابق الفلتر.</div>', count:''};
+  const {colors, groups} = whColorPivot(rows);
+  let html = whCompareModeBar() + `<div class="sub" style="margin-bottom:8px">الأرقام <b>باللفة</b>.
+    كل قطاع في جدول لوحده وبألوانه هو بس، والصنف في سطر واحد وأعمدته حسب اللون.</div>`;
+  let grand = 0, n = 0;
+  groups.forEach(g=>{
+    const t = whColorGroupTable(g, whGroupColors(g, colors));
+    html += t.html; grand += t.total; n += g.items.length;
+  });
+  html += `<div class="blk"><table><tbody><tr class="total-row">
+    <td style="text-align:right">الإجمالي العام</td>
+    <td class="wh-num" style="width:30%">${whFmt(grand)}</td></tr></tbody></table></div>`;
+  return {html, count: `${n} صنف في ${groups.length} قطاع — بالّلفة`};
+}
 function whCompareView(){
   if(whCompareMode === 'colors') return whColorCompareView();
   const rows = whCompareRows();
@@ -6682,11 +6733,18 @@ function whExportAoa(){
     aoa.push(rowOf('الإجمالي العام', gAll)); kinds.push('summain');
     // رأس PDF من سطرين (اللون فوق ومخازنه تحته) — الرأس المسطّح
     // ("ابيض — طنطا") كان بيتلخبط في أعمدة ضيقة ويطلع حروف مكسّرة.
-    const pdfHead = `<tr><th rowspan="2">الصنف</th>` +
-      C.map(c=>`<th colspan="${S.length}">${esc(c)}</th>`).join('') +
-      `<th rowspan="2">الإجمالي</th></tr><tr>` +
-      C.map(()=> S.map(w=>`<th>${esc(w)}</th>`).join('')).join('') + `</tr>`;
-    return {aoa, kinds, numFrom:1, noGrand:true, pdfHead, nameCol:0,
+    // الـPDF: كل قطاع جدول لوحده بألوانه هو بس، وبيبدأ صفحة جديدة (.pdf-break)
+    // أول قطاع بيكمّل مع عنوان التقرير في نفس الصفحة — القطع الإجباري
+    // للقطاعات اللي بعده بس، وإلا كانت الصفحة الأولى بتطلع فاضية.
+    let pdfBody = '', grand = 0;
+    groups.forEach((g, gi)=>{
+      const t = whColorGroupTable(g, whGroupColors(g, colors), {breakPage: gi > 0});
+      pdfBody += t.html; grand += t.total;
+    });
+    pdfBody += `<div class="blk"><table><tbody><tr class="total-row">
+      <td style="text-align:right">الإجمالي العام</td>
+      <td class="num" style="width:30%">${whFmt(grand)}</td></tr></tbody></table></div>`;
+    return {aoa, kinds, numFrom:1, noGrand:true, pdfBody, nameCol:0,
       title:'مقارنة أرصدة الفروع بالألوان (باللفة)', sheet:'مقارنة بالألوان'};
   }
   if(whTab === 'compare'){
@@ -6806,7 +6864,7 @@ $('whExcelBtn').addEventListener('click', ()=>{
 
 $('whPdfBtn').addEventListener('click', async ()=>{
   if(!Object.keys(whCatalog).length){ alert('ارفع دليل الأصناف الأول.'); return; }
-  const {aoa, title, kinds, numFrom, noGrand, pdfHead, nameCol} = whExportAoa();
+  const {aoa, title, kinds, numFrom, noGrand, pdfBody, nameCol} = whExportAoa();
   if(aoa.length < 2){ alert('مفيش بيانات في الجدول ده.'); return; }
   if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
   const numAt = numFrom == null ? 3 : numFrom;
@@ -6828,9 +6886,10 @@ $('whPdfBtn').addEventListener('click', async ()=>{
     // بيحدد عرض العمود التاني — من غير التصحيح ده الأسماء بتتزنق.
     const nameFix = nameCol === 0
       ? `<style>td:nth-child(2),th:nth-child(2){width:auto}
-         td:first-child,th:first-child{width:26%;text-align:right}</style>` : '';
+         td:first-child,th:first-child{width:30%;text-align:right}
+         .grp-title{font-size:16px;margin-top:2px}</style>` : '';
     let tbl = nameFix + `<div class="tbl-wrap"><table style="font-size:13px"><thead>` +
-      (pdfHead || ('<tr>' + head.map(h=>`<th>${esc(h)}</th>`).join('') + '</tr>')) + '</thead><tbody>' +
+      ('<tr>' + head.map(h=>`<th>${esc(h)}</th>`).join('') + '</tr>') + '</thead><tbody>' +
       body.map((r,i)=>{
         const k = kindOf(i);
         if(k === 'main') return labelHtml(r, 'total-row');
@@ -6851,7 +6910,10 @@ $('whPdfBtn').addEventListener('click', async ()=>{
     if(!noGrand) tbl += `<table style="font-size:13px;margin-top:-1px"><tbody>${rowHtml(sums, 'total-row', true)}</tbody></table>`;
     pdfNeededW = 0;
     PDF_RENDER_W = PDF_WIDTH_BY_SIZE.large;
-    const html = `<div class="blk"><div class="grp-title">${esc(title)}</div>${tbl}</div>`;
+    // pdfBody = بناء خاص (كل قطاع جدول لوحده في صفحة) بدل الجدول الواحد الطويل
+    const html = pdfBody
+      ? (nameFix + `<div class="blk"><div class="grp-title">${esc(title)}</div></div>` + pdfBody)
+      : `<div class="blk"><div class="grp-title">${esc(title)}</div>${tbl}</div>`;
     whReportMode = true;
     await renderPdfFromHtml(html, {
       subtitle: title,
