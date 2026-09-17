@@ -797,7 +797,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v97';
+const APP_VERSION = 'v98';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -5847,25 +5847,22 @@ function whColorCompareView(){
   if(!rows.length) return {html:'<div class="sub">مفيش أصناف تطابق الفلتر.</div>', count:''};
   const {colors, groups} = whColorPivot(rows);
   const S = COMPARE_STORES, C = colors;
-  const width = 1 + C.length * S.length + C.length + 1;   // الصنف + (لون×مخزن) + لفة لكل لون + الكل
+  const width = 1 + C.length * S.length + 1;   // الصنف + (لون×مخزن) + الإجمالي
   const zeros = ()=> C.map(()=> S.map(()=>0));
   const addTo = (acc, it)=> C.forEach((c,ci)=> S.forEach((w,si)=>{ acc[ci][si] += (it.q[c] && it.q[c][w]) || 0; }));
   const cells = (acc)=>{
     let h = '';
     C.forEach((c,ci)=> S.forEach((w,si)=>{ h += `<td class="wh-num">${whFmt(acc[ci][si])}</td>`; }));
-    C.forEach((c,ci)=>{ h += `<td class="wh-num">${whFmt(acc[ci].reduce((a,b)=>a+b,0))}</td>`; });
     h += `<td class="wh-num">${whFmt(acc.reduce((a,r)=>a + r.reduce((x,y)=>x+y,0), 0))}</td>`;
     return h;
   };
-  let html = whCompareModeBar() + `<div class="sub" style="margin-bottom:8px">الأرقام <b>باللفة</b>، والصنف في سطر واحد وأعمدته حسب اللون.
-    <b>اللفة</b> = إجمالي اللون في الفروع، و<b>الكل</b> = إجمالي الصنف كله.</div>
+  let html = whCompareModeBar() + `<div class="sub" style="margin-bottom:8px">الأرقام <b>باللفة</b>، والصنف في سطر واحد
+    وأعمدته حسب اللون، و<b>الإجمالي</b> = مجموع الصنف في كل الألوان والفروع.</div>
     <div class="tbl-wrap"><table><thead>
     <tr><th rowspan="2">الصنف</th>
       ${C.map(c=>`<th colspan="${S.length}">${esc(c)}</th>`).join('')}
-      ${C.map(c=>`<th>${esc(c)}</th>`).join('')}
       <th rowspan="2">الإجمالي</th></tr>
-    <tr>${C.map(()=> S.map(w=>`<th>${esc(w)}</th>`).join('')).join('')}
-      ${C.map(()=>`<th>اللفة</th>`).join('')}</tr>
+    <tr>${C.map(()=> S.map(w=>`<th>${esc(w)}</th>`).join('')).join('')}</tr>
     </thead><tbody>`;
   const gAll = zeros();
   groups.forEach(g=>{
@@ -6659,7 +6656,6 @@ function whExportAoa(){
     const S = COMPARE_STORES, C = colors;
     const head1 = ['الصنف'];
     C.forEach(c => S.forEach(w => head1.push(`${c} — ${w}`)));
-    C.forEach(c => head1.push(`${c} (اللفة)`));
     head1.push('الإجمالي');
     const aoa = [head1];
     const kinds = [null];
@@ -6669,7 +6665,6 @@ function whExportAoa(){
     const rowOf = (label, acc)=>{
       const out = [label];
       C.forEach((c,ci)=> S.forEach((w,si)=> out.push(acc[ci][si])));
-      C.forEach((c,ci)=> out.push(acc[ci].reduce((a,b)=>a+b,0)));
       out.push(acc.reduce((a,r)=>a + r.reduce((x,y)=>x+y,0), 0));
       return out;
     };
@@ -6685,7 +6680,13 @@ function whExportAoa(){
       aoa.push(rowOf('إجمالي ' + g.main, gTot)); kinds.push('summain');
     });
     aoa.push(rowOf('الإجمالي العام', gAll)); kinds.push('summain');
-    return {aoa, kinds, numFrom:1, noGrand:true,
+    // رأس PDF من سطرين (اللون فوق ومخازنه تحته) — الرأس المسطّح
+    // ("ابيض — طنطا") كان بيتلخبط في أعمدة ضيقة ويطلع حروف مكسّرة.
+    const pdfHead = `<tr><th rowspan="2">الصنف</th>` +
+      C.map(c=>`<th colspan="${S.length}">${esc(c)}</th>`).join('') +
+      `<th rowspan="2">الإجمالي</th></tr><tr>` +
+      C.map(()=> S.map(w=>`<th>${esc(w)}</th>`).join('')).join('') + `</tr>`;
+    return {aoa, kinds, numFrom:1, noGrand:true, pdfHead, nameCol:0,
       title:'مقارنة أرصدة الفروع بالألوان (باللفة)', sheet:'مقارنة بالألوان'};
   }
   if(whTab === 'compare'){
@@ -6805,7 +6806,7 @@ $('whExcelBtn').addEventListener('click', ()=>{
 
 $('whPdfBtn').addEventListener('click', async ()=>{
   if(!Object.keys(whCatalog).length){ alert('ارفع دليل الأصناف الأول.'); return; }
-  const {aoa, title, kinds, numFrom, noGrand} = whExportAoa();
+  const {aoa, title, kinds, numFrom, noGrand, pdfHead, nameCol} = whExportAoa();
   if(aoa.length < 2){ alert('مفيش بيانات في الجدول ده.'); return; }
   if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
   const numAt = numFrom == null ? 3 : numFrom;
@@ -6815,14 +6816,21 @@ $('whPdfBtn').addEventListener('click', async ()=>{
     const head = aoa[0], body = aoa.slice(1);
     // الأرقام على الشمال والأسماء على اليمين — زي جداول المبيعات
     // blank = الخانة الفاضية تفضل فاضية (سطور الإجماليات) بدل ما تتحط فيها "-"
+    // عمود الاسم: الأول في وضع الألوان، والتاني في باقي الجداول
+    const nameAt = nameCol === 0 ? 0 : 1;
     const rowHtml = (cells, cls, blank)=> `<tr${cls?` class="${cls}"`:''}>` + cells.map((c,i)=>
-      `<td class="${i>=numAt?'num':''}" style="${i===1?'text-align:right':''}">${esc(c === '' || c == null ? (blank ? '' : '-') : (typeof c === 'number' ? c.toLocaleString('en-US') : String(c)))}</td>`).join('') + '</tr>';
+      `<td class="${i>=numAt?'num':''}" style="${i===nameAt?'text-align:right':''}">${esc(c === '' || c == null ? (blank ? '' : '-') : (typeof c === 'number' ? c.toLocaleString('en-US') : String(c)))}</td>`).join('') + '</tr>';
     // سطر عنوان مجموعة: خانة واحدة على عرض الجدول كله (زي ورقة النواقص)
     const labelHtml = (cells, cls)=>
-      `<tr class="${cls}"><td colspan="${head.length}" style="text-align:right">${esc(cells[1])}</td></tr>`;
+      `<tr class="${cls}"><td colspan="${head.length}" style="text-align:right">${esc(cells[nameAt])}</td></tr>`;
     const kindOf = (i)=> kinds ? kinds[i+1] : null;   // +1 عشان صف الرأس
-    let tbl = `<div class="tbl-wrap"><table style="font-size:13px"><thead><tr>` +
-      head.map(h=>`<th>${esc(h)}</th>`).join('') + '</tr></thead><tbody>' +
+    // عمود الاسم: في وضع الألوان هو العمود الأول مش التاني، وستايل الـPDF
+    // بيحدد عرض العمود التاني — من غير التصحيح ده الأسماء بتتزنق.
+    const nameFix = nameCol === 0
+      ? `<style>td:nth-child(2),th:nth-child(2){width:auto}
+         td:first-child,th:first-child{width:26%;text-align:right}</style>` : '';
+    let tbl = nameFix + `<div class="tbl-wrap"><table style="font-size:13px"><thead>` +
+      (pdfHead || ('<tr>' + head.map(h=>`<th>${esc(h)}</th>`).join('') + '</tr>')) + '</thead><tbody>' +
       body.map((r,i)=>{
         const k = kindOf(i);
         if(k === 'main') return labelHtml(r, 'total-row');
