@@ -797,7 +797,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v96';
+const APP_VERSION = 'v97';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4982,6 +4982,28 @@ let whOrder = {};     // مخزن -> {اسم: كمية مطلوبة}
 let whCount = {};     // مخزن -> {اسم: الجرد الفعلي}
 let whTab = 'balances';
 let whCountMode = 'entry';   // 'entry' إدخال الجرد | 'result' نتيجة الجرد (عجز/زيادة)
+// شكل مقارنة الفروع: 'plain' أعمدة المخازن زي ما هي |
+// 'colors' زي شيت الإكسل القديم: صف واحد للصنف، وأعمدة لكل لون × مخزن،
+// وبعدين إجمالي كل لون، وفي الآخر الإجمالي الكلي.
+let whCompareMode = 'plain';
+
+// الاسم الأساسي للصنف من غير اللون: من عمود "الصنف" في الدليل لو موجود،
+// وإلا بنشيل كلمة اللون من آخر الاسم.
+function whBaseName(name){
+  const it = whCatalog[name];
+  if(it && it.base) return it.base;
+  const color = (it && it.color) || '';
+  if(color){
+    const cut = normName(String(name).split(color).join(' '));
+    if(cut) return cut;
+  }
+  return name;
+}
+function whColorOf(name){
+  const it = whCatalog[name];
+  return (it && it.color) || 'بدون لون';
+}
+
 // نطاق تصدير الجرد — **اختيار متعدد**: ['short'] أو ['over'] أو الاتنين مع
 // بعض، أو ['all'] لكل الجرد. "كل الجرد" لوحده (ورقة كل الأصناف) فلما
 // تختاره بيلغي التانيين والعكس.
@@ -5246,6 +5268,9 @@ function parseWhCatalog(wb){
       sub:  col('المجموعة الفرعية') !== undefined ? normName(rows[i][col('المجموعة الفرعية')]) : '',
       roll: col('محتوي اللفه') !== undefined ? (Number(rows[i][col('محتوي اللفه')]) || 0) : 0,
       color: col('اللون') !== undefined ? normName(rows[i][col('اللون')]) : '',
+      // عمود "الصنف" في شيت data = اسم الصنف من غير اللون (الاسم الأساسي).
+      // منه بنبني مقارنة الألوان: صف واحد للصنف وأعمدة لكل لون.
+      base: col('الصنف') !== undefined ? normName(rows[i][col('الصنف')]) : '',
     };
   }
   return out;
@@ -5769,12 +5794,102 @@ function whCompareRows(){
     whRollsOrPieces(whStoreBalances(w)[r.name], r.name) !== 0));
 }
 
+// زرارين لاختيار شكل المقارنة
+function whCompareModeBar(){
+  return `<div class="fam-bar" style="margin:0 0 10px">
+    <button class="fam-btn${whCompareMode === 'plain' ? '' : ' ghost'}" data-cmpmode="plain">📋 أعمدة المخازن</button>
+    <button class="fam-btn${whCompareMode === 'colors' ? '' : ' ghost'}" data-cmpmode="colors">🎨 مقسّمة بالألوان</button>
+  </div>`;
+}
+
+// بيجمّع صفوف المقارنة حسب الاسم الأساسي واللون:
+// { colors:[...], groups:[{ main, subs:[{ sub, items:[{base, q:{color:{store:رقم}}}] }] }] }
+function whColorPivot(rows){
+  const colorsSet = new Set();
+  const byMain = new Map();
+  rows.forEach(r=>{
+    const color = whColorOf(r.name);
+    colorsSet.add(color);
+    const base = whBaseName(r.name);
+    // في وضع الألوان بنجمّع تحت المجموعة الرئيسية بس — المجموعة الفرعية
+    // نفسها مقسّمة بالألوان (كرافت ابيض / كرافت بيج)، فلو جمّعنا بيها
+    // الصنف هيتكرر في كذا سطر بدل ما يبقى سطر واحد وأعمدته ألوانه.
+    if(!byMain.has(r.main)) byMain.set(r.main, new Map());
+    const items = byMain.get(r.main);
+    if(!items.has(base)) items.set(base, {base, q:{}});
+    const it = items.get(base);
+    if(!it.q[color]) it.q[color] = {};
+    COMPARE_STORES.forEach(w=>{
+      const v = whRollsOrPieces(whStoreBalances(w)[r.name], r.name);
+      it.q[color][w] = (it.q[color][w] || 0) + v;
+    });
+  });
+  // ترتيب الألوان: الشائع الأول وبعدين أبجدي
+  const pref = ['ابيض','بيج','اسود','بني','رمادي','خشبي'];
+  const colors = [...colorsSet].sort((a,b)=>{
+    const ia = pref.indexOf(a), ib = pref.indexOf(b);
+    if(ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    return a.localeCompare(b,'ar');
+  });
+  const groups = [...byMain.entries()]
+    .sort((a,b)=> a[0].localeCompare(b[0],'ar'))
+    .map(([main, items])=>({
+      main,
+      items: [...items.values()].sort((a,b)=> a.base.localeCompare(b.base,'ar')),
+    }));
+  return {colors, groups};
+}
+
+// مقارنة الألوان: رأس من سطرين (لون فوق ومخازنه تحت)، وبعدين عمود "اللفة"
+// لكل لون، وفي الآخر "الكل".
+function whColorCompareView(){
+  const rows = whCompareRows();
+  if(!rows.length) return {html:'<div class="sub">مفيش أصناف تطابق الفلتر.</div>', count:''};
+  const {colors, groups} = whColorPivot(rows);
+  const S = COMPARE_STORES, C = colors;
+  const width = 1 + C.length * S.length + C.length + 1;   // الصنف + (لون×مخزن) + لفة لكل لون + الكل
+  const zeros = ()=> C.map(()=> S.map(()=>0));
+  const addTo = (acc, it)=> C.forEach((c,ci)=> S.forEach((w,si)=>{ acc[ci][si] += (it.q[c] && it.q[c][w]) || 0; }));
+  const cells = (acc)=>{
+    let h = '';
+    C.forEach((c,ci)=> S.forEach((w,si)=>{ h += `<td class="wh-num">${whFmt(acc[ci][si])}</td>`; }));
+    C.forEach((c,ci)=>{ h += `<td class="wh-num">${whFmt(acc[ci].reduce((a,b)=>a+b,0))}</td>`; });
+    h += `<td class="wh-num">${whFmt(acc.reduce((a,r)=>a + r.reduce((x,y)=>x+y,0), 0))}</td>`;
+    return h;
+  };
+  let html = whCompareModeBar() + `<div class="sub" style="margin-bottom:8px">الأرقام <b>باللفة</b>، والصنف في سطر واحد وأعمدته حسب اللون.
+    <b>اللفة</b> = إجمالي اللون في الفروع، و<b>الكل</b> = إجمالي الصنف كله.</div>
+    <div class="tbl-wrap"><table><thead>
+    <tr><th rowspan="2">الصنف</th>
+      ${C.map(c=>`<th colspan="${S.length}">${esc(c)}</th>`).join('')}
+      ${C.map(c=>`<th>${esc(c)}</th>`).join('')}
+      <th rowspan="2">الإجمالي</th></tr>
+    <tr>${C.map(()=> S.map(w=>`<th>${esc(w)}</th>`).join('')).join('')}
+      ${C.map(()=>`<th>اللفة</th>`).join('')}</tr>
+    </thead><tbody>`;
+  const gAll = zeros();
+  groups.forEach(g=>{
+    const gTot = zeros();
+    html += `<tr class="total-row"><td colspan="${width}" style="text-align:right">◆ ${esc(g.main)}</td></tr>`;
+    g.items.forEach(it=>{
+      const acc = zeros(); addTo(acc, it); addTo(gTot, it); addTo(gAll, it);
+      html += `<tr><td style="text-align:right">${esc(it.base)}</td>${cells(acc)}</tr>`;
+    });
+    html += `<tr class="total-row"><td style="text-align:right">إجمالي ${esc(g.main)}</td>${cells(gTot)}</tr>`;
+  });
+  html += `<tr class="total-row"><td style="text-align:right">الإجمالي العام</td>${cells(gAll)}</tr>`;
+  html += '</tbody></table></div>';
+  const n = groups.reduce((a,g)=> a + g.items.length, 0);
+  return {html, count: `${n} صنف × ${C.length} لون — بالّلفة`};
+}
+
 function whCompareView(){
+  if(whCompareMode === 'colors') return whColorCompareView();
   const rows = whCompareRows();
   if(!rows.length) return {html:'<div class="sub">مفيش أصناف تطابق الفلتر.</div>', count:''};
   // المطلوب: عمود لكل مخزن + الإجمالي، والأرقام باللفف، والصفوف
   // متجمّعة: كل مجموعة رئيسية مع بعضها، وجواها كل مجموعة فرعية مع بعضها.
-  let html = `<div class="sub" style="margin-bottom:8px">الأرقام <b>باللفة</b> (الصنف اللي مالوش محتوى لفة بيتحسب بالقطعة).</div>
+  let html = whCompareModeBar() + `<div class="sub" style="margin-bottom:8px">الأرقام <b>باللفة</b> (الصنف اللي مالوش محتوى لفة بيتحسب بالقطعة).</div>
     <div class="tbl-wrap"><table><thead><tr>
     <th>م</th><th>الصنف</th>${COMPARE_STORES.map(w=>`<th>${esc(w)}</th>`).join('')}<th>الإجمالي</th>
   </tr></thead><tbody>`;
@@ -6131,6 +6246,9 @@ function bindWhInputs(){
   bindWhFamButtons();
   document.querySelectorAll('[data-cmode]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ whCountMode = btn.dataset.cmode; renderWh(); });
+  });
+  document.querySelectorAll('[data-cmpmode]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ whCompareMode = btn.dataset.cmpmode; renderWh(); });
   });
   document.querySelectorAll('[data-cscope]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ whToggleScope(btn.dataset.cscope); renderWh(); });
@@ -6534,6 +6652,42 @@ function whExportAoa(){
       aoa.push([i+1, r.name, r.main, r.sub, r.qty, sp.rolls, sp.loose]); });
     return {aoa, title:`أرصدة ${store}`, sheet:`أرصدة-${store}`};
   }
+  if(whTab === 'compare' && whCompareMode === 'colors'){
+    // نفس شكل الشاشة: رأس من سطرين (لون فوق ومخازنه تحت) + إجمالي كل لون + الكل
+    const rows = whCompareRows();
+    const {colors, groups} = whColorPivot(rows);
+    const S = COMPARE_STORES, C = colors;
+    const head1 = ['الصنف'];
+    C.forEach(c => S.forEach(w => head1.push(`${c} — ${w}`)));
+    C.forEach(c => head1.push(`${c} (اللفة)`));
+    head1.push('الإجمالي');
+    const aoa = [head1];
+    const kinds = [null];
+    const width = head1.length;
+    const zeros = ()=> C.map(()=> S.map(()=>0));
+    const addTo = (acc, it)=> C.forEach((c,ci)=> S.forEach((w,si)=>{ acc[ci][si] += (it.q[c] && it.q[c][w]) || 0; }));
+    const rowOf = (label, acc)=>{
+      const out = [label];
+      C.forEach((c,ci)=> S.forEach((w,si)=> out.push(acc[ci][si])));
+      C.forEach((c,ci)=> out.push(acc[ci].reduce((a,b)=>a+b,0)));
+      out.push(acc.reduce((a,r)=>a + r.reduce((x,y)=>x+y,0), 0));
+      return out;
+    };
+    const label = (txt)=>{ const r = new Array(width).fill(''); r[0] = txt; return r; };
+    const gAll = zeros();
+    groups.forEach(g=>{
+      const gTot = zeros();
+      aoa.push(label('◆ ' + g.main)); kinds.push('main');
+      g.items.forEach(it=>{
+        const acc = zeros(); addTo(acc, it); addTo(gTot, it); addTo(gAll, it);
+        aoa.push(rowOf(it.base, acc)); kinds.push(null);
+      });
+      aoa.push(rowOf('إجمالي ' + g.main, gTot)); kinds.push('summain');
+    });
+    aoa.push(rowOf('الإجمالي العام', gAll)); kinds.push('summain');
+    return {aoa, kinds, numFrom:1, noGrand:true,
+      title:'مقارنة أرصدة الفروع بالألوان (باللفة)', sheet:'مقارنة بالألوان'};
+  }
   if(whTab === 'compare'){
     // نفس شكل الشاشة بالظبط: مجمّعة رئيسية ← فرعية بسطور عناوين (زي ورقة
     // النواقص)، من غير عمودي المجموعة والمجموعة الفرعية — عناوين المجموعات
@@ -6651,7 +6805,7 @@ $('whExcelBtn').addEventListener('click', ()=>{
 
 $('whPdfBtn').addEventListener('click', async ()=>{
   if(!Object.keys(whCatalog).length){ alert('ارفع دليل الأصناف الأول.'); return; }
-  const {aoa, title, kinds, numFrom} = whExportAoa();
+  const {aoa, title, kinds, numFrom, noGrand} = whExportAoa();
   if(aoa.length < 2){ alert('مفيش بيانات في الجدول ده.'); return; }
   if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
   const numAt = numFrom == null ? 3 : numFrom;
@@ -6686,7 +6840,7 @@ $('whPdfBtn').addEventListener('click', async ()=>{
       sums[c] = s;
     }
     sums[1] = 'الإجمالي';
-    tbl += `<table style="font-size:13px;margin-top:-1px"><tbody>${rowHtml(sums, 'total-row', true)}</tbody></table>`;
+    if(!noGrand) tbl += `<table style="font-size:13px;margin-top:-1px"><tbody>${rowHtml(sums, 'total-row', true)}</tbody></table>`;
     pdfNeededW = 0;
     PDF_RENDER_W = PDF_WIDTH_BY_SIZE.large;
     const html = `<div class="blk"><div class="grp-title">${esc(title)}</div>${tbl}</div>`;
