@@ -637,6 +637,13 @@
       <label class="chk"><input type="checkbox" id="whHideZero" checked> اخفي الأصناف اللي رصيدها صفر</label>
       <span class="badge" id="whCount"></span>
       <span style="flex:1"></span>
+      <label class="chk" id="whOrientWrap" style="gap:6px" title="اتجاه ورقة الـPDF">📄
+        <select id="whPdfOrient" style="font-size:12.5px">
+          <option value="auto">تلقائي</option>
+          <option value="p">طولي</option>
+          <option value="l">عرضي</option>
+        </select>
+      </label>
       <button class="ghost" id="whExcelBtn">تصدير Excel</button>
       <button class="ghost" id="whPdfBtn">تصدير PDF</button>
       <button id="whImgBtn">تصدير صور</button>
@@ -797,7 +804,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v100';
+const APP_VERSION = 'v101';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -5019,6 +5026,11 @@ function whColorOf(name){
   return (it && it.color) || '—';
 }
 
+// اتجاه ورقة الـPDF في تقارير المخازن: تلقائي (حسب عدد الأعمدة) / طولي /
+// عرضي — المستخدم بيختار وبيتحفظ على الجهاز.
+let whPdfOrient = 'auto';
+try{ whPdfOrient = localStorage.getItem('whPdfOrient') || 'auto'; }catch(e){}
+
 // نطاق تصدير الجرد — **اختيار متعدد**: ['short'] أو ['over'] أو الاتنين مع
 // بعض، أو ['all'] لكل الجرد. "كل الجرد" لوحده (ورقة كل الأصناف) فلما
 // تختاره بيلغي التانيين والعكس.
@@ -6871,6 +6883,13 @@ function whExportAoa(){
   return {aoa, title:`الجرد — ${store}`, sheet:`جرد-${store}`};
 }
 
+if($('whPdfOrient')){
+  $('whPdfOrient').value = whPdfOrient;
+  $('whPdfOrient').addEventListener('change', ()=>{
+    whPdfOrient = $('whPdfOrient').value;
+    try{ localStorage.setItem('whPdfOrient', whPdfOrient); }catch(e){}
+  });
+}
 $('whExcelBtn').addEventListener('click', ()=>{
   if(!Object.keys(whCatalog).length){ alert('ارفع دليل الأصناف الأول.'); return; }
   const {aoa, title, sheet} = whExportAoa();
@@ -6941,7 +6960,8 @@ $('whPdfBtn').addEventListener('click', async ()=>{
     whReportMode = true;
     await renderPdfFromHtml(html, {
       subtitle: title,
-      orient: numCols >= 8 ? 'l' : 'p',
+      // اختيار المستخدم أولًا، وإلا تلقائي حسب عدد الأعمدة
+      orient: whPdfOrient === 'auto' ? (numCols >= 8 ? 'l' : 'p') : whPdfOrient,
       wideCols: numCols,
       fileName: safeFileName(title) + '.pdf',
     });
