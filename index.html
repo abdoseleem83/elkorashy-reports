@@ -112,6 +112,28 @@
   .kpi-title{font-size:14px;font-weight:700;color:var(--thead);margin-bottom:9px}
   .kpi-sum{font-family:Arial,Helvetica,sans-serif;direction:ltr;display:inline-block}
   .kpi-share{color:var(--muted);font-weight:400}
+  /* صف الأربع كروت (الجرد والقوائم المالية): ٤ أعمدة على الشاشة الكبيرة،
+     عمودين على الموبايل عشان الأرقام الكبيرة ما تتقصّش. */
+  /* صف الرفع: الملف سطر، والشهر والزرار سطر — وخانة الشهر عريضة كفاية
+     إنك تقرا الشهر المختار (كانت بتطلع دايرة صغيرة على الموبايل). */
+  #finUploadCard .row{gap:10px;align-items:center}
+  #finFile{flex:1 1 100%;min-width:0}
+  #finUploadCard .chk{flex:1 1 auto}
+  #finMonth{min-width:150px;flex:1 1 auto;font-size:14px;padding:7px 9px;
+    border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text)}
+  #finProcessBtn{flex:0 0 auto}
+  @media (max-width:520px){
+    #finUploadCard .chk{flex:1 1 100%}
+    #finProcessBtn{flex:1 1 100%}
+  }
+  .kpi4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .kpi4 .kpi-card{min-width:0;overflow:hidden}
+  .kpi4 .kpi-title{font-size:13px;margin-bottom:6px}
+  .kpi4 .kpi-sum{font-size:clamp(14px,3.6vw,19px);max-width:100%}
+  @media (max-width:760px){
+    .kpi4{grid-template-columns:1fr 1fr}
+    .kpi4 .kpi-sum{font-size:clamp(15px,4.6vw,20px)}
+  }
   .kpi-pod{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center}
   .kpi-p{border:1px solid var(--border);border-radius:10px;padding:9px 6px;background:var(--panel2)}
   .kpi-m{width:24px;height:24px;line-height:24px;border-radius:50%;margin:0 auto 6px;
@@ -671,13 +693,15 @@
     </div>
     <div class="row" style="margin-top:10px">
       <input type="file" id="finFile" accept=".xls,.xlsx">
-      <label class="chk" style="gap:6px">الشهر
-        <input type="month" id="finMonth" style="font-size:13px">
+      <label class="chk" style="gap:8px">الشهر
+        <input type="month" id="finMonth">
       </label>
       <button id="finProcessBtn" disabled>ارفع الميزان</button>
     </div>
+    <div id="finTarget" class="sub" style="margin-top:8px"></div>
     <div class="sub" style="margin-top:6px">لو اسم الملف فيه الشهر والسنة (زي <b>1-2026</b>) هيتحدد لوحده،
-      وإلا اختاره من الخانة. رفع نفس الشهر تاني بيستبدل القديم.</div>
+      وإلا اختاره من الخانة. عشان ترفع شهر تاني: اختار ملفه، وتأكد إن خانة الشهر
+      بقت على الشهر الجديد.</div>
     <div id="finUploadMsg"></div>
     <div id="finMonthsLine" class="sub" style="margin-top:6px"></div>
   </div>
@@ -852,7 +876,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v103';
+const APP_VERSION = 'v104';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -6184,7 +6208,7 @@ function whCountView(){
     </div>
     <div id="whCountMsg"></div>
   </div>
-  <div class="kpi-row" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+  <div class="kpi-row kpi4">
     <div class="kpi-card"><div class="kpi-title">أصناف اتجردت</div><div class="kpi-sum" id="whCntCounted" style="font-size:20px">${counted}</div></div>
     <div class="kpi-card"><div class="kpi-title">أصناف عجز</div><div class="kpi-sum" id="whCntShortItems" style="font-size:20px;color:var(--danger)">${shortItems}</div>
       <div class="kpi-share" id="whCntShortQty">${shortQty.toLocaleString('en-US',{maximumFractionDigits:2})} قطعة</div></div>
@@ -6636,7 +6660,27 @@ function finLeaves(rows){
       if(set.has(p)) hasChild.add(p);
     }
   });
-  return rows.filter(r => !hasChild.has(r[0]));
+  const out = rows.filter(r => !hasChild.has(r[0]));
+  // لو الأب نفسه متسجل عليه مبلغ زيادة عن مجموع أولاده (قيد اتعمل على
+  // الحساب الأب مباشرة)، رمي الأب كان بيضيّع المبلغ ده من القوائم خالص.
+  // بناخد الفرق كسطر مستقل. بنمشي من الأكواد الطويلة للقصيرة عشان فرق
+  // الأب الأقرب ما يتعدّش مرتين عند الأب اللي فوقه.
+  const parents = rows.filter(r => hasChild.has(r[0]))
+    .sort((a,b)=> String(b[0]).length - String(a[0]).length);
+  parents.forEach(r=>{
+    const code = String(r[0]);
+    const kids = out.filter(x => String(x[0]) !== code && String(x[0]).indexOf(code) === 0);
+    const res = r.slice();
+    for(let i = 2; i < 8; i++){
+      const v = (Number(r[i])||0) - kids.reduce((a,x)=> a + (Number(x[i])||0), 0);
+      res[i] = Math.round(v * 100) / 100;   // نقرّب عشان ذيول الكسور ما تعملش سطر وهمي
+    }
+    const mv = res[5] - res[4], cl = res[7] - res[6];
+    if(Math.abs(mv) > 0.005 || Math.abs(cl) > 0.005){
+      res[1] = r[1] + ' (قيود مباشرة)'; out.push(res);
+    }
+  });
+  return out;
 }
 // كل صفوف الشهور المختارة (مدمجة على مستوى الحساب)
 function finRowsOf(months){
@@ -6665,7 +6709,8 @@ const finStarts = (code, pref)=> String(code).indexOf(pref) === 0;
 function finBranchKey(name){
   const n = normName(name);
   if(/اسكندر/.test(n)) return 'الاسكندرية PVC';
-  if(/اكسا|العاشر|انشاص/.test(n)) return 'اكسا (شامل مصنع انشاص)';
+  if(/انشاص/.test(n)) return 'مصنع انشاص';
+  if(/اكسا|العاشر|المنصور/.test(n)) return 'اكسا';
   if(/شتر|بلسيه/.test(n)) return 'الشتر وبلسيه';
   if(/طنطا/.test(n)) return /pvc/i.test(n) ? 'طنطا PVC' : 'طنطا سبرباي';
   return n.replace(/^.*?-\s*/, '') || n;
@@ -6704,6 +6749,9 @@ function finIncome(months){
   // حسابات مالهاش علاقة بقائمة الدخل ولا بالميزانية (لا 1 ولا 2 ولا 3 ولا 4)
   const stray = leaves.filter(r => !/^[1234]/.test(r[0]) && (finDr(r) !== 0 || finClose(r) !== 0))
     .map(r => ({code:r[0], name:r[1], v: finDr(r)}));
+  // شبكة أمان: لازم مجموع كل حسابات ٣ و٤ يساوي اللي القائمة بتعرضه.
+  // لو فيه فرق يبقى فيه حساب مش متقري وبنقوله للمستخدم بدل ما يعدّي بصمت.
+  const allPl = leaves.filter(r => /^[34]/.test(r[0])).reduce((a,r)=> a + finDr(r), 0);
 
   const totalSales = sum(sales);
   const netSales   = totalSales - sum(returns) - sum(discAllow);
@@ -6712,6 +6760,7 @@ function finIncome(months){
   const otherInc   = sum(othVar) + sum(othDisc) + sum(othFreight) + sum(othRev);
   const totalExp   = sum(expenses) + sum(othExp);
   const netProfit  = grossProfit + otherInc - totalExp;
+  const missing    = -allPl - netProfit;   // المفروض صفر
 
   // مساهمة الفروع: مبيعات وتكلفة كل فرع
   const byBranch = new Map();
@@ -6727,7 +6776,7 @@ function finIncome(months){
   })).sort((a,b)=> b.sales - a.sales);
 
   return {sales, returns, discAllow, cost, othVar, othDisc, othFreight, expenses,
-    othRev, othExp, stray,
+    othRev, othExp, stray, missing,
     totalSales, netSales, totalCost, grossProfit, otherInc, totalExp, netProfit,
     margin: totalSales ? netProfit / totalSales : 0, branches, sum};
 }
@@ -6847,24 +6896,30 @@ function finPeriodLabel(months){
 }
 // تنبيه لو فيه حسابات برّه كل التصنيفات — أحسن من إنها تضيع في صمت
 function finWarn(I){
-  if(!I.stray || !I.stray.length) return '';
-  const list = I.stray.slice(0,8).map(x => `${x.code} ${x.name}`).join('، ');
-  return `<div class="msg warn">فيه ${I.stray.length} حساب كوده مش بادئ بـ 1 أو 2 أو 3 أو 4، فمش داخل في أي قائمة: ${esc(list)}${I.stray.length>8?' …':''}</div>`;
+  let h = '';
+  if(I.stray && I.stray.length){
+    const list = I.stray.slice(0,8).map(x => `${x.code} ${x.name}`).join('، ');
+    h += `<div class="msg warn">فيه ${I.stray.length} حساب كوده مش بادئ بـ 1 أو 2 أو 3 أو 4، فمش داخل في أي قائمة: ${esc(list)}${I.stray.length>8?' …':''}</div>`;
+  }
+  if(I.missing != null && Math.abs(I.missing) > 0.5){
+    h += `<div class="msg err">تنبيه: فيه فرق ${finFmt(I.missing)} بين مجموع حسابات الميزان ومجموع بنود القائمة — يعني فيه حساب مش متقري صح. ابعت الملف للمراجعة.</div>`;
+  }
+  return h;
 }
 function finIncomeView(){
   const months = finSelectedMonths();
   if(!months.length) return {html:'<div class="sub">مفيش بيانات للفترة دي.</div>', count:''};
   const I = finIncome(months);
   const period = finPeriodLabel(months);
-  const kpi = `<div class="kpi-row" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+  const kpi = `<div class="kpi-row kpi4">
     <div class="kpi-card"><div class="kpi-title">إجمالي المبيعات</div>
-      <div class="kpi-sum" style="font-size:19px">${finFmt(I.totalSales)}</div></div>
+      <div class="kpi-sum">${finFmt(I.totalSales)}</div></div>
     <div class="kpi-card"><div class="kpi-title">إجمالي التكلفة</div>
-      <div class="kpi-sum" style="font-size:19px">${finFmt(I.totalCost)}</div></div>
+      <div class="kpi-sum">${finFmt(I.totalCost)}</div></div>
     <div class="kpi-card"><div class="kpi-title">صافي الربح</div>
-      <div class="kpi-sum" style="font-size:19px;color:${I.netProfit>=0?'var(--accent2)':'var(--danger)'}">${finFmt(I.netProfit)}</div></div>
+      <div class="kpi-sum" style="color:${I.netProfit>=0?'var(--accent2)':'var(--danger)'}">${finFmt(I.netProfit)}</div></div>
     <div class="kpi-card"><div class="kpi-title">هامش صافي الربح</div>
-      <div class="kpi-sum" style="font-size:19px">${(I.margin*100).toFixed(2)}%</div></div>
+      <div class="kpi-sum">${(I.margin*100).toFixed(2)}%</div></div>
   </div>`;
   let t = `<div class="tbl-wrap"><table><thead><tr><th>البند</th><th>القيمة</th></tr></thead><tbody>`;
   t += finSection('1) صافي المبيعات', I.sales, I.totalSales, 'إجمالي المبيعات');
@@ -7057,13 +7112,34 @@ async function reloadFinFromServer(silent){
   renderFin();
 }
 
+// بيوضّح الشهر اللي الملف هيتحفظ عليه قبل ما تدوس، ويحذّر لو الشهر ده مرفوع
+function finShowTarget(){
+  const el = $('finTarget');
+  if(!el) return;
+  const f = ($('finFile') || {}).files && $('finFile').files[0];
+  const month = ($('finMonth').value || '').trim();
+  if(!f){ el.innerHTML = ''; return; }
+  if(!month){
+    el.innerHTML = '<span style="color:var(--danger);font-weight:700">اختار الشهر من الخانة — مالقيناهوش في اسم الملف.</span>';
+    return;
+  }
+  el.innerHTML = `هيتحفظ على شهر: <b>${esc(finMonthLabel(month))}</b>` +
+    (finData[month] ? ' <span style="color:var(--danger);font-weight:700">(الشهر ده مرفوع قبل كده — هيستبدل القديم)</span>' : '');
+}
+
 // ---- ربط الشاشة ----
 if($('finFile')){
+  // لما تختار ملف جديد، اسم الملف هو اللي يحكم على الشهر. (قبل كده الخانة
+  // كانت بتفضل على شهر الرفعة اللي فاتت، فملف فبراير كان بيتحفظ فوق يناير
+  // والمستخدم يحس إن التطبيق مش راضي يرفع شهر تاني.)
   $('finFile').addEventListener('change', ()=>{
-    $('finProcessBtn').disabled = !$('finFile').files.length;
-    const guess = finMonthFromName(($('finFile').files[0]||{}).name);
-    if(guess && !$('finMonth').value) $('finMonth').value = guess;
+    const f = $('finFile').files[0];
+    $('finProcessBtn').disabled = !f;
+    const guess = finMonthFromName((f||{}).name);
+    if(guess) $('finMonth').value = guess;
+    finShowTarget();
   });
+  $('finMonth').addEventListener('change', finShowTarget);
   $('finProcessBtn').addEventListener('click', async ()=>{
     const f = $('finFile').files[0];
     if(!f) return;
@@ -7074,6 +7150,10 @@ if($('finFile')){
     try{
       const wb = XLSX.read(await f.arrayBuffer(), {type:'array'});
       const rows = parseFinWorkbook(wb);
+      if(finData[month] && !confirm(`ميزان ${finMonthLabel(month)} مرفوع قبل كده. تحب تستبدله بالملف ده؟`)){
+        $('finUploadMsg').innerHTML = '<div class="msg warn">اتلغى الرفع. غيّر الشهر من الخانة وجرب تاني.</div>';
+        return;
+      }
       const isNew = !finData[month];
       finData[month] = rows;
       finDirty[month] = 1;
@@ -7082,6 +7162,10 @@ if($('finFile')){
       catch(e){ scheduleSave('finData', saveFinData, 'القوائم المالية'); }
       finPeriodSel = month;
       $('finUploadMsg').innerHTML = `<div class="msg ok">اتحفظ ميزان ${esc(finMonthLabel(month))}: ${rows.length} حساب${isNew ? '' : ' (استبدل القديم)'}.</div>`;
+      // نفضّي الخانة عشان الرفعة الجاية تبدأ نضيفة
+      try{ $('finFile').value = ''; }catch(e2){}
+      $('finProcessBtn').disabled = true;
+      finShowTarget();
       renderFin();
     }catch(e){
       $('finUploadMsg').innerHTML = `<div class="msg err">${esc(e.message)}</div>`;
