@@ -1,10 +1,18 @@
-const CACHE_VERSION = 'v94';
+const CACHE_VERSION = 'v95';
 const CACHE_NAME = 'elkorashy-reports-' + CACHE_VERSION;
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
+// مهم: cache.addAll بتفشل كلها لو ملف واحد بس فشل (مفقود أو الشبكة قطعت
+// في نص التحميل — عادي جدًا على الموبايل). وساعتها التثبيت بيفشل، والنسخة
+// الجديدة **مش بتتفعّل أبدًا** والمستخدم يفضل على نسخة قديمة من غير ما
+// يعرف. عشان كده بنخزّن كل ملف لوحده وبنتحمّل فشل أي واحد فيهم.
 self.addEventListener('install', (e) => {
   self.skipWaiting();
-  e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
+  e.waitUntil(
+    caches.open(CACHE_NAME).then(cache =>
+      Promise.all(ASSETS.map(url => cache.add(url).catch(() => null)))
+    ).catch(() => null)
+  );
 });
 
 self.addEventListener('message', (e) => {

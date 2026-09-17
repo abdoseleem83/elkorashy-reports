@@ -797,7 +797,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v94';
+const APP_VERSION = 'v95';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4971,7 +4971,7 @@ $('appLogo').src = LOGO_HEAD;
 // بيرمي ReferenceError (TDZ) جوه try صامت وبيوقّف باقي مسار "افتح من الكاش".
 let activeModule = null;   // مفيش قسم مفتوح غير لما المستخدم يدوس
 
-const WAREHOUSES = ['طنطا','الاسكندريه'];
+const WAREHOUSES = ['طنطا','الاسكندريه','المصنع'];
 let whCatalog = {};   // اسم الصنف -> {main, sub, roll, color}
 let whBalances = {};  // مخزن -> {date, items:{اسم: رصيد بالقطعة}}
 let whOrder = {};     // مخزن -> {اسم: كمية مطلوبة}
@@ -5768,7 +5768,7 @@ function whCompareRows(){
 function whCompareView(){
   const rows = whCompareRows();
   if(!rows.length) return {html:'<div class="sub">مفيش أصناف تطابق الفلتر.</div>', count:''};
-  // المطلوب: طنطا / الاسكندريه / الإجمالي بس، والأرقام باللفف، والصفوف
+  // المطلوب: عمود لكل مخزن + الإجمالي، والأرقام باللفف، والصفوف
   // متجمّعة: كل مجموعة رئيسية مع بعضها، وجواها كل مجموعة فرعية مع بعضها.
   let html = `<div class="sub" style="margin-bottom:8px">الأرقام <b>باللفة</b> (الصنف اللي مالوش محتوى لفة بيتحسب بالقطعة).</div>
     <div class="tbl-wrap"><table><thead><tr>
@@ -6760,9 +6760,13 @@ if('serviceWorker' in navigator){
       if(swRegistration.waiting) swRegistration.waiting.postMessage({type:'SKIP_WAITING'});
     }catch(e){}
   });
-  // أول ما الـSW الجديد يمسك الصفحة، اعمل ريلود مرة واحدة بس
+  // أول ما الـSW الجديد يمسك الصفحة، اعمل ريلود مرة واحدة بس.
+  // بس في أول زيارة خالص (مفيش SW ماسك الصفحة أصلًا) مفيش داعي لريلود —
+  // اللي قدام المستخدم هو أحدث نسخة أصلًا، والريلود ده كان بيضيّع ثانية
+  // ويقطع عليه في أول فتح.
+  const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange', ()=>{
-    if(reloadingForUpdate) return;
+    if(!hadController || reloadingForUpdate) return;
     reloadingForUpdate = true;
     location.reload();
   });
