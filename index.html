@@ -126,6 +126,9 @@
     #finUploadCard .chk{flex:1 1 100%}
     #finProcessBtn{flex:1 1 100%}
   }
+  /* مجموعة فرعية جوه بند القائمة (مصاريف فرع طنطا مثلاً) */
+  tr.fin-sub td{background:#dde5f7;font-weight:700;color:#16307a}
+  tr.fin-subtot td{background:#eef2fb;font-weight:700}
   .kpi4{grid-template-columns:repeat(4,minmax(0,1fr))}
   .kpi4 .kpi-card{min-width:0;overflow:hidden}
   .kpi4 .kpi-title{font-size:13px;margin-bottom:6px}
@@ -876,7 +879,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v104';
+const APP_VERSION = 'v105';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -6677,7 +6680,7 @@ function finLeaves(rows){
     }
     const mv = res[5] - res[4], cl = res[7] - res[6];
     if(Math.abs(mv) > 0.005 || Math.abs(cl) > 0.005){
-      res[1] = r[1] + ' (قيود مباشرة)'; out.push(res);
+      res[1] = r[1] + ' (قيود مباشرة)'; res[8] = 'direct'; out.push(res);
     }
   });
   return out;
@@ -6719,9 +6722,22 @@ function finBranchKey(name){
 // ---- قائمة الدخل ----
 // بترجّع كل الأرقام + تفاصيل الحسابات الفرعية لكل بند.
 function finIncome(months){
-  const leaves = finLeaves(finRowsOf(months));
+  const rows = finRowsOf(months);
+  const leaves = finLeaves(rows);
+  const byCode = new Map(rows.map(r => [String(r[0]), r]));
+  // كل بند بينتمي لأقرب حساب أب موجود تحت جذر التصنيف — يعني مصاريف فرع
+  // طنطا كلها تحت "فرع طنطا"، وبعدها الاسكندرية، وهكذا.
+  const groupOf = (row, root)=>{
+    const c = String(row[0]);
+    if(row[8] === 'direct') return {code:c, name: (byCode.get(c)||[])[1] || row[1]};
+    for(let L = c.length - 1; L > root.length; L--){
+      const pc = c.slice(0, L);
+      if(byCode.has(pc)) return {code:pc, name: byCode.get(pc)[1]};
+    }
+    return null;   // مالهوش أب — بند لوحده
+  };
   const pick = (pref, val)=> leaves.filter(r => finStarts(r[0], pref))
-    .map(r => ({code:r[0], name:r[1], v: val(r)}))
+    .map(r => ({code:r[0], name:r[1], v: val(r), group: groupOf(r, pref)}))
     .filter(x => x.v !== 0)
     .sort((a,b)=> Math.abs(b.v) - Math.abs(a.v));
   const sum = (arr)=> arr.reduce((a,x)=> a + x.v, 0);
@@ -6741,7 +6757,7 @@ function finIncome(months){
   const isNamed = (code)=> named.some(pf => finStarts(code, pf));
   const pickRest = (root, val)=> leaves
     .filter(r => finStarts(r[0], root) && !isNamed(r[0]))
-    .map(r => ({code:r[0], name:r[1], v: val(r)}))
+    .map(r => ({code:r[0], name:r[1], v: val(r), group: groupOf(r, root)}))
     .filter(x => x.v !== 0)
     .sort((a,b)=> Math.abs(b.v) - Math.abs(a.v));
   const othRev = pickRest('4', finCr);
@@ -6879,13 +6895,33 @@ function finBalance(month){
 
 // ---- العرض ----
 const finFmt = (v)=> (Math.round((Number(v)||0)*100)/100).toLocaleString('en-US',{maximumFractionDigits:2});
+// بترجّع البنود مجمّعة تحت حساباتها الأب، والمجموعات مرتبة بالإجمالي
+// (فرع طنطا الأول لأنه الأكبر، بعده الاسكندرية، وهكذا).
+function finGroups(items){
+  const gm = new Map();
+  (items || []).forEach(x=>{
+    const g = x.group;
+    const key = g ? g.code : '#' + x.code;
+    if(!gm.has(key)) gm.set(key, {code: g ? g.code : '', name: g ? g.name : x.name, items:[], total:0});
+    const e = gm.get(key);
+    e.items.push(x); e.total += x.v;
+  });
+  const out = [...gm.values()];
+  out.forEach(g => g.items.sort((a,b)=> Math.abs(b.v) - Math.abs(a.v)));
+  return out.sort((a,b)=> Math.abs(b.total) - Math.abs(a.total));
+}
 function finLine(label, val, cls, indent){
   return `<tr${cls?` class="${cls}"`:''}><td style="text-align:right;padding-inline-start:${(indent||0)*18}px">${esc(label)}</td>
     <td class="wh-num">${finFmt(val)}</td></tr>`;
 }
 function finSection(title, items, total, totalLabel){
   let h = `<tr class="grp-row"><td colspan="2" style="text-align:right">${esc(title)}</td></tr>`;
-  items.forEach(x => { h += finLine(x.name, x.v, '', 1); });
+  finGroups(items).forEach(g=>{
+    if(!g.code){ h += finLine(g.items[0].name, g.items[0].v, '', 1); return; }
+    h += `<tr class="fin-sub"><td colspan="2" style="text-align:right;padding-inline-start:18px">${esc(g.name)}</td></tr>`;
+    g.items.forEach(x => { h += finLine(x.name, x.v, '', 2); });
+    h += finLine('إجمالي ' + g.name, g.total, 'fin-subtot', 2);
+  });
   if(totalLabel != null) h += finLine(totalLabel, total, 'total-row', 1);
   return h;
 }
@@ -6968,9 +7004,20 @@ function finDetailView(){
   blocks.forEach(([title, items])=>{
     if(!items.length) return;
     h += `<tr class="total-row"><td colspan="3" style="text-align:right">${esc(title)}</td></tr>`;
-    items.forEach(x=>{
-      h += `<tr><td>${esc(x.code)}</td><td style="text-align:right">${esc(x.name)}</td>
-        <td class="wh-num">${finFmt(x.v)}</td></tr>`;
+    finGroups(items).forEach(g=>{
+      if(!g.code){
+        const x = g.items[0];
+        h += `<tr><td>${esc(x.code)}</td><td style="text-align:right">${esc(x.name)}</td>
+          <td class="wh-num">${finFmt(x.v)}</td></tr>`;
+        return;
+      }
+      h += `<tr class="fin-sub"><td>${esc(g.code)}</td><td colspan="2" style="text-align:right">${esc(g.name)}</td></tr>`;
+      g.items.forEach(x=>{
+        h += `<tr><td>${esc(x.code)}</td><td style="text-align:right;padding-inline-start:18px">${esc(x.name)}</td>
+          <td class="wh-num">${finFmt(x.v)}</td></tr>`;
+      });
+      h += `<tr class="fin-subtot"><td></td><td style="text-align:right;padding-inline-start:18px">إجمالي ${esc(g.name)}</td>
+        <td class="wh-num">${finFmt(g.total)}</td></tr>`;
     });
     h += `<tr class="grp-row"><td colspan="2" style="text-align:right">إجمالي ${esc(title)}</td>
       <td class="wh-num">${finFmt(I.sum(items))}</td></tr>`;
@@ -7222,7 +7269,12 @@ function finExportAoa(){
     blocks.forEach(([t, items])=>{
       if(!items.length) return;
       aoa.push(['', t, '']);
-      items.forEach(x=> aoa.push([x.code, x.name, x.v]));
+      finGroups(items).forEach(g=>{
+        if(!g.code){ aoa.push([g.items[0].code, g.items[0].name, g.items[0].v]); return; }
+        aoa.push([g.code, g.name, '']);
+        g.items.forEach(x=> aoa.push([x.code, '   ' + x.name, x.v]));
+        aoa.push(['', 'إجمالي ' + g.name, g.total]);
+      });
       aoa.push(['', 'إجمالي ' + t, I.sum(items)]);
     });
     return {aoa: finRoundAoa(aoa), numFrom:2, title:`تفاصيل القوائم الفرعية — ${period}`, sheet:'تفاصيل فرعية'};
@@ -7230,7 +7282,12 @@ function finExportAoa(){
   const aoa = [['البند','القيمة']];
   const sec = (t, items, total, tl)=>{
     aoa.push([t, '']);
-    items.forEach(x=> aoa.push(['   ' + x.name, x.v]));
+    finGroups(items).forEach(g=>{
+      if(!g.code){ aoa.push(['   ' + g.items[0].name, g.items[0].v]); return; }
+      aoa.push(['   ' + g.name, '']);
+      g.items.forEach(x=> aoa.push(['      ' + x.name, x.v]));
+      aoa.push(['      إجمالي ' + g.name, g.total]);
+    });
     if(tl) aoa.push(['   ' + tl, total]);
   };
   sec('1) صافي المبيعات', I.sales, I.totalSales, 'إجمالي المبيعات');
