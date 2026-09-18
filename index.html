@@ -926,7 +926,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v110';
+const APP_VERSION = 'v111';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8604,6 +8604,9 @@ function renderGV(){
       box.style.display = '';
       box.querySelectorAll('[data-pick]').forEach(d=> d.onmousedown = (ev)=>{
         ev.preventDefault();
+        // نلغي onchange بتاع خانة الاسم القديمة قبل ما نمسحها، عشان مانديها متأخرة
+        // بالنص اللي كان متكتوب للبحث وتبوّظ الاسم اللي دوسنا عليه
+        inp.onchange = null;
         o.rows[i].name = d.dataset.pick; gvSave(); renderGV();
         const nx = el.querySelector(`[data-nk="gv.row.${i}.qty"]`); if(nx) nx.focus();
       });
