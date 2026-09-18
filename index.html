@@ -154,7 +154,7 @@
   /* شريط أيقونتين: المبيعات / المخازن */
   /* الأيقونتين جنب بعض دايمًا (حتى على الموبايل)، وكل واحدة قايمة منسدلة:
      محتواها ما يبانش غير لما تدوس عليها، ودوسة تانية تقفلها. */
-  .mod-bar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 16px}
+  .mod-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:10px 0 16px}
   .mod-btn{display:flex;align-items:center;gap:8px;background:var(--panel);color:var(--text);
     border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:14px;
     text-align:right;box-shadow:0 1px 2px rgba(0,0,0,.04);min-width:0}
@@ -168,6 +168,17 @@
     .mod-btn{padding:9px 10px;font-size:13px}
     .mod-btn .mod-sub{display:none}
   }
+  .gv-sug{position:absolute;z-index:80;top:100%;right:0;left:0;background:var(--panel);
+    border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.18);
+    max-height:240px;overflow:auto;text-align:right}
+  .gv-sug-i{padding:7px 9px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border)}
+  .gv-sug-i:hover{background:var(--panel2)}
+  tr.fin-fold{cursor:pointer}
+  tr.fin-fold td{background:#d6e1f9;color:#16307a;font-weight:700}
+  tr.fin-fold.fin-branch td{background:#bcd0f4}
+  tr.fin-fold .fin-car{display:inline-block;transition:transform .15s;font-size:11px}
+  tr.fin-fold.closed .fin-car{transform:rotate(-90deg)}
+  tr.fin-kid.fin-subtot td{font-weight:700;background:#eef1f9}
   .wh-num{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-weight:700;direction:ltr}
   /* كروت الأصناف الناقصة: بتتعدّل في الشاشة على طول */
   .unk-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;
@@ -293,7 +304,26 @@
   <button class="mod-btn" data-mod="wh" aria-expanded="false" aria-controls="whApp">
     <span class="mod-ico">🏬</span><span class="mod-txt"><b>المخازن</b><span class="mod-sub">أرصدة ونواقص وجرد</span></span><span class="mod-car">▾</span>
   </button>
+
+  <button class="mod-btn" data-mod="gv" aria-expanded="false" aria-controls="gvApp">
+    <span class="mod-ico">🚢</span><span class="mod-txt"><b>طلبيات جيفز</b><span class="mod-sub">أصناف وطلبيات وحاويات</span></span><span class="mod-car">▾</span>
+  </button>
+  <button class="mod-btn" data-mod="qp" aria-expanded="false" aria-controls="qpApp">
+    <span class="mod-ico">💵</span><span class="mod-txt"><b>مرتبات القرشي</b><span class="mod-sub">نصفين وكشف إرسال وملخص</span></span><span class="mod-car">▾</span>
+  </button>
+  <button class="mod-btn" data-mod="fp" aria-expanded="false" aria-controls="fpApp">
+    <span class="mod-ico">🏭</span><span class="mod-txt"><b>مرتبات المصنع</b><span class="mod-sub">حضور يومي وكشف مرتبات</span></span><span class="mod-car">▾</span>
+  </button>
+  <button class="mod-btn" data-mod="ax" aria-expanded="false" aria-controls="axApp">
+    <span class="mod-ico">🎁</span><span class="mod-txt"><b>بونص اكسا</b><span class="mod-sub">بونص المشتريات والموزعين</span></span><span class="mod-car">▾</span>
+  </button>
 </div>
+
+
+<div id="gvApp" style="display:none"></div>
+<div id="qpApp" style="display:none"></div>
+<div id="fpApp" style="display:none"></div>
+<div id="axApp" style="display:none"></div>
 
 <div id="modHint" class="sub" style="text-align:center;padding:18px 10px">اختار قسم من فوق عشان تفتحه 👆</div>
 
@@ -896,7 +926,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v107';
+const APP_VERSION = 'v110';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -7063,37 +7093,117 @@ function finWarn(I){
   }
   return h;
 }
+// المبيعات بعد خصم مردودها وخصمها المسموح — كل فرع بيتخصم منه مردوده هو.
+// المطلوب من الإدارة: نشوف الصافي على طول بدل سطر مبيعات وسطر مردود.
+function finNetSalesItems(I){
+  const minus = new Map();
+  [].concat(I.returns, I.discAllow).forEach(x=>{
+    const k = finBranchKey(x.name);
+    minus.set(k, (minus.get(k) || 0) + x.v);
+  });
+  const items = I.sales.map(x => Object.assign({}, x));
+  const firstOf = new Map();
+  items.forEach(x=>{ const k = finBranchKey(x.name); if(!firstOf.has(k)) firstOf.set(k, x); });
+  [...minus.keys()].forEach(k=>{
+    const x = firstOf.get(k);
+    if(x){ x.v -= minus.get(k); minus.delete(k); }
+  });
+  // مردود لفرع مالوش مبيعات في الفترة — يفضل ظاهر لوحده عشان الإجمالي يفضل صح
+  [...minus.keys()].forEach(k=>{
+    items.push({code:'', name:'مردود ' + k, v: -minus.get(k), group:null});
+  });
+  return items.filter(x => x.v !== 0).sort((a,b)=> Math.abs(b.v) - Math.abs(a.v));
+}
+// تجميع المصروفات على مستوى الفرع: إجمالي طنطا / إجمالي الاسكندرية … وكل واحد
+// قايمة منسدلة بتفاصيله.
+function finExpenseBranches(items){
+  const bm = new Map();
+  finGroups(items).forEach(g=>{
+    const b = finBranchKey(g.name || (g.items[0] || {}).name || '');
+    if(!bm.has(b)) bm.set(b, {branch:b, groups:[], total:0});
+    const e = bm.get(b);
+    e.groups.push(g); e.total += g.total;
+  });
+  return [...bm.values()].sort((a,b)=> Math.abs(b.total) - Math.abs(a.total));
+}
+let finGidSeq = 0;
+// سطر رأس مجموعة قابل للطي: الدوس عليه بيخفي/بيظهر سطوره
+function finFoldHead(label, val, gid, cls, indent){
+  return `<tr class="fin-fold ${cls || ''}" data-g="${gid}"><td style="text-align:right;padding-inline-start:${(indent||0)*18}px">
+      <span class="fin-car">▾</span> ${esc(label)}</td>
+    <td class="wh-num">${finFmt(val)}</td><td class="wh-num">${finPct(val, finPctBase)}</td></tr>`;
+}
+function finKid(label, val, gid, cls, indent){
+  return `<tr class="fin-kid ${cls || ''}" data-p="${gid}"><td style="text-align:right;padding-inline-start:${(indent||0)*18}px">${esc(label)}</td>
+    <td class="wh-num">${finFmt(val)}</td><td class="wh-num">${finPct(val, finPctBase)}</td></tr>`;
+}
+// قسم عادي (مبيعات / تكلفة / إيرادات أخرى): كل مجموعة منسدلة وتحتها بنودها
+function finSectionFold(title, items, total, totalLabel, base){
+  finPctBase = base || 0;
+  let h = `<tr class="grp-row"><td colspan="3" style="text-align:right">${esc(title)}</td></tr>`;
+  finGroups(items).forEach(g=>{
+    if(!g.code){ h += finLine(g.items[0].name, g.items[0].v, '', 1); return; }
+    const gid = 'g' + (++finGidSeq);
+    h += finFoldHead(g.name, g.total, gid, 'fin-sub', 1);
+    g.items.forEach(x => { h += finKid(x.name, x.v, gid, '', 2); });
+  });
+  if(totalLabel != null) h += finLine(totalLabel, total, 'total-row', 1);
+  return h;
+}
+// قسم المصروفات: مستوى الفرع منسدل، وجواه المجموعات وبنودها
+function finExpenseSection(title, items, total, totalLabel, base){
+  finPctBase = base || 0;
+  let h = `<tr class="grp-row"><td colspan="3" style="text-align:right">${esc(title)}</td></tr>`;
+  finExpenseBranches(items).forEach(b=>{
+    const gid = 'b' + (++finGidSeq);
+    h += finFoldHead('إجمالي ' + b.branch, b.total, gid, 'fin-branch', 1);
+    b.groups.forEach(g=>{
+      if(!g.code){ h += finKid(g.items[0].name, g.items[0].v, gid, '', 2); return; }
+      h += finKid(g.name, g.total, gid, 'fin-subtot', 2);
+      g.items.forEach(x => { h += finKid('— ' + x.name, x.v, gid, '', 3); });
+    });
+  });
+  if(totalLabel != null) h += finLine(totalLabel, total, 'total-row', 1);
+  return h;
+}
 function finIncomeView(){
   const months = finSelectedMonths();
   if(!months.length) return {html:'<div class="sub">مفيش بيانات للفترة دي.</div>', count:''};
   const I = finIncome(months);
   const period = finPeriodLabel(months);
+  const netItems = finNetSalesItems(I);
+  const expItems = [].concat(I.expenses, I.othExp);
+  const othItems = [].concat(I.othVar, I.othDisc, I.othFreight, I.othRev);
+  const netBefore = I.grossProfit - I.totalExp;   // صافي الربح قبل الإيرادات الأخرى
   const kpi = `<div class="kpi-row kpi4">
-    <div class="kpi-card"><div class="kpi-title">إجمالي المبيعات</div>
-      <div class="kpi-sum">${finFmt(I.totalSales)}</div></div>
+    <div class="kpi-card"><div class="kpi-title">صافي المبيعات</div>
+      <div class="kpi-sum">${finFmt(I.netSales)}</div></div>
     <div class="kpi-card"><div class="kpi-title">إجمالي التكلفة</div>
       <div class="kpi-sum">${finFmt(I.totalCost)}</div></div>
-    <div class="kpi-card"><div class="kpi-title">صافي الربح</div>
+    <div class="kpi-card"><div class="kpi-title">صافي الربح قبل الإيرادات الأخرى</div>
+      <div class="kpi-sum" style="color:${netBefore>=0?'var(--accent2)':'var(--danger)'}">${finFmt(netBefore)}</div></div>
+    <div class="kpi-card"><div class="kpi-title">صافي الربح النهائي</div>
       <div class="kpi-sum" style="color:${I.netProfit>=0?'var(--accent2)':'var(--danger)'}">${finFmt(I.netProfit)}</div></div>
-    <div class="kpi-card"><div class="kpi-title">هامش صافي الربح</div>
-      <div class="kpi-sum">${(I.margin*100).toFixed(2)}%</div></div>
   </div>`;
-  finPctBase = I.netSales || I.totalSales || 0;
-  let t = `<div class="tbl-wrap"><table><thead><tr><th>البند</th><th>القيمة</th><th>% من صافي المبيعات</th></tr></thead><tbody>`;
-  t += finSection('1) صافي المبيعات', I.sales, I.totalSales, 'إجمالي المبيعات');
-  t += finLine('يخصم: مردود المبيعات', I.sum(I.returns), '', 1);
-  t += finLine('يخصم: خصم مسموح به', I.sum(I.discAllow), '', 1);
-  t += finLine('صافي المبيعات', I.netSales, 'total-row', 1);
-  t += finSection('2) تكلفة البضاعة المباعة', I.cost, I.totalCost, 'إجمالي تكلفة البضاعة المباعة');
+  finGidSeq = 0;
+  let t = `<div class="tbl-wrap"><table id="finIncomeTbl"><thead><tr><th>البند</th><th>القيمة</th><th>% من إجمالي البند</th></tr></thead><tbody>`;
+  // 1) صافي المبيعات — النسبة من إجمالي صافي المبيعات
+  t += finSectionFold('1) صافي المبيعات (بعد خصم المردود)', netItems, I.netSales, 'صافي المبيعات', I.netSales);
+  // 2) التكلفة — النسبة من إجمالي التكلفة
+  t += finSectionFold('2) تكلفة البضاعة المباعة', I.cost, I.totalCost, 'إجمالي تكلفة البضاعة المباعة', I.totalCost);
+  finPctBase = I.netSales || 0;
   t += finLine('مجمل الربح', I.grossProfit, 'total-row', 1);
-  t += finSection('3) إيرادات أخرى',
-    [].concat(I.othVar, I.othDisc, I.othFreight, I.othRev), I.otherInc, 'إجمالي الإيرادات الأخرى');
-  t += finSection('4) المصروفات العمومية',
-    [].concat(I.expenses, I.othExp), I.totalExp, 'إجمالي المصروفات العمومية');
-  t += `<tr class="grp-row"><td colspan="3" style="text-align:right">5) صافي الربح</td></tr>`;
-  t += finLine('صافي الربح', I.netProfit, 'total-row', 1);
+  // 3) المصروفات — قبل الإيرادات الأخرى، والنسبة من إجمالي المصروفات
+  t += finExpenseSection('3) المصروفات العمومية', expItems, I.totalExp, 'إجمالي المصروفات العمومية', I.totalExp);
+  finPctBase = I.netSales || 0;
+  t += `<tr class="grp-row"><td colspan="3" style="text-align:right">4) صافي الربح قبل الإيرادات الأخرى</td></tr>`;
+  t += finLine('صافي الربح قبل الإيرادات الأخرى', netBefore, 'total-row', 1);
+  // 5) الإيرادات الأخرى
+  t += finSectionFold('5) إيرادات أخرى', othItems, I.otherInc, 'إجمالي الإيرادات الأخرى', I.otherInc || 0);
+  finPctBase = I.netSales || 0;
+  t += `<tr class="grp-row"><td colspan="3" style="text-align:right">6) صافي الربح النهائي</td></tr>`;
+  t += finLine('صافي الربح النهائي', I.netProfit, 'total-row', 1);
   t += '</tbody></table></div>';
-  // مساهمة الفروع
   let b = `<div class="grp-title" style="font-size:16px;margin-top:14px">مساهمة الفروع</div>
     <div class="tbl-wrap"><table><thead><tr><th>الفرع</th><th>صافي المبيعات</th><th>التكلفة</th><th>مجمل الربح</th><th>الهامش</th></tr></thead><tbody>`;
   I.branches.forEach(x=>{
@@ -7109,6 +7219,15 @@ function finIncomeView(){
   b += '</tbody></table></div>';
   return {html: finWarn(I) + kpi + t + b, count: `قائمة الدخل — ${period}`};
 }
+// طي/فتح المجموعات — الدوس على سطر الرأس
+document.addEventListener('click', (e)=>{
+  const tr = e.target.closest && e.target.closest('tr.fin-fold');
+  if(!tr) return;
+  const gid = tr.dataset.g;
+  const closed = tr.classList.toggle('closed');
+  (tr.closest('table') || document).querySelectorAll(`tr.fin-kid[data-p="${gid}"]`)
+    .forEach(r => r.style.display = closed ? 'none' : '');
+});
 
 // تفاصيل فرعية: كل بند وتحته حساباته بالكود
 function finDetailView(){
@@ -7424,16 +7543,38 @@ function finExportAoa(){
     });
     if(tl) aoa.push(['   ' + tl, total, pc(total)]);
   };
-  sec('1) صافي المبيعات', I.sales, I.totalSales, 'إجمالي المبيعات');
-  aoa.push(['   يخصم: مردود المبيعات', I.sum(I.returns), pc(I.sum(I.returns))]);
-  aoa.push(['   يخصم: خصم مسموح به', I.sum(I.discAllow), pc(I.sum(I.discAllow))]);
-  aoa.push(['   صافي المبيعات', I.netSales, pc(I.netSales)]);
-  sec('2) تكلفة البضاعة المباعة', I.cost, I.totalCost, 'إجمالي تكلفة البضاعة المباعة');
+  const netItems = finNetSalesItems(I);
+  const expItems = [].concat(I.expenses, I.othExp);
+  const othItems = [].concat(I.othVar, I.othDisc, I.othFreight, I.othRev);
+  const netBefore = I.grossProfit - I.totalExp;
+  const pcOf = (v, bs)=> finPct(v, bs || 0);
+  const secB = (t, items, total, tl, bs)=>{
+    aoa.push([t, '', '']);
+    finGroups(items).forEach(g=>{
+      if(!g.code){ const x=g.items[0]; aoa.push(['   ' + x.name, x.v, pcOf(x.v, bs)]); return; }
+      aoa.push(['   ' + g.name, g.total, pcOf(g.total, bs)]);
+      g.items.forEach(x=> aoa.push(['      ' + x.name, x.v, pcOf(x.v, bs)]));
+    });
+    if(tl) aoa.push(['   ' + tl, total, pcOf(total, bs)]);
+  };
+  secB('1) صافي المبيعات (بعد خصم المردود)', netItems, I.netSales, 'صافي المبيعات', I.netSales);
+  secB('2) تكلفة البضاعة المباعة', I.cost, I.totalCost, 'إجمالي تكلفة البضاعة المباعة', I.totalCost);
   aoa.push(['   مجمل الربح', I.grossProfit, pc(I.grossProfit)]);
-  sec('3) إيرادات أخرى', [].concat(I.othVar, I.othDisc, I.othFreight, I.othRev), I.otherInc, 'إجمالي الإيرادات الأخرى');
-  sec('4) المصروفات العمومية', [].concat(I.expenses, I.othExp), I.totalExp, 'إجمالي المصروفات العمومية');
-  aoa.push(['5) صافي الربح', '', '']);
-  aoa.push(['   صافي الربح', I.netProfit, pc(I.netProfit)]);
+  aoa.push(['3) المصروفات العمومية', '', '']);
+  finExpenseBranches(expItems).forEach(br=>{
+    aoa.push(['   إجمالي ' + br.branch, br.total, pcOf(br.total, I.totalExp)]);
+    br.groups.forEach(g=>{
+      if(!g.code){ const x=g.items[0]; aoa.push(['      ' + x.name, x.v, pcOf(x.v, I.totalExp)]); return; }
+      aoa.push(['      ' + g.name, g.total, pcOf(g.total, I.totalExp)]);
+      g.items.forEach(x=> aoa.push(['         ' + x.name, x.v, pcOf(x.v, I.totalExp)]));
+    });
+  });
+  aoa.push(['   إجمالي المصروفات العمومية', I.totalExp, '100%']);
+  aoa.push(['4) صافي الربح قبل الإيرادات الأخرى', '', '']);
+  aoa.push(['   صافي الربح قبل الإيرادات الأخرى', netBefore, pc(netBefore)]);
+  secB('5) إيرادات أخرى', othItems, I.otherInc, 'إجمالي الإيرادات الأخرى', I.otherInc);
+  aoa.push(['6) صافي الربح النهائي', '', '']);
+  aoa.push(['   صافي الربح النهائي', I.netProfit, pc(I.netProfit)]);
   const mainR = finRoundAoa(aoa.map(r=>r.slice()));
   // جدول الفروع أعمدته مختلفة — كان مدموج مع القائمة في نفس الجدول، فكان
   // بيخلي كل صفوف القائمة فيها عمودين فاضيين وشكل الورقة يبقى نص فاضي.
@@ -7522,6 +7663,11 @@ function showModule(mod){
   $('salesApp').style.display = mod === 'sales' ? '' : 'none';
   $('whApp').style.display = mod === 'wh' ? '' : 'none';
   if($('finApp')) $('finApp').style.display = mod === 'fin' ? '' : 'none';
+  ['gv','qp','fp','ax'].forEach(m=>{
+    const el = $(m + 'App'); if(!el) return;
+    el.style.display = mod === m ? '' : 'none';
+    if(mod === m && typeof window['render' + m.toUpperCase()] === 'function') window['render' + m.toUpperCase()]();
+  });
   if(mod !== 'wh' && typeof whPollStop === 'function') whPollStop();
   // كروت الرفع بتتطوي على الموبايل (العنوان بيفضل زرار يفتحها).
 // على الشاشة الكبيرة كله مفتوح زي ما هو.
@@ -8140,6 +8286,1150 @@ $('installBtn').addEventListener('click', async () => {
   $('installBanner').style.display = 'none';
 });
 window.addEventListener('appinstalled', () => { $('installBanner').style.display = 'none'; });
+
+/* ======================================================================
+   أقسام جديدة: طلبيات جيفز — مرتبات القرشي — مرتبات المصنع — بونص اكسا
+   كل قسم بيتخزن في الجهاز (localStorage) وبيتصدّر Excel / PDF / صورة.
+   ====================================================================== */
+function nkGet(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
+function nkSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+const nkN  = (v)=>{ const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; };
+const nkR  = (v, d)=>{ const m = Math.pow(10, d || 0); return Math.round(((Number(v)||0) + Number.EPSILON) * m) / m; };
+const nkMR = (v, m)=> Math.round((Number(v)||0) / m) * m;
+const nkF  = (v, d)=> (nkR(v, d == null ? 2 : d)).toLocaleString('en-US', {maximumFractionDigits: d == null ? 2 : d});
+const nkToday = ()=> new Date().toISOString().slice(0, 10);
+const nkDateAr = (d)=>{ if(!d) return ''; const p = String(d).split('-'); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : String(d); };
+
+// ---- جدول HTML من بلوك {title, head, rows, align} ----
+function nkBlockHtml(b){
+  let h = b.title ? `<div class="grp-title" style="font-size:16px;margin:12px 0 4px">${esc(b.title)}</div>` : '';
+  h += '<table><thead><tr>' + b.head.map(x=> `<th>${esc(x)}</th>`).join('') + '</tr></thead><tbody>';
+  (b.rows || []).forEach(r=>{
+    const cls = (r.__cls ? ` class="${r.__cls}"` : '');
+    h += `<tr${cls}>` + r.map((c, i)=>{
+      const num = typeof c === 'number';
+      return `<td${num ? ' class="wh-num"' : ''} style="text-align:${num ? 'center' : (i === 0 || i === 1 ? 'right' : 'center')}">${num ? esc(nkF(c)) : esc(c == null ? '' : c)}</td>`;
+    }).join('') + '</tr>';
+  });
+  return h + '</tbody></table>';
+}
+const nkBlocksHtml = (blocks)=> blocks.map(b=> `<div class="blk">${nkBlockHtml(b)}</div>`).join('');
+
+// ---- تصدير: إكسل / PDF / صورة ----
+async function nkExport(kind, blocks, title, subtitle){
+  const oldTitle = exportTitle;
+  exportTitle = title;
+  try{
+    if(kind === 'xlsx'){
+      const wb = XLSX.utils.book_new();
+      wb.Workbook = {Views:[{RTL:true}]};
+      const used = new Set();
+      blocks.forEach((b, i)=>{
+        const aoa = [b.head].concat((b.rows || []).map(r=> r.slice()));
+        const ws = sheetWithHeader(aoa, b.title || title, subtitle || '', b.head.length);
+        XLSX.utils.book_append_sheet(wb, ws, safeSheetName(b.title || ('ورقة ' + (i + 1)), used));
+      });
+      XLSX.writeFile(wb, safeFileName(title) + '.xlsx');
+      return;
+    }
+    const wide = Math.max.apply(null, blocks.map(b=> b.head.length));
+    const html = nkBlocksHtml(blocks);
+    if(kind === 'pdf'){
+      await renderPdfFromHtml(html, {subtitle: subtitle || title, orient: wide >= 9 ? 'l' : 'p',
+        wideCols: wide, fileName: safeFileName(title) + '.pdf'});
+    }else{
+      await nkImage(html, subtitle || title, title);
+    }
+  }finally{ exportTitle = oldTitle; }
+}
+async function nkImage(bodyHtml, subtitle, fileName){
+  const headerHtml = `<div style="border-bottom:2px solid #1b3a8f;padding:0 0 8px;margin-bottom:10px;
+      display:flex;align-items:center;justify-content:space-between;gap:16px">
+    <div><div style="font-size:20px;font-weight:700">${esc(reportTitle())}</div>
+      <div style="font-size:14.5px;color:#444;margin-top:4px">${esc(subtitle)} — تاريخ التقرير ${esc(reportDateText())}</div></div>
+    <img src="${LOGO_HEAD}" style="height:46px;width:auto;display:block" alt=""></div>`;
+  const old = PDF_RENDER_W;
+  PDF_RENDER_W = 760;
+  try{
+    const res = await renderReportCanvas(`<div class="blk">${headerHtml}</div>` + bodyHtml);
+    const blob = await new Promise(r => res.canvas.toBlob(r, 'image/png'));
+    const fn = safeFileName(fileName) + '.png';
+    if(navigator.canShare){
+      const file = new File([blob], fn, {type:'image/png'});
+      if(navigator.canShare({files:[file]})){
+        try{ await navigator.share({files:[file], title: subtitle, text: subtitle}); return; }
+        catch(e){ if(e && e.name === 'AbortError') return; }
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fn; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+  }finally{ PDF_RENDER_W = old; }
+}
+// شريط أزرار التصدير الموحّد
+function nkBar(prefix, extra){
+  return `<div class="row" style="margin-top:12px;gap:8px">
+    ${extra || ''}
+    <button class="secondary" data-nkx="${prefix}:xlsx">⬇ إكسل</button>
+    <button class="secondary" data-nkx="${prefix}:pdf">📄 PDF</button>
+    <button class="secondary" data-nkx="${prefix}:img">🖼️ صورة</button>
+  </div>`;
+}
+const NK_EXPORTERS = {};
+document.addEventListener('click', async (e)=>{
+  const b = e.target.closest && e.target.closest('[data-nkx]');
+  if(!b) return;
+  const [key, kind] = b.dataset.nkx.split(':');
+  const fn = NK_EXPORTERS[key];
+  if(!fn) return;
+  const label = b.textContent; b.disabled = true; b.textContent = 'بيجهّز...';
+  try{ const p = fn(); await nkExport(kind, p.blocks, p.title, p.subtitle); }
+  catch(err){ alert('حصل خطأ في التصدير: ' + (err && err.message ? err.message : err)); }
+  finally{ b.disabled = false; b.textContent = label; }
+});
+const nkInp = (val, path, attrs)=>
+  `<input ${attrs || 'type="number" step="any"'} data-nk="${path}" value="${esc(val == null ? '' : val)}" style="width:100%;min-width:64px;padding:5px 6px">`;
+
+/* ==================== 1) طلبيات جيفز ==================== */
+let GV = nkGet('gvData', null) || {items: [], orders: [], cur: 0, withPrices: true, tab: 'order'};
+const gvSave = ()=> nkSet('gvData', GV);
+const gvItemByName = (n)=> GV.items.find(x=> normName(x.name) === normName(n))
+  || GV.items.find(x=> String(x.code || '').trim() === String(n || '').trim()) || {};
+// بحث ذكي: تكتب "40 مفصلي" أو "مفصلي 40" أو جزء من الكود ويطلعلك الأصناف
+function gvSearch(q){
+  const toks = normName(q).split(/\s+/).filter(Boolean);
+  if(!toks.length) return GV.items.slice(0, 12);
+  return GV.items.filter(x=>{
+    const hay = normName((x.name || '') + ' ' + (x.code || '') + ' ' + (x.desc || ''));
+    return toks.every(t=> hay.indexOf(t) >= 0);
+  }).slice(0, 12);
+}
+function gvOrder(){
+  if(!GV.orders.length){
+    GV.orders.push({no: 1, date: nkToday(), rows: [], containerW: 28000, containers: 1, priceMode: 'before'});
+    GV.cur = 0;
+  }
+  if(GV.cur >= GV.orders.length) GV.cur = GV.orders.length - 1;
+  return GV.orders[GV.cur];
+}
+function gvCalc(o){
+  const mode = o.priceMode || 'before';
+  const rows = (o.rows || []).map(r=>{
+    const it = gvItemByName(r.name);
+    const qty = nkN(r.qty);
+    const pcs = nkN(it.pcs);
+    const w = nkN(it.weight);
+    const price = mode === 'after' ? (nkN(it.price2) || nkN(it.price)) : (nkN(it.price) || nkN(it.price2));
+    return {name: r.name || '', code: it.code || '', found: !!it.name, qty, pcs,
+      cartons: pcs ? qty / pcs : 0, weight: w, totalW: qty * w, price, totalV: qty * price};
+  });
+  const t = rows.reduce((a, r)=> ({qty: a.qty + r.qty, cart: a.cart + r.cartons,
+    w: a.w + r.totalW, v: a.v + r.totalV}), {qty:0, cart:0, w:0, v:0});
+  const capacity = nkN(o.containerW) * nkN(o.containers);
+  const diff = capacity - t.w;
+  return {rows, t, capacity, diff,
+    fill: capacity ? Math.min(200, t.w / capacity * 100) : 0,
+    status: diff > 0 ? 'لسه فيها مكان' : (diff === 0 ? 'مظبوطة تمامًا' : 'زيادة عن الحاويه')};
+}
+function gvBlocks(withPrices){
+  const o = gvOrder(); const c = gvCalc(o);
+  const head = ['م','اسم الصنف','الكود CODE','الكمية','عدد القطع بالكرتونة','عدد الكراتين','وزن القطعة (كجم)','اجمالي وزن الصنف (كجم)']
+    .concat(withPrices ? ['سعر القطعة $','اجمالي قيمة الصنف $'] : []);
+  const rows = c.rows.map((r, i)=> [i + 1, r.name, r.code, nkR(r.qty, 2), nkR(r.pcs, 2), nkR(r.cartons, 2),
+    nkR(r.weight, 4), nkR(r.totalW, 2)].concat(withPrices ? [nkR(r.price, 4), nkR(r.totalV, 2)] : []));
+  const tot = ['', 'الإجمالي', '', nkR(c.t.qty, 2), '', nkR(c.t.cart, 2), '', nkR(c.t.w, 2)]
+    .concat(withPrices ? ['', nkR(c.t.v, 2)] : []);
+  tot.__cls = 'total-row';
+  rows.push(tot);
+  const cont = {title: 'بيانات الحاوية', head: ['البيان', 'القيمة'], rows: [
+    ['وزن الحاويه ( كجم )', nkR(nkN(o.containerW), 2)],
+    ['عدد الحاويات', nkN(o.containers)],
+    ['اجمالي وزن الحاويات المطلوبة', nkR(c.capacity, 2)],
+    ['إجمالي وزن الطلبية', nkR(c.t.w, 2)],
+    ['الفرق في الميزان', nkR(c.diff, 2)],
+    ['الحالة', c.status],
+  ]};
+  return [{title: `طلبية جيفيز رقم ${o.no} — ${nkDateAr(o.date)}` + (withPrices ? '' : ' (بدون أسعار)'), head, rows}, cont];
+}
+NK_EXPORTERS['gvP'] = ()=> ({blocks: gvBlocks(true),  title: `طلبية جيفيز ${gvOrder().no} بالأسعار`,  subtitle: `طلبية رقم ${gvOrder().no} — ${nkDateAr(gvOrder().date)}`});
+NK_EXPORTERS['gvN'] = ()=> ({blocks: gvBlocks(false), title: `طلبية جيفيز ${gvOrder().no} بدون أسعار`, subtitle: `طلبية رقم ${gvOrder().no} — ${nkDateAr(gvOrder().date)}`});
+NK_EXPORTERS['gvI'] = ()=> ({blocks: [{title:'دليل أصناف جيفيز والأسعار', head:['م','الكود CODE','اسم الصنف','الوصف','عدد القطع بالكرتونة','وزن القطعة (كجم)','سعر قبل الزيادة $','سعر بعد الزيادة $','نسبة الزيادة %'],
+  rows: GV.items.map((x, i)=> [i+1, x.code||'', x.name||'', x.desc||'', nkN(x.pcs), nkN(x.weight), nkN(x.price), nkN(x.price2),
+    nkN(x.price) ? nkR((nkN(x.price2) / nkN(x.price) - 1) * 100, 2) + '%' : ''])}],
+  title: 'دليل أصناف جيفيز والأسعار', subtitle: 'الأصناف والأسعار قبل وبعد الزيادة'});
+
+function renderGV(){
+  const el = $('gvApp'); if(!el) return;
+  const o = gvOrder(); const c = gvCalc(o); const wp = GV.withPrices !== false;
+  const tab = GV.tab || 'order';
+  const opts = GV.orders.map((x, i)=> `<option value="${i}" ${i === GV.cur ? 'selected' : ''}>طلبية ${x.no} — ${esc(nkDateAr(x.date))}</option>`).join('');
+  let rowsH = '';
+  c.rows.forEach((r, i)=>{
+    rowsH += `<tr><td>${i + 1}</td>
+      <td style="text-align:right;min-width:210px;position:relative">
+        ${nkInp(o.rows[i].name, 'gv.row.' + i + '.name', 'type="text" autocomplete="off" data-gvq="' + i + '" placeholder="اكتب جزء من الاسم أو الكود"')}
+        <div class="gv-sug" data-sug="${i}" style="display:none"></div>
+        ${r.name && !r.found ? '<div class="badge" style="color:var(--danger)">الصنف مش في الدليل</div>' : ''}
+      </td>
+      <td>${esc(r.code)}</td>
+      <td style="min-width:90px">${nkInp(o.rows[i].qty, 'gv.row.' + i + '.qty')}</td>
+      <td class="wh-num">${nkF(r.pcs, 0)}</td><td class="wh-num">${nkF(r.cartons, 2)}</td>
+      <td class="wh-num">${nkF(r.weight, 4)}</td><td class="wh-num">${nkF(r.totalW, 2)}</td>
+      ${wp ? `<td class="wh-num">${nkF(r.price, 4)}</td><td class="wh-num">${nkF(r.totalV, 2)}</td>` : ''}
+      <td><button class="ghost" data-gvdel="${i}">✕</button></td></tr>`;
+  });
+  const pct = c.fill;
+  const barColor = pct > 100 ? 'var(--danger)' : (pct >= 98 ? 'var(--accent2)' : 'var(--accent)');
+  el.innerHTML = `
+  <div class="tabs">
+    <div class="tab ${tab === 'order' ? 'active' : ''}" data-gvtab="order">🧾 الطلبية</div>
+    <div class="tab ${tab === 'items' ? 'active' : ''}" data-gvtab="items">📦 الأصناف والأسعار (${GV.items.length})</div>
+  </div>
+
+  <div class="card" style="display:${tab === 'order' ? '' : 'none'}">
+    <div class="flex-between"><h2 style="margin:0">🚢 طلبيات جيفز</h2>
+      <div class="row">
+        <select id="gvSel">${opts}</select>
+        <button class="secondary" id="gvNew">+ طلبية جديدة</button>
+        <button class="ghost" id="gvDelOrder">حذف الطلبية</button>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label>رقم الطلبية <input type="number" id="gvNo" value="${esc(o.no)}" style="width:90px"></label>
+      <label>التاريخ <input type="date" id="gvDate" value="${esc(o.date)}"></label>
+      <label>السعر المستخدم
+        <select id="gvPriceMode">
+          <option value="before" ${o.priceMode !== 'after' ? 'selected' : ''}>قبل الزيادة</option>
+          <option value="after" ${o.priceMode === 'after' ? 'selected' : ''}>بعد الزيادة</option>
+        </select></label>
+      <label class="chk" style="display:flex;gap:6px;align-items:center">
+        <input type="checkbox" id="gvWithPrices" ${wp ? 'checked' : ''}> إظهار الأسعار</label>
+    </div>
+
+    <div class="card" style="margin:12px 0 0;background:var(--panel2)">
+      <div class="flex-between">
+        <b>وزن الحاوية</b>
+        <span class="pill ${c.diff >= 0 ? 'done' : ''}">${esc(c.status)} — الفرق ${nkF(c.diff, 0)} كجم</span>
+      </div>
+      <div style="height:14px;border-radius:999px;background:#dfe3ef;margin-top:8px;overflow:hidden">
+        <div style="height:100%;width:${Math.min(100, pct)}%;background:${barColor}"></div>
+      </div>
+      <div class="row" style="margin-top:8px;gap:14px">
+        <label>وزن الحاويه (كجم) <input type="number" id="gvContW" value="${esc(o.containerW)}" style="width:120px"></label>
+        <label>عدد الحاويات <input type="number" id="gvContN" value="${esc(o.containers)}" style="width:90px"></label>
+        <span class="pill">طلبيتك: <b>${nkF(c.t.w, 0)}</b> من <b>${nkF(c.capacity, 0)}</b> كجم (${nkF(pct, 1)}%)</span>
+      </div>
+    </div>
+
+    <div class="tbl-wrap" style="margin-top:10px;overflow:visible;max-height:none"><table><thead><tr>
+      <th>م</th><th>اسم الصنف</th><th>الكود</th><th>الكمية</th><th>ق/كرتونة</th><th>الكراتين</th>
+      <th>وزن القطعة</th><th>إجمالي الوزن</th>${wp ? '<th>سعر القطعة $</th><th>إجمالي القيمة $</th>' : ''}<th></th>
+    </tr></thead><tbody>${rowsH}
+      <tr class="total-row"><td></td><td style="text-align:right">الإجمالي</td><td></td>
+        <td class="wh-num">${nkF(c.t.qty, 2)}</td><td></td><td class="wh-num">${nkF(c.t.cart, 2)}</td>
+        <td></td><td class="wh-num">${nkF(c.t.w, 2)}</td>
+        ${wp ? `<td></td><td class="wh-num">${nkF(c.t.v, 2)}</td>` : ''}<td></td></tr>
+    </tbody></table></div>
+    <div class="row" style="margin-top:8px"><button id="gvAddRow">+ سطر صنف</button></div>
+    <div class="sub" style="margin-top:10px">تصدير الطلبية — نسخة بالأسعار ونسخة من غير أسعار (إكسل / PDF / صورة).</div>
+    ${nkBar('gvP', '<span class="pill">بالأسعار</span>')}
+    ${nkBar('gvN', '<span class="pill">بدون أسعار</span>')}
+  </div>
+
+  <div class="card" style="display:${tab === 'items' ? '' : 'none'}">
+    <div class="flex-between"><h2 style="margin:0">📦 الأصناف والأسعار قبل وبعد الزيادة</h2>
+      <div class="row">
+        <input type="file" id="gvFile" accept=".xlsx,.xls" style="max-width:230px">
+        <button class="secondary" id="gvAddItem">+ صنف يدوي</button>
+      </div>
+    </div>
+    <div class="sub" style="margin-top:6px">الإكسل لازم يكون فيه شيت فيه عمود <b>الكود CODE</b> و<b>اسم الصنف</b> — الأصناف بتتحدّث بالكود وتتضاف الجديدة.</div>
+    <div class="row" style="margin-top:8px">
+      <input type="text" id="gvItemSearch" placeholder="🔍 دوّر بالاسم أو الكود" value="${esc(GV.q || '')}" style="min-width:240px;flex:1">
+    </div>
+    <div class="tbl-wrap" style="margin-top:10px;max-height:460px"><table><thead><tr>
+      <th>م</th><th>الكود</th><th>اسم الصنف</th><th>ق/كرتونة</th><th>وزن القطعة</th><th>سعر قبل الزيادة $</th><th>سعر بعد الزيادة $</th><th>الزيادة %</th><th></th>
+    </tr></thead><tbody>${GV.items.map((x, i)=> ({x, i}))
+      .filter(({x})=> !GV.q || normName((x.name||'') + ' ' + (x.code||'')).indexOf(normName(GV.q)) >= 0)
+      .map(({x, i})=> `<tr><td>${i + 1}</td>
+      <td style="min-width:120px">${nkInp(x.code, 'gv.item.' + i + '.code', 'type="text"')}</td>
+      <td style="min-width:200px">${nkInp(x.name, 'gv.item.' + i + '.name', 'type="text"')}</td>
+      <td>${nkInp(x.pcs, 'gv.item.' + i + '.pcs')}</td>
+      <td>${nkInp(x.weight, 'gv.item.' + i + '.weight')}</td>
+      <td>${nkInp(x.price, 'gv.item.' + i + '.price')}</td>
+      <td>${nkInp(x.price2, 'gv.item.' + i + '.price2')}</td>
+      <td class="wh-num">${nkN(x.price) ? nkF((nkN(x.price2) / nkN(x.price) - 1) * 100, 1) + '%' : ''}</td>
+      <td><button class="ghost" data-gvidel="${i}">✕</button></td></tr>`).join('')}</tbody></table></div>
+    ${nkBar('gvI')}
+  </div>`;
+
+  el.querySelectorAll('[data-gvtab]').forEach(t=> t.onclick = ()=>{ GV.tab = t.dataset.gvtab; gvSave(); renderGV(); });
+  $('gvSel').onchange = (e)=>{ GV.cur = +e.target.value; gvSave(); renderGV(); };
+  $('gvNew').onclick = ()=>{
+    const no = GV.orders.reduce((a, x)=> Math.max(a, nkN(x.no)), 0) + 1;
+    GV.orders.push({no, date: nkToday(), rows: [], containerW: o.containerW || 28000, containers: 1, priceMode: o.priceMode});
+    GV.cur = GV.orders.length - 1; gvSave(); renderGV();
+  };
+  $('gvDelOrder').onclick = ()=>{
+    if(!confirm('حذف الطلبية دي؟')) return;
+    GV.orders.splice(GV.cur, 1); GV.cur = 0; gvSave(); renderGV();
+  };
+  $('gvAddRow').onclick = ()=>{ o.rows.push({name:'', qty:''}); gvSave(); renderGV();
+    const inp = el.querySelector(`[data-gvq="${o.rows.length - 1}"]`); if(inp) inp.focus(); };
+  $('gvAddItem').onclick = ()=>{ GV.items.unshift({code:'', name:'', pcs:'', weight:'', price:'', price2:''}); gvSave(); renderGV(); };
+  $('gvNo').onchange = (e)=>{ o.no = nkN(e.target.value); gvSave(); renderGV(); };
+  $('gvDate').onchange = (e)=>{ o.date = e.target.value; gvSave(); renderGV(); };
+  $('gvPriceMode').onchange = (e)=>{ o.priceMode = e.target.value; gvSave(); renderGV(); };
+  $('gvWithPrices').onchange = (e)=>{ GV.withPrices = e.target.checked; gvSave(); renderGV(); };
+  $('gvContW').onchange = (e)=>{ o.containerW = nkN(e.target.value); gvSave(); renderGV(); };
+  $('gvContN').onchange = (e)=>{ o.containers = nkN(e.target.value); gvSave(); renderGV(); };
+  const q = $('gvItemSearch');
+  if(q) q.oninput = ()=>{ GV.q = q.value; gvSave(); const pos = q.selectionStart; renderGV();
+    const n = $('gvItemSearch'); if(n){ n.focus(); try{ n.setSelectionRange(pos, pos); }catch(e){} } };
+  el.querySelectorAll('[data-gvdel]').forEach(b=> b.onclick = ()=>{ o.rows.splice(+b.dataset.gvdel, 1); gvSave(); renderGV(); });
+  el.querySelectorAll('[data-gvidel]').forEach(b=> b.onclick = ()=>{ GV.items.splice(+b.dataset.gvidel, 1); gvSave(); renderGV(); });
+
+  // بحث الأصناف جوه سطر الطلبية
+  el.querySelectorAll('[data-gvq]').forEach(inp=>{
+    const i = +inp.dataset.gvq;
+    const box = el.querySelector(`[data-sug="${i}"]`);
+    const close = ()=>{ if(box) box.style.display = 'none'; };
+    const show = ()=>{
+      if(!box) return;
+      const list = gvSearch(inp.value);
+      if(!list.length){ close(); return; }
+      box.innerHTML = list.map(x=> `<div class="gv-sug-i" data-pick="${esc(x.name)}">
+        <b>${esc(x.name)}</b><span class="badge"> ${esc(x.code || '')} · ${nkF(nkN(x.weight), 3)} كجم · ${nkF(nkN(x.pcs), 0)} ق/كرتونة</span></div>`).join('');
+      box.style.display = '';
+      box.querySelectorAll('[data-pick]').forEach(d=> d.onmousedown = (ev)=>{
+        ev.preventDefault();
+        o.rows[i].name = d.dataset.pick; gvSave(); renderGV();
+        const nx = el.querySelector(`[data-nk="gv.row.${i}.qty"]`); if(nx) nx.focus();
+      });
+    };
+    inp.oninput = show;
+    inp.onfocus = show;
+    inp.onblur = ()=> setTimeout(close, 150);
+  });
+  el.querySelectorAll('[data-nk^="gv."]').forEach(inp=>{
+    inp.onchange = ()=>{
+      const [, kind, i, field] = inp.dataset.nk.split('.');
+      const target = kind === 'row' ? o.rows[+i] : GV.items[+i];
+      if(!target) return;
+      target[field] = (field === 'name' || field === 'code') ? inp.value : nkN(inp.value);
+      gvSave(); renderGV();
+    };
+  });
+  const fi = $('gvFile');
+  if(fi) fi.onchange = (e)=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = (ev)=>{
+      try{
+        const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+        let added = 0, upd = 0;
+        wb.SheetNames.forEach(sn=>{
+          const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true});
+          const hi = aoa.findIndex(r=> (r || []).some(c=> /الكود/.test(String(c || ''))));
+          if(hi < 0) return;
+          const head = (aoa[hi] || []).map(c=> String(c == null ? '' : c).trim());
+          const col = (re)=> head.findIndex(h=> re.test(h));
+          const cCode = col(/الكود/), cName = col(/اسم الصنف/), cDesc = col(/DESCRIPTION/i),
+                cPcs = col(/عدد القطع/), cW = col(/وزن القطعة/), cP1 = col(/قبل الزياد/), cP2 = col(/بعد الزياد/);
+          if(cCode < 0 || cName < 0) return;
+          aoa.slice(hi + 1).forEach(r=>{
+            const code = String((r || [])[cCode] == null ? '' : r[cCode]).trim();
+            const name = String((r || [])[cName] == null ? '' : r[cName]).trim();
+            if(!code && !name) return;
+            const it = {code, name, desc: cDesc >= 0 ? (r[cDesc] || '') : '',
+              pcs: cPcs >= 0 ? nkN(r[cPcs]) : '', weight: cW >= 0 ? nkN(r[cW]) : '',
+              price: cP1 >= 0 ? nkN(r[cP1]) : '', price2: cP2 >= 0 ? nkN(r[cP2]) : ''};
+            const ex = GV.items.find(x=> (code && String(x.code).trim() === code) || normName(x.name) === normName(name));
+            if(ex){ Object.keys(it).forEach(k=>{ if(it[k] !== '' && it[k] != null) ex[k] = it[k]; }); upd++; }
+            else { GV.items.push(it); added++; }
+          });
+        });
+        gvSave(); renderGV();
+        alert(added || upd ? `تم: ${added} صنف جديد، ${upd} صنف اتحدّث.` : 'مش لاقي شيت أصناف فيه عمود "الكود CODE" و"اسم الصنف".');
+      }catch(err){ alert('مش قادر أقرا الملف: ' + err.message); }
+    };
+    rd.readAsArrayBuffer(f);
+  };
+}
+
+/* ==================== 2) مرتبات شركة القرشي ==================== */
+const QP_DEF = {month: nkToday().slice(0, 7), emps: [], half: 1, data: {}};
+let QP = nkGet('qpData', null) || JSON.parse(JSON.stringify(QP_DEF));
+const qpSave = ()=> nkSet('qpData', QP);
+const qpKey = (h)=> QP.month + '#' + h;
+function qpRow(h, name){
+  const k = qpKey(h);
+  QP.data[k] = QP.data[k] || {};
+  QP.data[k][name] = QP.data[k][name] || {absExc:'', absNo:'', late:'', extra:'', pen:'', adv:'', ins:'', inc:'', note:''};
+  return QP.data[k][name];
+}
+// نفس معادلات الشيت بالظبط
+function qpCalc(h){
+  const rows = QP.emps.filter(e=> h === 1 ? e.h1 !== false : e.h2 !== false).map(e=>{
+    const d = qpRow(h, e.name);
+    const both = e.h1 !== false && e.h2 !== false;
+    const salary = nkN(e.salary);
+    const half = both ? nkR(salary / 2, 0) : salary;             // راتب النصف
+    const day  = both ? nkR(half / 15, 2) : nkR(salary / 30, 2); // راتب اليوم
+    const hour = nkR(day / 9, 2);                                 // راتب الساعة
+    const dExc = nkR(nkN(d.absExc) * day, 0);
+    const dNo  = nkR(nkN(d.absNo)  * day, 0);
+    const dLate= nkR(nkN(d.late)   * hour, 0);
+    const vExt = nkR(nkN(d.extra)  * hour * 1.5, 0);
+    const dPen = nkR(nkN(d.pen)    * day, 0);
+    const adv  = nkN(d.adv), ins = nkN(d.ins), inc = nkN(d.inc);
+    const net  = nkMR(half - dExc - dNo - dLate + vExt - dPen - adv - ins + inc, 5);
+    return {name: e.name, branch: e.branch || '', salary, half, day, hour, d,
+      dExc, dNo, dLate, vExt, dPen, adv, ins, inc, net,
+      totalDed: dExc + dNo + dLate + dPen + adv + ins};
+  });
+  const t = rows.reduce((a, r)=> ({half:a.half+r.half, dExc:a.dExc+r.dExc, dNo:a.dNo+r.dNo,
+    dLate:a.dLate+r.dLate, vExt:a.vExt+r.vExt, dPen:a.dPen+r.dPen, adv:a.adv+r.adv,
+    ins:a.ins+r.ins, inc:a.inc+r.inc, net:a.net+r.net, salary:a.salary+r.salary,
+    totalDed:a.totalDed+r.totalDed}),
+    {half:0,dExc:0,dNo:0,dLate:0,vExt:0,dPen:0,adv:0,ins:0,inc:0,net:0,salary:0,totalDed:0});
+  return {rows, t};
+}
+const QP_HALF_LBL = (h)=> h === 1 ? 'النصف الأول (1-15)' : 'النصف الثاني (16-آخر الشهر)';
+function qpBlocks(which){
+  const out = [];
+  const mk = (h)=>{
+    const c = qpCalc(h);
+    const head = ['م','الموظف','الفرع','الراتب الشهري','راتب النصف','راتب اليوم','راتب الساعة',
+      'غياب بإذن (أيام)','غياب بدون إذن (أيام)','تأخيرات (ساعات)','إضافي (ساعات)','جزاءات (أيام)','سلف',
+      'خصم غياب بإذن','خصم غياب بدون إذن','خصم تأخيرات','مبلغ إضافي','خصم جزاءات','سلف مخصومة','تأمينات','حوافز','صافي الراتب'];
+    const rows = c.rows.map((r, i)=> [i+1, r.name, r.branch, r.salary, r.half, r.day, r.hour,
+      nkN(r.d.absExc), nkN(r.d.absNo), nkN(r.d.late), nkN(r.d.extra), nkN(r.d.pen), nkN(r.d.adv),
+      r.dExc, r.dNo, r.dLate, r.vExt, r.dPen, r.adv, r.ins, r.inc, r.net]);
+    const tot = ['', 'الإجمالي', '', c.t.salary, c.t.half, '', '', '', '', '', '', '', '',
+      c.t.dExc, c.t.dNo, c.t.dLate, c.t.vExt, c.t.dPen, c.t.adv, c.t.ins, c.t.inc, c.t.net];
+    tot.__cls = 'total-row'; rows.push(tot);
+    return {title: 'كشف مرتبات ' + QP_HALF_LBL(h), head, rows};
+  };
+  const send = (h)=>{
+    const c = qpCalc(h);
+    const head = ['م','اسم الموظف','الفرع','المرتب الكامل','المستحق (النص)','خصم غياب','خصم تأخيرات','إضافي','خصم جزاءات','سلف','تأمينات','إجمالي الخصومات','حوافز','صافي المرتب'];
+    const rows = c.rows.map((r, i)=> [i+1, r.name, r.branch, r.salary, r.half, r.dExc + r.dNo,
+      r.dLate, r.vExt, r.dPen, r.adv, r.ins, r.totalDed, r.inc, r.net]);
+    const tot = ['', 'الإجمالي', '', c.t.salary, c.t.half, c.t.dExc + c.t.dNo, c.t.dLate, c.t.vExt,
+      c.t.dPen, c.t.adv, c.t.ins, c.t.totalDed, c.t.inc, c.t.net];
+    tot.__cls = 'total-row'; rows.push(tot);
+    return {title: 'كشف الإرسال - ' + QP_HALF_LBL(h), head, rows};
+  };
+  if(which === 'half') { out.push(mk(QP.half), send(QP.half)); return out; }
+  if(which === 'send') { out.push(send(QP.half)); return out; }
+  const a = qpCalc(1), b = qpCalc(2);
+  const line = (lbl, k)=> [lbl, a.t[k], b.t[k], a.t[k] + b.t[k]];
+  out.push({title: 'الملخص الشهري', head: ['البيان','النصف الأول','النصف الثاني','الإجمالي الشهري'], rows: [
+    line('إجمالي الراتب', 'half'), line('خصم غياب بإذن', 'dExc'), line('خصم غياب بدون إذن', 'dNo'),
+    line('خصم التأخيرات', 'dLate'), line('مبلغ الإضافي', 'vExt'), line('خصم الجزاءات', 'dPen'),
+    line('السلف المخصومة', 'adv'), line('التأمينات', 'ins'), line('الحوافز', 'inc'),
+    Object.assign(line('صافي الراتب المدفوع', 'net'), {__cls:'total-row'}),
+  ]});
+  return out;
+}
+NK_EXPORTERS['qpH'] = ()=> ({blocks: qpBlocks('half'), title: `مرتبات القرشي ${QP.month} — ${QP_HALF_LBL(QP.half)}`, subtitle: QP_HALF_LBL(QP.half) + ' — ' + QP.month});
+NK_EXPORTERS['qpS'] = ()=> ({blocks: qpBlocks('sum'),  title: `ملخص مرتبات القرشي ${QP.month}`, subtitle: 'ملخص شهر ' + QP.month});
+
+// ---- استيراد شيت مرتبات القرشي ----
+// بيقرا "بيانات الموظفين" (اسم / فرع / راتب / النصف الأول؟ / النصف الثاني؟)
+// وكمان كشوف النصفين لو موجودة (غياب / تأخيرات / إضافي / جزاءات / سلف / تأمينات / حوافز)
+function qpImport(wb){
+  const S = (v)=> String(v == null ? '' : v).trim();
+  const tick = (v)=> !/^(—|-|✕|x|لا|0)?$/i.test(S(v)) ? /✔|✓|نعم|yes|true|1/i.test(S(v)) : false;
+  let emps = 0, filled = 0;
+  wb.SheetNames.forEach(sn=>{
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true});
+    const hi = aoa.findIndex(r=> (r || []).some(c=> /^(اسم الموظف|الموظف)$/.test(S(c)))
+      && (r || []).some(c=> /الراتب|المرتب/.test(S(c))));
+    if(hi < 0) return;
+    const head = (aoa[hi] || []).map(c=> S(c).replace(/\s+/g, ' '));
+    const at = (re)=> head.findIndex(h=> re.test(h));
+    const cName = at(/^(اسم الموظف|الموظف)$/), cBr = at(/^الفرع$/), cSal = at(/الراتب الشهري|^الراتب$|المرتب الكامل/);
+    const cH1 = at(/النصف الأول/), cH2 = at(/النصف الثاني/);
+    const cAbsE = at(/غياب بإذن \(أيام\)|^غياب بإذن$/), cAbsN = at(/غياب بدون إذن \(أيام\)|^غياب بدون إذن$/),
+          cLate = at(/تأخيرات \(ساعات\)/), cExt = at(/إضافي \(ساعات\)/), cPen = at(/جزاءات \(أيام\)/),
+          cAdv = at(/سلف \(جنيه\)|^سلف$/), cIns = at(/^تأمينات$/), cInc = at(/حوافز/);
+    const isPay = cAbsE >= 0 || cLate >= 0 || cExt >= 0;
+    const half = /الثاني|الثانى/.test(sn) ? 2 : (/الأول|الاول/.test(sn) ? 1 : QP.half);
+    aoa.slice(hi + 1).forEach(r=>{
+      const name = S((r || [])[cName]);
+      if(!name || /الإجمالي|الاجمالي|total/i.test(name)) return;
+      let e = QP.emps.find(x=> normName(x.name) === normName(name));
+      if(!e){ e = {name, branch:'', salary:0, h1:true, h2:true}; QP.emps.push(e); emps++; }
+      if(cBr >= 0 && S(r[cBr])) e.branch = S(r[cBr]);
+      if(cSal >= 0 && nkN(r[cSal])) e.salary = nkN(r[cSal]);
+      if(cH1 >= 0) e.h1 = tick(r[cH1]);
+      if(cH2 >= 0) e.h2 = tick(r[cH2]);
+      if(isPay){
+        const d = qpRow(half, name);
+        const set = (k, c)=>{ if(c >= 0 && r[c] !== '' && r[c] != null) d[k] = nkN(r[c]); };
+        set('absExc', cAbsE); set('absNo', cAbsN); set('late', cLate); set('extra', cExt);
+        set('pen', cPen); set('adv', cAdv); set('ins', cIns); set('inc', cInc);
+        filled++;
+      }
+    });
+  });
+  qpSave();
+  return {emps, filled};
+}
+
+function renderQP(){
+  const el = $('qpApp'); if(!el) return;
+  const c = qpCalc(QP.half);
+  let body = '';
+  c.rows.forEach((r, i)=>{
+    const p = 'qp.' + i + '.';
+    body += `<tr><td>${i + 1}</td><td style="text-align:right;min-width:170px">${esc(r.name)}</td>
+      <td>${esc(r.branch)}</td><td class="wh-num">${nkF(r.salary, 0)}</td><td class="wh-num">${nkF(r.half, 0)}</td>
+      <td class="wh-num">${nkF(r.day, 2)}</td><td class="wh-num">${nkF(r.hour, 2)}</td>
+      <td>${nkInp(r.d.absExc, p + 'absExc')}</td><td>${nkInp(r.d.absNo, p + 'absNo')}</td>
+      <td>${nkInp(r.d.late, p + 'late')}</td><td>${nkInp(r.d.extra, p + 'extra')}</td>
+      <td>${nkInp(r.d.pen, p + 'pen')}</td><td>${nkInp(r.d.adv, p + 'adv')}</td>
+      <td>${nkInp(r.d.ins, p + 'ins')}</td><td>${nkInp(r.d.inc, p + 'inc')}</td>
+      <td class="wh-num">${nkF(r.dExc, 0)}</td><td class="wh-num">${nkF(r.dNo, 0)}</td>
+      <td class="wh-num">${nkF(r.dLate, 0)}</td><td class="wh-num">${nkF(r.vExt, 0)}</td>
+      <td class="wh-num">${nkF(r.dPen, 0)}</td>
+      <td class="wh-num" style="font-weight:700">${nkF(r.net, 0)}</td></tr>`;
+  });
+  el.innerHTML = `
+  <div class="card">
+    <div class="flex-between"><h2 style="margin:0">💵 مرتبات شركة القرشي</h2>
+      <div class="row">
+        <label>الشهر <input type="month" id="qpMonth" value="${esc(QP.month)}"></label>
+        <select id="qpHalf">
+          <option value="1" ${QP.half === 1 ? 'selected' : ''}>النصف الأول 1-15</option>
+          <option value="2" ${QP.half === 2 ? 'selected' : ''}>النصف الثاني 16-آخر الشهر</option>
+        </select>
+      </div>
+    </div>
+    <div class="sub" style="margin-top:6px">راتب النصف = الراتب ÷ 2 (لو الموظف في النصفين) · راتب اليوم = راتب النصف ÷ 15 · راتب الساعة = راتب اليوم ÷ 9 · الإضافي × 1.5 · الصافي بيتقرّب لأقرب 5.</div>
+    <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr>
+      <th>م</th><th>الموظف</th><th>الفرع</th><th>الراتب</th><th>راتب النصف</th><th>راتب اليوم</th><th>راتب الساعة</th>
+      <th>غياب بإذن</th><th>غياب بدون إذن</th><th>تأخيرات (س)</th><th>إضافي (س)</th><th>جزاءات (أيام)</th>
+      <th>سلف</th><th>تأمينات</th><th>حوافز</th>
+      <th>خصم بإذن</th><th>خصم بدون إذن</th><th>خصم تأخير</th><th>مبلغ إضافي</th><th>خصم جزاءات</th><th>الصافي</th>
+    </tr></thead><tbody>${body}
+      <tr class="total-row"><td></td><td style="text-align:right">الإجمالي</td><td></td>
+        <td class="wh-num">${nkF(c.t.salary, 0)}</td><td class="wh-num">${nkF(c.t.half, 0)}</td><td></td><td></td>
+        <td></td><td></td><td></td><td></td><td></td>
+        <td class="wh-num">${nkF(c.t.adv, 0)}</td><td class="wh-num">${nkF(c.t.ins, 0)}</td><td class="wh-num">${nkF(c.t.inc, 0)}</td>
+        <td class="wh-num">${nkF(c.t.dExc, 0)}</td><td class="wh-num">${nkF(c.t.dNo, 0)}</td>
+        <td class="wh-num">${nkF(c.t.dLate, 0)}</td><td class="wh-num">${nkF(c.t.vExt, 0)}</td>
+        <td class="wh-num">${nkF(c.t.dPen, 0)}</td><td class="wh-num">${nkF(c.t.net, 0)}</td></tr>
+    </tbody></table></div>
+    ${nkBar('qpH', '<span class="pill">الكشف + كشف الإرسال</span>')}
+    ${nkBar('qpS', '<span class="pill">الملخص الشهري</span>')}
+  </div>
+
+  <div class="card">
+    <div class="flex-between"><h2 style="margin:0">بيانات الموظفين (${QP.emps.length})</h2>
+      <div class="row">
+        <input type="file" id="qpFile" accept=".xlsx,.xls" style="max-width:230px">
+        <button class="secondary" id="qpAdd">+ موظف</button>
+      </div></div>
+    <div class="sub" style="margin-top:6px">ارفع شيت المرتبات — بيقرا "بيانات الموظفين" (الفرع والراتب والنصفين)، ولو فيه كشوف النصفين بيقرا منها الغياب والتأخيرات والإضافي والسلف كمان.</div>
+    <div class="tbl-wrap" style="margin-top:10px;max-height:420px"><table><thead><tr>
+      <th>م</th><th>اسم الموظف</th><th>الفرع</th><th>الراتب الشهري</th><th>النصف الأول</th><th>النصف الثاني</th><th></th>
+    </tr></thead><tbody>${QP.emps.map((e, i)=> `<tr><td>${i + 1}</td>
+      <td style="min-width:190px">${nkInp(e.name, 'qpe.' + i + '.name', 'type="text"')}</td>
+      <td style="min-width:110px">${nkInp(e.branch, 'qpe.' + i + '.branch', 'type="text"')}</td>
+      <td>${nkInp(e.salary, 'qpe.' + i + '.salary')}</td>
+      <td><input type="checkbox" data-qpc="${i}.h1" ${e.h1 !== false ? 'checked' : ''}></td>
+      <td><input type="checkbox" data-qpc="${i}.h2" ${e.h2 !== false ? 'checked' : ''}></td>
+      <td><button class="ghost" data-qpdel="${i}">✕</button></td></tr>`).join('')}</tbody></table></div>
+  </div>`;
+
+  $('qpMonth').onchange = (e)=>{ QP.month = e.target.value; qpSave(); renderQP(); };
+  $('qpHalf').onchange = (e)=>{ QP.half = +e.target.value; qpSave(); renderQP(); };
+  if($('qpFile')) $('qpFile').onchange = (e)=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = (ev)=>{
+      try{
+        const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+        const res = qpImport(wb);
+        renderQP();
+        alert(res.emps || res.filled ? `تم: ${res.emps} موظف جديد، و${res.filled} سطر بيانات من الكشوف.`
+          : 'مش لاقي شيت فيه عمود "اسم الموظف" و"الراتب الشهري".');
+      }catch(err){ alert('مش قادر أقرا الملف: ' + err.message); }
+    };
+    rd.readAsArrayBuffer(f);
+  };
+  $('qpAdd').onclick = ()=>{ QP.emps.push({name:'موظف جديد', branch:'', salary:0, h1:true, h2:true}); qpSave(); renderQP(); };
+  el.querySelectorAll('[data-qpdel]').forEach(b=> b.onclick = ()=>{ QP.emps.splice(+b.dataset.qpdel, 1); qpSave(); renderQP(); });
+  el.querySelectorAll('[data-qpc]').forEach(cb=> cb.onchange = ()=>{
+    const [i, k] = cb.dataset.qpc.split('.'); QP.emps[+i][k] = cb.checked; qpSave(); renderQP();
+  });
+  el.querySelectorAll('[data-nk^="qpe."]').forEach(inp=> inp.onchange = ()=>{
+    const [, i, field] = inp.dataset.nk.split('.');
+    QP.emps[+i][field] = field === 'salary' ? nkN(inp.value) : inp.value;
+    qpSave(); renderQP();
+  });
+  el.querySelectorAll('[data-nk^="qp."]').forEach(inp=> inp.onchange = ()=>{
+    const [, i, field] = inp.dataset.nk.split('.');
+    const r = qpCalc(QP.half).rows[+i];
+    if(r) qpRow(QP.half, r.name)[field] = inp.value;
+    qpSave(); renderQP();
+  });
+}
+
+/* ==================== 3) مرتبات المصنع (سمارتي) ==================== */
+const FP_CODES = ['ح', 'غ.إذن', 'غ', 'راحة', 'غ.راحة', 'إجازة', ''];
+let FP = nkGet('fpData', null) || {start: nkToday().slice(0, 8) + '01', end: '', transitional: false,
+  emps: [], att: {}, pay: {}, period: 'full', tab: 'pay'};
+if(!FP.period) FP.period = 'full';
+const fpSave = ()=> nkSet('fpData', FP);
+function fpDays(){
+  if(!FP.transitional) return 30;
+  const a = new Date(FP.start), b = new Date(FP.end || FP.start);
+  const n = Math.round((b - a) / 86400000) + 1;
+  return isFinite(n) && n > 0 ? Math.min(n, 31) : 30;
+}
+const fpDayDate = (i)=>{ const d = new Date(FP.start); d.setDate(d.getDate() + i); return d; };
+const fpDayLbl = (i)=>{ const d = fpDayDate(i); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0'); };
+const fpKey = ()=> FP.start + '_' + fpDays();
+const fpPeriodKey = ()=> fpKey() + '_' + FP.period;
+function fpAtt(name){
+  const k = fpKey(); FP.att[k] = FP.att[k] || {};
+  FP.att[k][name] = FP.att[k][name] || {};
+  return FP.att[k][name];
+}
+function fpPay(name){
+  const k = fpPeriodKey(); FP.pay[k] = FP.pay[k] || {};
+  FP.pay[k][name] = FP.pay[k][name] || {late:'', extra:'', pen:'', adv:'', inc:''};
+  return FP.pay[k][name];
+}
+// الجمعة راحة افتراضيًا (زي معادلة WEEKDAY في الشيت)
+const fpDefault = (i)=> fpDayDate(i).getDay() === 5 ? 'راحة' : 'ح';
+// الموظف بيقبض نصفين ولا مرة واحدة آخر الشهر؟
+const fpBoth = (e)=> e.pay2 !== false;   // pay2=false يعني بيقبض النصف التاني بس
+function fpInPeriod(e){
+  if(FP.period === 'full') return true;
+  if(FP.period === 'h1') return fpBoth(e);
+  return true;   // النصف التاني: الكل بيظهر
+}
+// مدى الأيام اللي بتتحسب للموظف في الفترة المختارة
+function fpRange(e){
+  const days = fpDays();
+  if(FP.period === 'full') return [0, days];
+  const half = Math.min(15, days);
+  if(FP.period === 'h1') return [0, half];
+  return fpBoth(e) ? [half, days] : [0, days];   // اللي بيقبض مرة واحدة بياخد الشهر كله في النصف التاني
+}
+function fpCalc(){
+  const rows = FP.emps.filter(fpInPeriod).map(e=>{
+    const a = fpAtt(e.name), p = fpPay(e.name);
+    const [from, to] = fpRange(e);
+    let filled = 0, present = 0, absExc = 0, absNo = 0;
+    for(let i = from; i < to; i++){
+      const v = a[i] == null ? fpDefault(i) : a[i];
+      if(v === '' || v == null) continue;
+      filled++;
+      if(v === 'ح' || v === 'راحة') present++;
+      if(v === 'غ.إذن') absExc++;
+      if(v === 'غ' || v === 'غ.راحة') absNo++;
+    }
+    const salary = nkN(e.salary);
+    const day = salary / 30, hour = salary / 30 / 8;
+    const absDed = (absExc * 1 + absNo * 2 + nkN(p.pen)) * day;
+    const totalDed = absDed + nkN(p.late) * hour * 1 + nkN(p.adv);
+    const net = nkMR(filled * day - totalDed + nkN(p.extra) * hour * 1.5 + nkN(p.inc), 5);
+    return {name: e.name, job: e.job || '', place: e.place || '', salary, days: filled, present,
+      absExc, absNo, p, from, to, due: nkR(filled * day, 2),
+      absDed: nkR(absDed, 2), totalDed: nkR(totalDed, 2), net};
+  });
+  const t = rows.reduce((a, r)=> ({salary:a.salary+r.salary, due:a.due+r.due, absDed:a.absDed+r.absDed,
+    totalDed:a.totalDed+r.totalDed, net:a.net+r.net, adv:a.adv+nkN(r.p.adv), inc:a.inc+nkN(r.p.inc)}),
+    {salary:0, due:0, absDed:0, totalDed:0, net:0, adv:0, inc:0});
+  return {rows, t, days: fpDays()};
+}
+const FP_PERIODS = {full:'الشهر كامل', h1:'النصف الأول (1-15)', h2:'النصف الثاني (16-آخر الشهر)'};
+const fpPeriodLbl = ()=> `${FP_PERIODS[FP.period]} — ${nkDateAr(FP.start)}${FP.transitional && FP.end ? ' حتى ' + nkDateAr(FP.end) : ''} (${fpDays()} يوم)`;
+function fpBlocks(which){
+  const c = fpCalc();
+  if(which === 'att'){
+    const head = ['م','اسم الموظف','المكان'].concat(Array.from({length: c.days}, (_, i)=> fpDayLbl(i)));
+    const rows = FP.emps.map((e, i)=>{
+      const a = fpAtt(e.name);
+      return [i + 1, e.name, e.place || ''].concat(Array.from({length: c.days}, (_, d)=> a[d] == null ? fpDefault(d) : a[d]));
+    });
+    return [{title: 'كشف الحضور اليومي', head, rows}];
+  }
+  if(which === 'emps'){
+    return [{title: 'بيانات عاملين المصنع',
+      head: ['م','اسم الموظف','الوظيفة','المكان / القسم','الراتب الشهري','طريقة الصرف'],
+      rows: FP.emps.map((e, i)=> [i+1, e.name, e.job || '', e.place || '', nkN(e.salary),
+        fpBoth(e) ? 'نصفين' : 'النصف الثاني فقط'])}];
+  }
+  const head = ['م','اسم الموظف','الوظيفة','المكان','الراتب الشهري','أيام الفترة','أيام الحضور','غياب بإذن','غياب بدون إذن',
+    'تأخيرات (ساعات)','إضافي (ساعات)','جزاءات (أيام)','سلف','حوافز','المستحق','خصم الغياب','إجمالي الخصومات','صافي الراتب'];
+  const rows = c.rows.map((r, i)=> [i+1, r.name, r.job, r.place, r.salary, r.days, r.present, r.absExc, r.absNo,
+    nkN(r.p.late), nkN(r.p.extra), nkN(r.p.pen), nkN(r.p.adv), nkN(r.p.inc), r.due, r.absDed, r.totalDed, r.net]);
+  const tot = ['', 'الإجمالي', '', '', c.t.salary, '', '', '', '', '', '', '', c.t.adv, c.t.inc,
+    nkR(c.t.due, 2), nkR(c.t.absDed, 2), nkR(c.t.totalDed, 2), c.t.net];
+  tot.__cls = 'total-row'; rows.push(tot);
+  return [{title: 'كشف مرتبات المصنع — ' + FP_PERIODS[FP.period], head, rows}];
+}
+NK_EXPORTERS['fpP'] = ()=> ({blocks: fpBlocks('pay'), title: 'مرتبات مصنع سمارتي ' + FP_PERIODS[FP.period] + ' ' + FP.start, subtitle: fpPeriodLbl()});
+NK_EXPORTERS['fpA'] = ()=> ({blocks: fpBlocks('att'), title: 'حضور مصنع سمارتي ' + FP.start, subtitle: fpPeriodLbl()});
+NK_EXPORTERS['fpE'] = ()=> ({blocks: fpBlocks('emps'), title: 'عاملين مصنع سمارتي', subtitle: 'بيانات العاملين والمرتبات'});
+
+// ---- استيراد شيت مرتبات المصنع ----
+// بيقرا الإعدادات (بداية/نهاية الشهر) + بيانات الموظفين + كشف الحضور اليومي
+function fpImport(wb){
+  const S = (v)=> String(v == null ? '' : v).trim();
+  const toDate = (v)=>{
+    if(v instanceof Date) return v.toISOString().slice(0, 10);
+    if(typeof v === 'number' && v > 20000){
+      const d = new Date(Date.UTC(1899, 11, 30) + v * 86400000);
+      return d.toISOString().slice(0, 10);
+    }
+    const s = S(v);
+    return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : '';
+  };
+  let emps = 0, att = 0;
+  wb.SheetNames.forEach(sn=>{
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true});
+    // الإعدادات
+    aoa.forEach(r=>{
+      const a = S((r || [])[0]);
+      const d = toDate((r || [])[1]);
+      if(d && /بداية/.test(a)) FP.start = d;
+      if(d && /نهاية/.test(a)){ FP.end = d; FP.transitional = true; }
+      if(/دورة انتقالية/.test(a) && /نعم/.test(S(r[1]))) FP.transitional = true;
+    });
+    // بيانات الموظفين
+    const hi = aoa.findIndex(r=> (r || []).some(c=> /^اسم الموظف$/.test(S(c))));
+    if(hi < 0) return;
+    const head = (aoa[hi] || []).map(c=> S(c));
+    const at = (re)=> head.findIndex(h=> re.test(h));
+    const cName = at(/^اسم الموظف$/), cJob = at(/^الوظيفة$/), cSal = at(/الراتب الشهري/), cPl = at(/المكان|القسم/);
+    const isAtt = /حضور/.test(sn) || head.filter(h=> /^\d{1,2}\/\d{1,2}$/.test(h)).length >= 5;
+    aoa.slice(hi + 1).forEach(r=>{
+      const name = S((r || [])[cName]);
+      if(!name || /الإجمالي|الاجمالي|total/i.test(name)) return;
+      let e = FP.emps.find(x=> normName(x.name) === normName(name));
+      if(!e){ e = {name, job:'', place:'', salary:0, pay2:true}; FP.emps.push(e); emps++; }
+      if(cJob >= 0 && S(r[cJob])) e.job = S(r[cJob]);
+      if(cPl >= 0 && S(r[cPl])) e.place = S(r[cPl]);
+      if(cSal >= 0 && nkN(r[cSal])) e.salary = nkN(r[cSal]);
+      if(isAtt){
+        const a = fpAtt(name);
+        let d = 0;
+        for(let ci = cName + 1; ci < r.length; ci++){
+          const v = S(r[ci]);
+          if(FP_CODES.indexOf(v) >= 0 && v !== ''){ a[d] = v; }
+          d++;
+        }
+        att++;
+      }
+    });
+  });
+  fpSave();
+  return {emps, att};
+}
+
+function renderFP(){
+  const el = $('fpApp'); if(!el) return;
+  const c = fpCalc();
+  const tab = FP.tab || 'pay';
+  const optsFor = (v)=> FP_CODES.map(x=> `<option value="${esc(x)}" ${x === v ? 'selected' : ''}>${esc(x || '—')}</option>`).join('');
+  let att = '';
+  FP.emps.forEach((e, i)=>{
+    const a = fpAtt(e.name);
+    const [from, to] = fpRange(e);
+    att += `<tr><td>${i + 1}</td><td style="text-align:right;min-width:170px">${esc(e.name)}</td>` +
+      Array.from({length: c.days}, (_, d)=>{
+        const on = d >= from && d < to;
+        return `<td style="padding:2px;${on ? '' : 'opacity:.35'}"><select data-fpa="${i}.${d}" style="padding:3px;font-size:11.5px">${optsFor(a[d] == null ? fpDefault(d) : a[d])}</select></td>`;
+      }).join('') + '</tr>';
+  });
+  let pay = '';
+  c.rows.forEach((r, i)=>{
+    const p = 'fpp.' + i + '.';
+    pay += `<tr><td>${i + 1}</td><td style="text-align:right;min-width:170px">${esc(r.name)}</td>
+      <td>${esc(r.job)}</td><td>${esc(r.place)}</td>
+      <td class="wh-num">${nkF(r.salary, 0)}</td><td class="wh-num">${r.days}</td><td class="wh-num">${r.present}</td>
+      <td class="wh-num">${r.absExc}</td><td class="wh-num">${r.absNo}</td>
+      <td>${nkInp(r.p.late, p + 'late')}</td><td>${nkInp(r.p.extra, p + 'extra')}</td>
+      <td>${nkInp(r.p.pen, p + 'pen')}</td><td>${nkInp(r.p.adv, p + 'adv')}</td><td>${nkInp(r.p.inc, p + 'inc')}</td>
+      <td class="wh-num">${nkF(r.due, 0)}</td>
+      <td class="wh-num">${nkF(r.absDed, 0)}</td><td class="wh-num">${nkF(r.totalDed, 0)}</td>
+      <td class="wh-num" style="font-weight:700">${nkF(r.net, 0)}</td></tr>`;
+  });
+  el.innerHTML = `
+  <div class="tabs">
+    <div class="tab ${tab === 'pay' ? 'active' : ''}" data-fptab="pay">💰 كشف المرتبات</div>
+    <div class="tab ${tab === 'att' ? 'active' : ''}" data-fptab="att">📅 الحضور اليومي</div>
+    <div class="tab ${tab === 'emps' ? 'active' : ''}" data-fptab="emps">👷 العاملين (${FP.emps.length})</div>
+  </div>
+
+  <div class="card">
+    <div class="flex-between"><h2 style="margin:0">🏭 مرتبات مصنع سمارتي للأبواب</h2>
+      <div class="row">
+        <label>بداية الشهر <input type="date" id="fpStart" value="${esc(FP.start)}"></label>
+        <label>نهايته <input type="date" id="fpEnd" value="${esc(FP.end || '')}"></label>
+        <label class="chk" style="display:flex;gap:6px;align-items:center">
+          <input type="checkbox" id="fpTrans" ${FP.transitional ? 'checked' : ''}> دورة انتقالية</label>
+        <label>الفترة <select id="fpPeriod">
+          ${Object.keys(FP_PERIODS).map(k=> `<option value="${k}" ${FP.period === k ? 'selected' : ''}>${esc(FP_PERIODS[k])}</option>`).join('')}
+        </select></label>
+        <span class="pill">أيام الشهر: <b>${c.days}</b></span>
+      </div>
+    </div>
+    <div class="sub" style="margin-top:6px">قيمة اليوم = الراتب ÷ 30 · الساعة = اليوم ÷ 8 · غياب بدون إذن يُخصم يومين · الإضافي × 1.5 · الصافي لأقرب 5.
+      اللي بيقبض نصفين بياخد أيام نصفه، واللي بيقبض مرة واحدة بيظهر في النصف التاني بالشهر كله.</div>
+  </div>
+
+  <div class="card" style="display:${tab === 'pay' ? '' : 'none'}">
+    <div class="flex-between"><h2 style="margin:0">كشف المرتبات — ${esc(FP_PERIODS[FP.period])}</h2>
+      <span class="badge">${esc(fpPeriodLbl())}</span></div>
+    <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr>
+      <th>م</th><th>الموظف</th><th>الوظيفة</th><th>المكان</th><th>الراتب</th><th>أيام الفترة</th><th>أيام الحضور</th>
+      <th>غياب بإذن</th><th>غياب بدون إذن</th><th>تأخيرات (س)</th><th>إضافي (س)</th><th>جزاءات (أيام)</th>
+      <th>سلف</th><th>حوافز</th><th>المستحق</th><th>خصم الغياب</th><th>إجمالي الخصومات</th><th>صافي الراتب</th>
+    </tr></thead><tbody>${pay}
+      <tr class="total-row"><td></td><td style="text-align:right">الإجمالي</td><td></td><td></td>
+        <td class="wh-num">${nkF(c.t.salary, 0)}</td><td></td><td></td><td></td><td></td>
+        <td></td><td></td><td></td><td class="wh-num">${nkF(c.t.adv, 0)}</td><td class="wh-num">${nkF(c.t.inc, 0)}</td>
+        <td class="wh-num">${nkF(c.t.due, 0)}</td>
+        <td class="wh-num">${nkF(c.t.absDed, 0)}</td><td class="wh-num">${nkF(c.t.totalDed, 0)}</td>
+        <td class="wh-num">${nkF(c.t.net, 0)}</td></tr>
+    </tbody></table></div>
+    ${nkBar('fpP', '<span class="pill">إكسل / PDF / صورة</span>')}
+  </div>
+
+  <div class="card" style="display:${tab === 'att' ? '' : 'none'}">
+    <div class="flex-between"><h2 style="margin:0">كشف الحضور اليومي</h2>
+      <button class="ghost" id="fpReset">إرجاع الافتراضي (ح / راحة الجمعة)</button></div>
+    <div class="tbl-wrap" style="margin-top:10px;max-height:460px"><table><thead><tr>
+      <th>م</th><th>الموظف</th>${Array.from({length: c.days}, (_, i)=> `<th style="font-size:11px">${fpDayLbl(i)}</th>`).join('')}
+    </tr></thead><tbody>${att}</tbody></table></div>
+    ${nkBar('fpA')}
+  </div>
+
+  <div class="card" style="display:${tab === 'emps' ? '' : 'none'}">
+    <div class="flex-between"><h2 style="margin:0">👷 عاملين المصنع (${FP.emps.length})</h2>
+      <div class="row">
+        <input type="file" id="fpFile" accept=".xlsx,.xls" style="max-width:230px">
+        <button class="secondary" id="fpAdd">+ موظف</button>
+      </div></div>
+    <div class="sub" style="margin-top:6px">ارفع شيت المصنع — بيقرا الإعدادات (بداية ونهاية الشهر) وبيانات الموظفين وكشف الحضور اليومي بالرموز.</div>
+    <div class="tbl-wrap" style="margin-top:10px;max-height:460px"><table><thead><tr>
+      <th>م</th><th>اسم الموظف</th><th>الوظيفة</th><th>المكان / القسم</th><th>الراتب الشهري</th><th>نصفين</th><th>النصف التاني بس</th><th></th>
+    </tr></thead><tbody>${FP.emps.map((e, i)=> `<tr><td>${i + 1}</td>
+      <td style="min-width:200px">${nkInp(e.name, 'fpe.' + i + '.name', 'type="text"')}</td>
+      <td style="min-width:130px">${nkInp(e.job, 'fpe.' + i + '.job', 'type="text"')}</td>
+      <td style="min-width:130px">${nkInp(e.place, 'fpe.' + i + '.place', 'type="text"')}</td>
+      <td>${nkInp(e.salary, 'fpe.' + i + '.salary')}</td>
+      <td><input type="radio" name="fpm${i}" data-fpm="${i}.both" ${fpBoth(e) ? 'checked' : ''}></td>
+      <td><input type="radio" name="fpm${i}" data-fpm="${i}.one" ${fpBoth(e) ? '' : 'checked'}></td>
+      <td><button class="ghost" data-fpdel="${i}">✕</button></td></tr>`).join('')}</tbody></table></div>
+    ${nkBar('fpE')}
+  </div>`;
+
+  el.querySelectorAll('[data-fptab]').forEach(t=> t.onclick = ()=>{ FP.tab = t.dataset.fptab; fpSave(); renderFP(); });
+  $('fpStart').onchange = (e)=>{ FP.start = e.target.value; fpSave(); renderFP(); };
+  $('fpEnd').onchange = (e)=>{ FP.end = e.target.value; fpSave(); renderFP(); };
+  $('fpTrans').onchange = (e)=>{ FP.transitional = e.target.checked; fpSave(); renderFP(); };
+  $('fpPeriod').onchange = (e)=>{ FP.period = e.target.value; fpSave(); renderFP(); };
+  if($('fpFile')) $('fpFile').onchange = (e)=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = (ev)=>{
+      try{
+        const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+        const res = fpImport(wb);
+        renderFP();
+        alert(res.emps || res.att ? `تم: ${res.emps} موظف جديد، و${res.att} سطر حضور.`
+          : 'مش لاقي شيت فيه عمود "اسم الموظف".');
+      }catch(err){ alert('مش قادر أقرا الملف: ' + err.message); }
+    };
+    rd.readAsArrayBuffer(f);
+  };
+  const add = $('fpAdd'); if(add) add.onclick = ()=>{ FP.emps.push({name:'موظف جديد', job:'', place:'', salary:0, pay2:true}); fpSave(); renderFP(); };
+  const rst = $('fpReset'); if(rst) rst.onclick = ()=>{ if(!confirm('هيرجّع كل أيام الفترة دي للافتراضي؟')) return; delete FP.att[fpKey()]; fpSave(); renderFP(); };
+  el.querySelectorAll('[data-fpdel]').forEach(b=> b.onclick = ()=>{ FP.emps.splice(+b.dataset.fpdel, 1); fpSave(); renderFP(); });
+  el.querySelectorAll('[data-fpm]').forEach(r=> r.onchange = ()=>{
+    const [i, m] = r.dataset.fpm.split('.');
+    FP.emps[+i].pay2 = m === 'both'; fpSave(); renderFP();
+  });
+  el.querySelectorAll('[data-fpa]').forEach(sel=> sel.onchange = ()=>{
+    const [i, d] = sel.dataset.fpa.split('.');
+    fpAtt(FP.emps[+i].name)[+d] = sel.value; fpSave(); renderFP();
+  });
+  el.querySelectorAll('[data-nk^="fpe."]').forEach(inp=> inp.onchange = ()=>{
+    const [, i, field] = inp.dataset.nk.split('.');
+    FP.emps[+i][field] = field === 'salary' ? nkN(inp.value) : inp.value;
+    fpSave(); renderFP();
+  });
+  el.querySelectorAll('[data-nk^="fpp."]').forEach(inp=> inp.onchange = ()=>{
+    const [, i, field] = inp.dataset.nk.split('.');
+    const r = fpCalc().rows[+i];
+    if(r) fpPay(r.name)[field] = inp.value;
+    fpSave(); renderFP();
+  });
+}
+
+/* ==================== 4) بونص اكسا ==================== */
+let AX = nkGet('axData', null) || {
+  period: 'بونص اكسا — الفترة الحالية',
+  rows: [{type:'اكسسوارات ( بلسيه )', net:0, rate:0.05, axa:0}],
+  dists: [{title:'بونص موزعين', rows:[{period:'', type:'', amount:0, rate:0.01}]}],
+};
+const axSave = ()=> nkSet('axData', AX);
+const axPeriods = ()=> [...new Set(AX.rows.map(r=> r.per || '').filter(Boolean))];
+const axVisible = ()=> AX.rows.map((r, i)=> ({r, i}))
+  .filter(({r})=> !AX.sel || !r.per || r.per === AX.sel);
+function axCalc(){
+  const rows = axVisible().map(({r})=>{
+    const net = nkN(r.net), rate = nkN(r.rate), bonus = net * rate, axa = nkN(r.axa);
+    return {type: r.type || '', net, rate, bonus, axa, diff: bonus - axa};
+  });
+  const t = rows.reduce((a, r)=> ({net:a.net+r.net, bonus:a.bonus+r.bonus, axa:a.axa+r.axa, diff:a.diff+r.diff}),
+    {net:0, bonus:0, axa:0, diff:0});
+  return {rows, t};
+}
+function axDistCalc(d){
+  const rows = (d.rows || []).map(r=>{
+    const amount = nkN(r.amount), rate = nkN(r.rate);
+    return {period: r.period || '', type: r.type || '', amount, rate, bonus: amount * rate};
+  });
+  const t = rows.reduce((a, r)=> ({amount:a.amount+r.amount, bonus:a.bonus+r.bonus}), {amount:0, bonus:0});
+  return {rows, t};
+}
+function axBlocks(){
+  const c = axCalc();
+  const main = {title: AX.period || 'بونص اكسا',
+    head: ['النوع','صافي قيمة المشتريات','النسبة %','قيمة البونص','من واقع كشف اكسا','الفرق'],
+    rows: c.rows.map(r=> [r.type, nkR(r.net, 2), nkR(r.rate * 100, 2) + '%', nkR(r.bonus, 2), nkR(r.axa, 2), nkR(r.diff, 2)])};
+  const tot = ['الإجمالي', nkR(c.t.net, 2), '', nkR(c.t.bonus, 2), nkR(c.t.axa, 2), nkR(c.t.diff, 2)];
+  tot.__cls = 'total-row'; main.rows.push(tot);
+  const blocks = [main];
+  AX.dists.forEach(d=>{
+    const dc = axDistCalc(d);
+    const rows = dc.rows.map(r=> [r.period, r.type, nkR(r.amount, 2), nkR(r.rate * 100, 2) + '%', nkR(r.bonus, 2)]);
+    const t = ['الإجمالي', '', nkR(dc.t.amount, 2), '', nkR(dc.t.bonus, 2)];
+    t.__cls = 'total-row'; rows.push(t);
+    blocks.push({title: d.title || 'بونص موزعين', head: ['الفترة','النوع','المبلغ','النسبة %','البونص'], rows});
+  });
+  return blocks;
+}
+NK_EXPORTERS['ax'] = ()=> ({blocks: axBlocks(), title: AX.period || 'بونص اكسا', subtitle: AX.period || 'بونص اكسا'});
+
+// ---- استيراد شيت البونص ----
+// بيقرا: (1) شيت البونص الرئيسي (النوع / صافي المشتريات / قيمة الخصم / اكسا)
+//        (2) جداول بونص الموزعين (شهر / النوع / المبلغ / النسبه / البونص)
+//        (3) لو مفيش، بيجمّع من شيت فواتير اكسا الخام حسب "المجموعه"
+function axImport(wb){
+  const S = (v)=> String(v == null ? '' : v).trim();
+  const isTot = (v)=> /total|الاجمالي|الإجمالي|grand/i.test(S(v));
+  let main = null; const dists = []; let raw = null;
+  wb.SheetNames.forEach(sn=>{
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true});
+    aoa.forEach((row, ri)=>{
+      const cells = (row || []).map(S);
+      const at = (re)=> cells.findIndex(c=> re.test(c));
+      const cPerM = at(/^الشهر$|^الفترة$|^شهر$/);
+      const cType = at(/^النوع$/), cNet = at(/صافي قيمة المشتريات|صافي المشتريات/),
+            cDisc = at(/قيمة الخصم|^بونص$/), cAxa = at(/^اكسا$|كشف حساب اكسا/);
+      // (1) الشيت الرئيسي
+      if(main == null && cType >= 0 && cNet >= 0){
+        // بيتجمّع على مستوى "النوع" — سواء الشيت تفصيلي صنف صنف أو ملخّص
+        const m = new Map();
+        for(let i = ri + 1; i < aoa.length; i++){
+          const r = aoa[i] || [];
+          const type = S(r[cType]);
+          if(!type || /#REF|#N\/A/.test(type)) continue;
+          if(isTot(type)) break;
+          const per = cPerM >= 0 ? S(r[cPerM]) : '';
+          const key = per + '||' + type;
+          if(!m.has(key)) m.set(key, {type, per, net:0, disc:0, axa:0});
+          const e = m.get(key);
+          e.net += nkN(r[cNet]);
+          if(cDisc >= 0) e.disc += nkN(r[cDisc]);
+          if(cAxa >= 0) e.axa += nkN(r[cAxa]);
+        }
+        const rows = [...m.values()].map(e=> ({type: e.type, per: e.per, net: nkR(e.net, 2),
+          rate: e.net ? nkR(e.disc / e.net, 6) : 0.05, axa: nkR(e.axa, 2)}))
+          .filter(x=> x.net || x.axa);
+        if(rows.length) main = rows;
+        return;
+      }
+      if(false){
+        const rows = [];
+        for(let i = ri + 1; i < aoa.length; i++){
+          const r = aoa[i] || [];
+          const type = S(r[cType]);
+          if(!type) { if(rows.length) break; else continue; }
+          if(isTot(type)) break;
+          const net = nkN(r[cNet]);
+          const disc = cDisc >= 0 ? nkN(r[cDisc]) : 0;
+          rows.push({type, net, rate: net ? nkR(disc / net, 6) : 0.05, axa: cAxa >= 0 ? nkN(r[cAxa]) : 0});
+        }
+        if(rows.length) main = rows;
+        return;
+      }
+      // (2) جداول الموزعين
+      const cAmt = at(/^المبلغ$/), cRate = at(/^النسبه$|^النسبة$/);
+      if(cAmt >= 0 && cRate >= 0){
+        let title = '';
+        for(let k = ri - 1; k >= 0 && k >= ri - 3; k--){
+          const t = (aoa[k] || []).map(S).filter(Boolean)[0];
+          if(t && !/^شهر$/.test(t)){ title = t; break; }
+        }
+        const cPer = at(/^شهر$|^الفترة$/), cTp = at(/^النوع$/);
+        const rows = [];
+        for(let i = ri + 1; i < aoa.length; i++){
+          const r = aoa[i] || [];
+          const per = cPer >= 0 ? S(r[cPer]) : '';
+          const amt = nkN(r[cAmt]);
+          if(isTot(per) || (!per && !amt)) break;
+          rows.push({period: per, type: cTp >= 0 ? S(r[cTp]) : '', amount: amt, rate: nkN(r[cRate])});
+        }
+        if(rows.length) dists.push({title: title || ('بونص موزعين ' + (dists.length + 1)), rows});
+      }
+      // (3) الفواتير الخام
+      const cGrp = at(/^المجموعه$|^المجموعة$/), cVal = at(/^القيمه$|^القيمة$/);
+      if(!raw && cGrp >= 0 && cVal >= 0){
+        const m = new Map();
+        for(let i = ri + 1; i < aoa.length; i++){
+          const r = aoa[i] || [];
+          const g = S(r[cGrp]);
+          if(!g || /#REF|#N\/A/.test(g)) continue;
+          m.set(g, (m.get(g) || 0) + nkN(r[cVal]));
+        }
+        if(m.size) raw = [...m.entries()].map(([type, net])=> ({type, net, rate: 0.05, axa: 0}));
+      }
+    });
+  });
+  const rows = main || raw;
+  if(!rows && !dists.length) return 0;
+  if(rows){
+    AX.rows = rows;
+    const pers = [...new Set(rows.map(r=> r.per || '').filter(Boolean))];
+    AX.sel = pers.length ? pers[pers.length - 1] : '';
+    if(AX.sel) AX.period = 'بونص اكسا — ' + AX.sel;
+  }
+  if(dists.length) AX.dists = dists;
+  axSave();
+  return (rows ? rows.length : 0) + dists.reduce((a, d)=> a + d.rows.length, 0);
+}
+
+function renderAX(){
+  const el = $('axApp'); if(!el) return;
+  const c = axCalc();
+  const vis = axVisible();
+  let rows = '';
+  c.rows.forEach((r, k)=>{
+    const i = vis[k].i;
+    rows += `<tr><td style="min-width:200px">${nkInp(AX.rows[i].type, 'ax.' + i + '.type', 'type="text"')}</td>
+      <td style="min-width:120px">${nkInp(AX.rows[i].net, 'ax.' + i + '.net')}</td>
+      <td style="min-width:90px">${nkInp(AX.rows[i].rate, 'ax.' + i + '.rate')}</td>
+      <td class="wh-num">${nkF(r.bonus, 2)}</td>
+      <td style="min-width:120px">${nkInp(AX.rows[i].axa, 'ax.' + i + '.axa')}</td>
+      <td class="wh-num" style="color:${Math.abs(r.diff) < 1 ? 'var(--accent2)' : 'var(--danger)'}">${nkF(r.diff, 2)}</td>
+      <td><button class="ghost" data-axdel="${i}">✕</button></td></tr>`;
+  });
+  let dists = '';
+  AX.dists.forEach((d, di)=>{
+    const dc = axDistCalc(d);
+    dists += `<div class="card" style="background:var(--panel2)">
+      <div class="flex-between">
+        <input type="text" data-axdt="${di}" value="${esc(d.title || '')}" style="flex:1;min-width:200px;font-weight:700">
+        <div class="row"><button class="secondary" data-axdadd="${di}">+ سطر</button>
+          <button class="ghost" data-axddel="${di}">حذف الجدول</button></div>
+      </div>
+      <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr>
+        <th>الفترة</th><th>النوع</th><th>المبلغ</th><th>النسبة</th><th>البونص</th><th></th></tr></thead><tbody>
+      ${dc.rows.map((r, ri)=> `<tr>
+        <td>${nkInp(d.rows[ri].period, 'axd.' + di + '.' + ri + '.period', 'type="text"')}</td>
+        <td>${nkInp(d.rows[ri].type, 'axd.' + di + '.' + ri + '.type', 'type="text"')}</td>
+        <td>${nkInp(d.rows[ri].amount, 'axd.' + di + '.' + ri + '.amount')}</td>
+        <td>${nkInp(d.rows[ri].rate, 'axd.' + di + '.' + ri + '.rate')}</td>
+        <td class="wh-num">${nkF(r.bonus, 2)}</td>
+        <td><button class="ghost" data-axrdel="${di}.${ri}">✕</button></td></tr>`).join('')}
+        <tr class="total-row"><td style="text-align:right">الإجمالي</td><td></td>
+          <td class="wh-num">${nkF(dc.t.amount, 2)}</td><td></td><td class="wh-num">${nkF(dc.t.bonus, 2)}</td><td></td></tr>
+      </tbody></table></div></div>`;
+  });
+  el.innerHTML = `
+  <div class="card">
+    <div class="flex-between"><h2 style="margin:0">🎁 بونص اكسا</h2>
+      <div class="row">
+        <input type="file" id="axFile" accept=".xlsx,.xls" style="max-width:240px">
+        <button class="secondary" id="axAdd">+ سطر</button>
+      </div>
+    </div>
+    <div class="sub" style="margin-top:6px">ارفع شيت البونص هنا — التطبيق بيقرا جدول البونص (النوع / صافي المشتريات / قيمة الخصم / اكسا)
+      ويحسب النسبة والفرق، وبيقرا كمان جداول <b>بونص الموزعين</b> اللي تحت. لو الشيت فواتير خام بيجمّعها حسب "المجموعه".</div>
+    <div class="row" style="margin-top:8px">
+      <input type="text" id="axPeriod" value="${esc(AX.period || '')}" style="min-width:280px;flex:1">
+      ${axPeriods().length ? `<label>الفترة <select id="axSel">
+        <option value="">كل الفترات</option>
+        ${axPeriods().map(p=> `<option value="${esc(p)}" ${AX.sel === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}
+      </select></label>` : ''}
+    </div>
+    <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr>
+      <th>النوع</th><th>صافي المشتريات</th><th>النسبة (0.05 = 5%)</th><th>قيمة البونص</th><th>من كشف اكسا</th><th>الفرق</th><th></th>
+    </tr></thead><tbody>${rows}
+      <tr class="total-row"><td style="text-align:right">الإجمالي</td>
+        <td class="wh-num">${nkF(c.t.net, 2)}</td><td></td><td class="wh-num">${nkF(c.t.bonus, 2)}</td>
+        <td class="wh-num">${nkF(c.t.axa, 2)}</td><td class="wh-num">${nkF(c.t.diff, 2)}</td><td></td></tr>
+    </tbody></table></div>
+    ${nkBar('ax')}
+  </div>
+  <div class="card">
+    <div class="flex-between"><h2 style="margin:0">بونص الموزعين</h2>
+      <button class="secondary" id="axDistAdd">+ جدول موزع</button></div>
+    <div style="margin-top:10px">${dists}</div>
+  </div>`;
+
+  $('axPeriod').onchange = (e)=>{ AX.period = e.target.value; axSave(); };
+  if($('axSel')) $('axSel').onchange = (e)=>{ AX.sel = e.target.value; axSave(); renderAX(); };
+  $('axAdd').onclick = ()=>{ AX.rows.push({type:'', net:0, rate:0.05, axa:0}); axSave(); renderAX(); };
+  $('axDistAdd').onclick = ()=>{ AX.dists.push({title:'بونص موزع جديد', rows:[{period:'', type:'', amount:0, rate:0.01}]}); axSave(); renderAX(); };
+  $('axFile').onchange = (e)=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = (ev)=>{
+      try{
+        const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+        const n = axImport(wb);
+        renderAX();
+        alert(n ? `تم قراءة ${n} سطر من الشيت.` : 'مش لاقي جدول بونص في الملف — لازم يكون فيه عمود "النوع" و"صافي قيمة المشتريات"، أو جدول موزعين فيه "المبلغ" و"النسبه".');
+      }catch(err){ alert('مش قادر أقرا الملف: ' + err.message); }
+    };
+    rd.readAsArrayBuffer(f);
+  };
+  el.querySelectorAll('[data-axdel]').forEach(b=> b.onclick = ()=>{ AX.rows.splice(+b.dataset.axdel, 1); axSave(); renderAX(); });
+  el.querySelectorAll('[data-axddel]').forEach(b=> b.onclick = ()=>{ AX.dists.splice(+b.dataset.axddel, 1); axSave(); renderAX(); });
+  el.querySelectorAll('[data-axdadd]').forEach(b=> b.onclick = ()=>{ AX.dists[+b.dataset.axdadd].rows.push({period:'', type:'', amount:0, rate:0.01}); axSave(); renderAX(); });
+  el.querySelectorAll('[data-axrdel]').forEach(b=> b.onclick = ()=>{
+    const [di, ri] = b.dataset.axrdel.split('.'); AX.dists[+di].rows.splice(+ri, 1); axSave(); renderAX();
+  });
+  el.querySelectorAll('[data-axdt]').forEach(inp=> inp.onchange = ()=>{ AX.dists[+inp.dataset.axdt].title = inp.value; axSave(); });
+  el.querySelectorAll('[data-nk^="ax."]').forEach(inp=> inp.onchange = ()=>{
+    const [, i, field] = inp.dataset.nk.split('.');
+    AX.rows[+i][field] = field === 'type' ? inp.value : nkN(inp.value);
+    axSave(); renderAX();
+  });
+  el.querySelectorAll('[data-nk^="axd."]').forEach(inp=> inp.onchange = ()=>{
+    const [, di, ri, field] = inp.dataset.nk.split('.');
+    AX.dists[+di].rows[+ri][field] = (field === 'period' || field === 'type') ? inp.value : nkN(inp.value);
+    axSave(); renderAX();
+  });
+}
+
+window.renderGV = renderGV; window.renderQP = renderQP; window.renderFP = renderFP; window.renderAX = renderAX;
+
 </script>
 </body>
 </html>
