@@ -154,20 +154,32 @@
   /* شريط أيقونتين: المبيعات / المخازن */
   /* الأيقونتين جنب بعض دايمًا (حتى على الموبايل)، وكل واحدة قايمة منسدلة:
      محتواها ما يبانش غير لما تدوس عليها، ودوسة تانية تقفلها. */
-  .mod-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:10px 0 16px}
-  .mod-btn{display:flex;align-items:center;gap:8px;background:var(--panel);color:var(--text);
-    border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:14px;
-    text-align:right;box-shadow:0 1px 2px rgba(0,0,0,.04);min-width:0}
+  .mod-bar{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:10px 0 16px}
+  @media(min-width:700px){ .mod-bar{grid-template-columns:repeat(4,1fr)} }
+  .mod-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:14px;
+    padding:12px 6px;font-size:13px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.04);
+    min-width:0;min-height:78px}
   .mod-btn.active{background:var(--thead);color:#fff;border-color:var(--thead)}
-  .mod-btn .mod-ico{font-size:22px;line-height:1;flex:none}
-  .mod-btn .mod-txt{flex:1;min-width:0}
-  .mod-btn .mod-sub{font-size:11px;opacity:.75;font-weight:400;display:block}
-  .mod-btn .mod-car{flex:none;font-size:12px;transition:transform .15s}
-  .mod-btn.active .mod-car{transform:rotate(180deg)}
+  .mod-btn .mod-ico{font-size:26px;line-height:1;flex:none}
+  .mod-btn .mod-txt{min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px}
+  .mod-btn .mod-txt b{font-size:12.5px;line-height:1.2;white-space:normal}
+  .mod-btn .mod-sub{font-size:10.5px;opacity:.75;font-weight:400;display:block}
+  .mod-btn .mod-car{display:none}
   @media(max-width:420px){
-    .mod-btn{padding:9px 10px;font-size:13px}
+    .mod-btn{padding:10px 4px;font-size:12px;min-height:72px}
     .mod-btn .mod-sub{display:none}
+    .mod-btn .mod-ico{font-size:23px}
   }
+  .nk-exp{margin-top:14px;padding:10px;border-radius:12px;background:var(--panel2);border:1px solid var(--border)}
+  .nk-exp-lbl{font-size:12px;color:var(--muted);margin-bottom:8px}
+  .nk-exp-lbl .pill{margin:0}
+  .nk-exp-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .nk-x{display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 4px;
+    border-radius:10px;background:var(--panel);border:1px solid var(--border);color:var(--text);
+    font-size:12.5px;font-weight:600}
+  .nk-x span{font-size:15px}
+  .nk-x:active{background:var(--thead);color:#fff}
   .gv-sug{position:absolute;z-index:80;top:100%;right:0;left:0;background:var(--panel);
     border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.18);
     max-height:240px;overflow:auto;text-align:right}
@@ -325,6 +337,16 @@
 <div id="fpApp" style="display:none"></div>
 <div id="axApp" style="display:none"></div>
 
+<div class="card" style="margin-top:10px">
+  <div class="flex-between">
+    <div><b>💾 نسخة احتياطية / نقل بين الأجهزة</b>
+      <div class="sub" style="margin-top:2px">صدّر بياناتك (الطلبيات والمرتبات والأصناف) كملف واحد، وارفعه في الجهاز التاني لتفتح بنفس البيانات.</div></div>
+    <div class="row">
+      <button class="secondary" id="nkBackupBtn">⬇ تصدير نسخة</button>
+      <input type="file" id="nkRestoreFile" accept=".json" style="max-width:170px">
+    </div>
+  </div>
+</div>
 <div id="modHint" class="sub" style="text-align:center;padding:18px 10px">اختار قسم من فوق عشان تفتحه 👆</div>
 
 <div id="salesApp" style="display:none">
@@ -926,7 +948,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v111';
+const APP_VERSION = 'v113';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8291,8 +8313,90 @@ window.addEventListener('appinstalled', () => { $('installBanner').style.display
    أقسام جديدة: طلبيات جيفز — مرتبات القرشي — مرتبات المصنع — بونص اكسا
    كل قسم بيتخزن في الجهاز (localStorage) وبيتصدّر Excel / PDF / صورة.
    ====================================================================== */
+// وقت أي إعادة رسم بسبب تغيير سعر/كمية، الشاشة كانت بترجع لفوق. الدالة دي
+// بتحفظ مكان السكرول والفوكس قبل الرسم وترجعهم زي ما كانوا بعده.
+function nkPreserve(el, fn){
+  const sy = window.scrollY;
+  const act = document.activeElement;
+  const path = act && act.dataset ? (act.dataset.nk || act.dataset.gvq || act.dataset.fpa || act.id) : null;
+  const sel = act ? act.selectionStart : null;
+  fn();
+  if(path){
+    let ninp = el.querySelector(`[data-nk="${path}"]`) || el.querySelector(`[data-gvq="${path}"]`)
+      || el.querySelector(`[data-fpa="${path}"]`) || (act.id ? document.getElementById(act.id) : null);
+    if(ninp){ ninp.focus(); if(sel != null && ninp.setSelectionRange) try{ ninp.setSelectionRange(sel, sel); }catch(e){} }
+  }
+  window.scrollTo(0, sy);
+}
+
+// ---- نسخة احتياطية / استرجاع — لنقل بيانات جيفز/المرتبات/بونص اكسا بين جهازين ----
+const NK_BACKUP_KEYS = ['gvData', 'qpData', 'fpData', 'axData'];
+function nkBackupRun(){
+  const data = {}; NK_BACKUP_KEYS.forEach(k=>{ const v = nkGet(k, null); if(v) data[k] = v; });
+  const blob = new Blob([JSON.stringify({app:'elkorashy-reports', v:1, data}, null, 0)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'نسخة-احتياطية-' + nkToday() + '.json'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 4000);
+}
+function nkRestoreRun(file){
+  const rd = new FileReader();
+  rd.onload = (ev)=>{
+    try{
+      const obj = JSON.parse(ev.target.result);
+      const data = obj && obj.data ? obj.data : obj;
+      if(!data || typeof data !== 'object') throw new Error('ملف غير صالح');
+      NK_BACKUP_KEYS.forEach(k=>{ if(data[k]) nkSet(k, data[k]); });
+      alert('تم استرجاع النسخة. التطبيق هيحمّل البيانات الجديدة دلوقتي.');
+      location.reload();
+    }catch(err){ alert('مش قادر أقرا الملف: ' + err.message); }
+  };
+  rd.readAsText(file);
+}
+(function(){
+  const b = document.getElementById('nkBackupBtn'); if(b) b.onclick = nkBackupRun;
+  const r = document.getElementById('nkRestoreFile');
+  if(r) r.onchange = (e)=>{ const f = e.target.files && e.target.files[0]; if(f && confirm('استرجاع النسخة دي هيستبدل بيانات جيفز/المرتبات/بونص اكسا الحالية. تكمل؟')) nkRestoreRun(f); };
+})();
+
 function nkGet(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
-function nkSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function nkSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} nkCloudPush(k); }
+
+// ---- مزامنة جيفز/المرتبات/بونص اكسا بين الأجهزة — بنفس التخزين المركزي
+// (Google Sheets عبر Apps Script) اللي بيشتغل بيه المبيعات والمخازن.
+// كل حفظ محلي بيتبعت للسيرفر في الخلفية (debounce ثانية)، وعند فتح
+// التطبيق بنسحب أحدث نسخة من السيرفر ونعرضها لو لقينا نت.
+const NK_CLOUD_KEYS = {gvData:'renderGV', qpData:'renderQP', fpData:'renderFP', axData:'renderAX'};
+const nkPushTimers = {};
+function nkCloudPush(k){
+  if(!NK_CLOUD_KEYS[k] || typeof window === 'undefined' || !window.storage) return;
+  clearTimeout(nkPushTimers[k]);
+  nkPushTimers[k] = setTimeout(()=>{
+    const raw = (function(){ try{ return localStorage.getItem(k); }catch(e){ return null; } })();
+    if(raw == null) return;
+    window.storage.set(k, raw).catch(()=>{ /* هيتبعت تاني مع أي حفظ جاي */ });
+  }, 900);
+}
+async function nkCloudPullAll(){
+  if(typeof window === 'undefined' || !window.storage) return;
+  for(const k of Object.keys(NK_CLOUD_KEYS)){
+    try{
+      const r = await window.storage.get(k);
+      if(r && r.value != null){
+        const local = (function(){ try{ return localStorage.getItem(k); }catch(e){ return null; } })();
+        if(r.value !== local){
+          localStorage.setItem(k, r.value);
+          if(k === 'gvData') GV = nkGet('gvData', GV);
+          if(k === 'qpData') QP = nkGet('qpData', QP);
+          if(k === 'fpData') FP = nkGet('fpData', FP);
+          if(k === 'axData') AX = nkGet('axData', AX);
+          const fn = window[NK_CLOUD_KEYS[k]];
+          if(typeof fn === 'function') fn();
+        }
+      }
+    }catch(e){ /* أوفلاين أو المفتاح مش موجود على السيرفر لسه — نفضل على النسخة المحلية */ }
+  }
+}
 const nkN  = (v)=>{ const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; };
 const nkR  = (v, d)=>{ const m = Math.pow(10, d || 0); return Math.round(((Number(v)||0) + Number.EPSILON) * m) / m; };
 const nkMR = (v, m)=> Math.round((Number(v)||0) / m) * m;
@@ -8369,11 +8473,13 @@ async function nkImage(bodyHtml, subtitle, fileName){
 }
 // شريط أزرار التصدير الموحّد
 function nkBar(prefix, extra){
-  return `<div class="row" style="margin-top:12px;gap:8px">
-    ${extra || ''}
-    <button class="secondary" data-nkx="${prefix}:xlsx">⬇ إكسل</button>
-    <button class="secondary" data-nkx="${prefix}:pdf">📄 PDF</button>
-    <button class="secondary" data-nkx="${prefix}:img">🖼️ صورة</button>
+  return `<div class="nk-exp">
+    ${extra ? `<div class="nk-exp-lbl">${extra}</div>` : ''}
+    <div class="nk-exp-btns">
+      <button class="nk-x" data-nkx="${prefix}:xlsx"><span>⬇️</span>إكسل</button>
+      <button class="nk-x" data-nkx="${prefix}:pdf"><span>📄</span>PDF</button>
+      <button class="nk-x" data-nkx="${prefix}:img"><span>🖼️</span>صورة</button>
+    </div>
   </div>`;
 }
 const NK_EXPORTERS = {};
@@ -8459,8 +8565,106 @@ NK_EXPORTERS['gvI'] = ()=> ({blocks: [{title:'دليل أصناف جيفيز و�
     nkN(x.price) ? nkR((nkN(x.price2) / nkN(x.price) - 1) * 100, 2) + '%' : ''])}],
   title: 'دليل أصناف جيفيز والأسعار', subtitle: 'الأصناف والأسعار قبل وبعد الزيادة'});
 
+// ---- استيراد طلبية جيفز قديمة من إكسل ----
+// بيقرا أي شيت فيه عمود "اسم الصنف" و"الكمية"، ولو لقى وزن الحاويه/عدد الحاويات بيسحبهم كمان
+function gvOrderImport(wb){
+  const S = (v)=> String(v == null ? '' : v).trim();
+  let matched = 0, unmatched = 0;
+  const o = gvOrder();
+  wb.SheetNames.forEach(sn=>{
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true});
+    const hi = aoa.findIndex(r=> (r || []).some(c=> /اسم الصنف/.test(S(c)))
+      && (r || []).some(c=> /^الكمية$/.test(S(c))));
+    if(hi < 0) return;
+    const head = (aoa[hi] || []).map(c=> S(c));
+    const at = (re)=> head.findIndex(h=> re.test(h));
+    const cName = at(/اسم الصنف/), cCode = at(/الكود/), cQty = at(/^الكمية$/);
+    aoa.slice(hi + 1).forEach(r=>{
+      const name = S((r || [])[cName]);
+      if(!name || /الإجمالي|الاجمالي|total/i.test(name)) return;
+      const qty = nkN(r[cQty]);
+      if(!qty) return;
+      let it = gvItemByName(name);
+      if(!it.name && cCode >= 0) it = GV.items.find(x=> S(x.code) === S(r[cCode])) || {};
+      if(it.name){ o.rows.push({name: it.name, qty}); matched++; }
+      else { o.rows.push({name, qty}); unmatched++; }
+    });
+    // بيانات الحاوية لو موجودة في نفس الشيت
+    aoa.forEach(row=>{
+      const a = S((row || [])[0]);
+      const v = (row || [])[1];
+      if(/وزن الحاويه/.test(a) && nkN(v)) o.containerW = nkN(v);
+      if(/عدد الحاويات/.test(a) && nkN(v)) o.containers = nkN(v);
+    });
+  });
+  gvSave();
+  return {matched, unmatched};
+}
+
+// ---- حساب التكلفة بالمصري (زي شيت "حساب التكلفة") ----
+// المصاريف الإضافية (جمارك + شحن + تخليص + بنكية + أخرى) بتوزّع على الأصناف
+// حسب نصيب كل صنف من **وزن الشحنة الكلي** (تكلفة إضافية للكيلو × وزن الصنف).
+function gvCostCalc(o){
+  const c = gvCalc(o);
+  const cst = o.cost || {};
+  const rate = nkN(cst.rate) || 50;
+  const invoiceUsd = c.t.v || 0;
+  const invoiceEgp = invoiceUsd * rate;
+  const customsPct = nkN(cst.customsPct);
+  const customsEgp = invoiceEgp * customsPct;
+  const shipUsd = nkN(cst.shipUsd) * rate;
+  const clearEgp = nkN(cst.clearEgp);
+  const bankEgp = nkN(cst.bankEgp);
+  const otherEgp = nkN(cst.otherEgp);
+  const extraTotal = customsEgp + shipUsd + clearEgp + bankEgp + otherEgp;
+  const shipmentTotal = invoiceEgp + extraTotal;
+  const totalWeight = c.t.w || 0;
+  const perKg = totalWeight ? extraTotal / totalWeight : 0;
+  const rows = c.rows.map(r=>{
+    const valueEgp = r.qty * r.price * rate;
+    const share = perKg * r.totalW;
+    const totalEgp = valueEgp + share;
+    return {name: r.name, qty: r.qty, priceUsd: r.price, weight: r.totalW,
+      valueEgp, share, totalEgp, perPiece: r.qty ? totalEgp / r.qty : 0};
+  });
+  const t = rows.reduce((a, r)=> ({valueEgp:a.valueEgp+r.valueEgp, share:a.share+r.share, totalEgp:a.totalEgp+r.totalEgp}),
+    {valueEgp:0, share:0, totalEgp:0});
+  return {invoiceUsd, invoiceEgp, rate, customsPct, customsEgp, shipUsd, clearEgp, bankEgp, otherEgp,
+    extraTotal, shipmentTotal, totalWeight, perKg, rows, t,
+    extraPct: invoiceEgp ? extraTotal / invoiceEgp : 0};
+}
+function gvCostBlocks(){
+  const o = gvOrder(); const cc = gvCostCalc(o);
+  const info = {title: 'بيانات الفاتورة والمصاريف', head: ['البيان', 'القيمة'], rows: [
+    ['اجمالي قيمة الفاتورة $', nkR(cc.invoiceUsd, 2)],
+    ['سعر صرف الدولار (جنيه)', nkR(cc.rate, 2)],
+    ['قيمة الفاتورة بالجنيه', nkR(cc.invoiceEgp, 2)],
+    ['نسبة الجمارك % من قيمة الفاتورة', nkR(cc.customsPct * 100, 2) + '%'],
+    ['قيمة الجمارك (جنيه)', nkR(cc.customsEgp, 2)],
+    ['شحن (جنيه)', nkR(cc.shipUsd, 2)],
+    ['مصاريف تخليص جمركي (جنيه)', nkR(cc.clearEgp, 2)],
+    ['مصاريف بنكية (جنيه)', nkR(cc.bankEgp, 2)],
+    ['مصاريف أخرى (جنيه)', nkR(cc.otherEgp, 2)],
+    ['إجمالي المصاريف الإضافية (جنيه)', nkR(cc.extraTotal, 2)],
+    ['إجمالي تكلفة الشحنة بالجنيه', nkR(cc.shipmentTotal, 2)],
+    ['نسبة المصاريف الإضافية من قيمة الفاتورة', nkR(cc.extraPct * 100, 2) + '%'],
+    ['إجمالي وزن الشحنة (كجم)', nkR(cc.totalWeight, 2)],
+    ['تكلفة إضافية لكل كيلو (جنيه/كجم)', nkR(cc.perKg, 4)],
+  ]};
+  const head = ['م', 'اسم الصنف', 'الكمية', 'سعر القطعة $', 'قيمة الصنف بالجنيه', 'نصيبه من المصاريف الإضافية', 'التكلفة الإجمالية للصنف', 'تكلفة القطعة الواحدة (جنيه)'];
+  const rows = cc.rows.map((r, i)=> [i + 1, r.name, nkR(r.qty, 2), nkR(r.priceUsd, 4), nkR(r.valueEgp, 2),
+    nkR(r.share, 2), nkR(r.totalEgp, 2), nkR(r.perPiece, 4)]);
+  const tot = ['', 'الإجمالي', '', '', nkR(cc.t.valueEgp, 2), nkR(cc.t.share, 2), nkR(cc.t.totalEgp, 2), ''];
+  tot.__cls = 'total-row'; rows.push(tot);
+  return [info, {title: 'تكلفة كل صنف بعد إضافة الجمارك والمصاريف', head, rows}];
+}
+NK_EXPORTERS['gvC'] = ()=> ({blocks: gvCostBlocks(), title: `حساب تكلفة طلبية جيفيز ${gvOrder().no}`, subtitle: `طلبية رقم ${gvOrder().no} — ${nkDateAr(gvOrder().date)}`});
+
 function renderGV(){
   const el = $('gvApp'); if(!el) return;
+  nkPreserve(el, ()=> renderGV_impl(el));
+}
+function renderGV_impl(el){
   const o = gvOrder(); const c = gvCalc(o); const wp = GV.withPrices !== false;
   const tab = GV.tab || 'order';
   const opts = GV.orders.map((x, i)=> `<option value="${i}" ${i === GV.cur ? 'selected' : ''}>طلبية ${x.no} — ${esc(nkDateAr(x.date))}</option>`).join('');
@@ -8484,6 +8688,7 @@ function renderGV(){
   el.innerHTML = `
   <div class="tabs">
     <div class="tab ${tab === 'order' ? 'active' : ''}" data-gvtab="order">🧾 الطلبية</div>
+    <div class="tab ${tab === 'cost' ? 'active' : ''}" data-gvtab="cost">💰 حساب التكلفة</div>
     <div class="tab ${tab === 'items' ? 'active' : ''}" data-gvtab="items">📦 الأصناف والأسعار (${GV.items.length})</div>
   </div>
 
@@ -8493,8 +8698,10 @@ function renderGV(){
         <select id="gvSel">${opts}</select>
         <button class="secondary" id="gvNew">+ طلبية جديدة</button>
         <button class="ghost" id="gvDelOrder">حذف الطلبية</button>
+        <input type="file" id="gvOrderFile" accept=".xlsx,.xls" style="max-width:190px">
       </div>
     </div>
+    <div class="sub" style="margin-top:4px">عندك طلبية قديمة؟ ارفع ملفها وهيتضم صنف صنف على الطلبية الحالية بدل ما تكتبها من جديد (بيربط كل صنف بالدليل تلقائيًا).</div>
     <div class="row" style="margin-top:10px">
       <label>رقم الطلبية <input type="number" id="gvNo" value="${esc(o.no)}" style="width:90px"></label>
       <label>التاريخ <input type="date" id="gvDate" value="${esc(o.date)}"></label>
@@ -8535,6 +8742,42 @@ function renderGV(){
     <div class="sub" style="margin-top:10px">تصدير الطلبية — نسخة بالأسعار ونسخة من غير أسعار (إكسل / PDF / صورة).</div>
     ${nkBar('gvP', '<span class="pill">بالأسعار</span>')}
     ${nkBar('gvN', '<span class="pill">بدون أسعار</span>')}
+  </div>
+
+  <div class="card" style="display:${tab === 'cost' ? '' : 'none'}">
+    <h2 style="margin:0">💰 حساب التكلفة بالمصري</h2>
+    <div class="sub" style="margin-top:4px">المصاريف الإضافية (جمارك + شحن + تخليص + بنكية + أخرى) بتوزّع على الأصناف حسب نصيب كل صنف من إجمالي وزن الشحنة.</div>
+    <div class="row" style="margin-top:10px;gap:14px;flex-wrap:wrap">
+      <label>سعر صرف الدولار (جنيه) <input type="number" id="gvCRate" value="${esc((o.cost||{}).rate ?? 50)}" style="width:100px"></label>
+      <label>نسبة الجمارك % <input type="number" step="0.001" id="gvCCustoms" value="${esc((o.cost||{}).customsPct ?? 0.05)}" style="width:90px"></label>
+      <label>شحن $ <input type="number" id="gvCShip" value="${esc((o.cost||{}).shipUsd || 0)}" style="width:100px"></label>
+      <label>تخليص جمركي (جنيه) <input type="number" id="gvCClear" value="${esc((o.cost||{}).clearEgp || 0)}" style="width:110px"></label>
+      <label>مصاريف بنكية (جنيه) <input type="number" id="gvCBank" value="${esc((o.cost||{}).bankEgp || 0)}" style="width:110px"></label>
+      <label>مصاريف أخرى (جنيه) <input type="number" id="gvCOther" value="${esc((o.cost||{}).otherEgp || 0)}" style="width:110px"></label>
+    </div>
+    ${(function(){
+      const cc = gvCostCalc(o);
+      return `<div class="card" style="background:var(--panel2);margin-top:12px">
+        <div class="row" style="gap:16px;flex-wrap:wrap">
+          <span class="pill">قيمة الفاتورة بالجنيه: <b>${nkF(cc.invoiceEgp, 0)}</b></span>
+          <span class="pill">إجمالي المصاريف الإضافية: <b>${nkF(cc.extraTotal, 0)}</b></span>
+          <span class="pill">إجمالي تكلفة الشحنة: <b>${nkF(cc.shipmentTotal, 0)}</b></span>
+          <span class="pill">تكلفة إضافية/كجم: <b>${nkF(cc.perKg, 3)}</b></span>
+        </div>
+      </div>
+      <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr>
+        <th>م</th><th>اسم الصنف</th><th>الكمية</th><th>سعر القطعة $</th><th>قيمة الصنف بالجنيه</th>
+        <th>نصيبه من المصاريف</th><th>التكلفة الإجمالية</th><th>تكلفة القطعة (جنيه)</th>
+      </tr></thead><tbody>${cc.rows.map((r, i)=> `<tr><td>${i + 1}</td><td style="text-align:right">${esc(r.name)}</td>
+        <td class="wh-num">${nkF(r.qty, 2)}</td><td class="wh-num">${nkF(r.priceUsd, 4)}</td>
+        <td class="wh-num">${nkF(r.valueEgp, 2)}</td><td class="wh-num">${nkF(r.share, 2)}</td>
+        <td class="wh-num">${nkF(r.totalEgp, 2)}</td><td class="wh-num">${nkF(r.perPiece, 4)}</td></tr>`).join('')}
+        <tr class="total-row"><td></td><td style="text-align:right">الإجمالي</td><td></td><td></td>
+        <td class="wh-num">${nkF(cc.t.valueEgp, 2)}</td><td class="wh-num">${nkF(cc.t.share, 2)}</td>
+        <td class="wh-num">${nkF(cc.t.totalEgp, 2)}</td><td></td></tr>
+      </tbody></table></div>`;
+    })()}
+    ${nkBar('gvC')}
   </div>
 
   <div class="card" style="display:${tab === 'items' ? '' : 'none'}">
@@ -8578,12 +8821,32 @@ function renderGV(){
   $('gvAddRow').onclick = ()=>{ o.rows.push({name:'', qty:''}); gvSave(); renderGV();
     const inp = el.querySelector(`[data-gvq="${o.rows.length - 1}"]`); if(inp) inp.focus(); };
   $('gvAddItem').onclick = ()=>{ GV.items.unshift({code:'', name:'', pcs:'', weight:'', price:'', price2:''}); gvSave(); renderGV(); };
+  const of = $('gvOrderFile');
+  if(of) of.onchange = (e)=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = (ev)=>{
+      try{
+        const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+        const res = gvOrderImport(wb);
+        renderGV();
+        alert(res.matched || res.unmatched
+          ? `تم ضم ${res.matched + res.unmatched} صنف (${res.matched} مربوط بالدليل${res.unmatched ? '، ' + res.unmatched + ' مش لاقيله في الدليل' : ''}).`
+          : 'مش لاقي شيت فيه عمود "اسم الصنف" و"الكمية".');
+      }catch(err){ alert('مش قادر أقرا الملف: ' + err.message); }
+    };
+    rd.readAsArrayBuffer(f);
+  };
   $('gvNo').onchange = (e)=>{ o.no = nkN(e.target.value); gvSave(); renderGV(); };
   $('gvDate').onchange = (e)=>{ o.date = e.target.value; gvSave(); renderGV(); };
   $('gvPriceMode').onchange = (e)=>{ o.priceMode = e.target.value; gvSave(); renderGV(); };
   $('gvWithPrices').onchange = (e)=>{ GV.withPrices = e.target.checked; gvSave(); renderGV(); };
   $('gvContW').onchange = (e)=>{ o.containerW = nkN(e.target.value); gvSave(); renderGV(); };
   $('gvContN').onchange = (e)=>{ o.containers = nkN(e.target.value); gvSave(); renderGV(); };
+  o.cost = o.cost || {};
+  const cSet = (id, field)=>{ const el = $(id); if(el) el.onchange = ()=>{ o.cost[field] = nkN(el.value); gvSave(); renderGV(); }; };
+  cSet('gvCRate', 'rate'); cSet('gvCCustoms', 'customsPct'); cSet('gvCShip', 'shipUsd');
+  cSet('gvCClear', 'clearEgp'); cSet('gvCBank', 'bankEgp'); cSet('gvCOther', 'otherEgp');
   const q = $('gvItemSearch');
   if(q) q.oninput = ()=>{ GV.q = q.value; gvSave(); const pos = q.selectionStart; renderGV();
     const n = $('gvItemSearch'); if(n){ n.focus(); try{ n.setSelectionRange(pos, pos); }catch(e){} } };
@@ -8700,30 +8963,45 @@ function qpCalc(h){
   return {rows, t};
 }
 const QP_HALF_LBL = (h)=> h === 1 ? 'النصف الأول (1-15)' : 'النصف الثاني (16-آخر الشهر)';
+// كشف الإرسال: أعمدته وترتيبها اللي المستخدم يختارها من تاب "تخصيص التصدير"
+const QP_SEND_COLS = ['م','اسم الموظف','الفرع','المرتب الكامل','المستحق (النص)','خصم غياب','خصم تأخيرات','إضافي','خصم جزاءات','سلف','تأمينات','إجمالي الخصومات','حوافز','صافي المرتب'];
+const qpSendColsOn = ()=> QP.sendCols && QP.sendCols.length === QP_SEND_COLS.length ? QP.sendCols : QP_SEND_COLS.map(()=> true);
+// فلتر فرع للتصدير: '' يعني كل الفروع
+const qpBranchRows = (c)=> QP.expBranch ? c.rows.filter(r=> (r.branch || '') === QP.expBranch) : c.rows;
+const qpBranchTotal = (rows, k)=> rows.reduce((a, r)=> a + (typeof r[k] === 'number' ? r[k] : nkN(r[k])), 0);
 function qpBlocks(which){
   const out = [];
   const mk = (h)=>{
     const c = qpCalc(h);
+    const rr = qpBranchRows(c);
     const head = ['م','الموظف','الفرع','الراتب الشهري','راتب النصف','راتب اليوم','راتب الساعة',
       'غياب بإذن (أيام)','غياب بدون إذن (أيام)','تأخيرات (ساعات)','إضافي (ساعات)','جزاءات (أيام)','سلف',
       'خصم غياب بإذن','خصم غياب بدون إذن','خصم تأخيرات','مبلغ إضافي','خصم جزاءات','سلف مخصومة','تأمينات','حوافز','صافي الراتب'];
-    const rows = c.rows.map((r, i)=> [i+1, r.name, r.branch, r.salary, r.half, r.day, r.hour,
+    const rows = rr.map((r, i)=> [i+1, r.name, r.branch, r.salary, r.half, r.day, r.hour,
       nkN(r.d.absExc), nkN(r.d.absNo), nkN(r.d.late), nkN(r.d.extra), nkN(r.d.pen), nkN(r.d.adv),
       r.dExc, r.dNo, r.dLate, r.vExt, r.dPen, r.adv, r.ins, r.inc, r.net]);
-    const tot = ['', 'الإجمالي', '', c.t.salary, c.t.half, '', '', '', '', '', '', '', '',
-      c.t.dExc, c.t.dNo, c.t.dLate, c.t.vExt, c.t.dPen, c.t.adv, c.t.ins, c.t.inc, c.t.net];
+    const tt = (k)=> rr.reduce((a, r)=> a + (r[k] || 0), 0);
+    const tot = ['', 'الإجمالي', '', tt('salary'), tt('half'), '', '', '', '', '', '', '', '',
+      tt('dExc'), tt('dNo'), tt('dLate'), tt('vExt'), tt('dPen'), tt('adv'), tt('ins'), tt('inc'), tt('net')];
     tot.__cls = 'total-row'; rows.push(tot);
-    return {title: 'كشف مرتبات ' + QP_HALF_LBL(h), head, rows};
+    const lbl = QP_HALF_LBL(h) + (QP.expBranch ? ' — فرع ' + QP.expBranch : '');
+    return {title: 'كشف مرتبات ' + lbl, head, rows};
   };
   const send = (h)=>{
     const c = qpCalc(h);
-    const head = ['م','اسم الموظف','الفرع','المرتب الكامل','المستحق (النص)','خصم غياب','خصم تأخيرات','إضافي','خصم جزاءات','سلف','تأمينات','إجمالي الخصومات','حوافز','صافي المرتب'];
-    const rows = c.rows.map((r, i)=> [i+1, r.name, r.branch, r.salary, r.half, r.dExc + r.dNo,
+    const rr = qpBranchRows(c);
+    const on = qpSendColsOn();
+    const head = QP_SEND_COLS.filter((_, k)=> on[k]);
+    const full = rr.map((r, i)=> [i+1, r.name, r.branch, r.salary, r.half, r.dExc + r.dNo,
       r.dLate, r.vExt, r.dPen, r.adv, r.ins, r.totalDed, r.inc, r.net]);
-    const tot = ['', 'الإجمالي', '', c.t.salary, c.t.half, c.t.dExc + c.t.dNo, c.t.dLate, c.t.vExt,
-      c.t.dPen, c.t.adv, c.t.ins, c.t.totalDed, c.t.inc, c.t.net];
+    const rows = full.map(row=> row.filter((_, k)=> on[k]));
+    const tt = (k)=> rr.reduce((a, r)=> a + (r[k] || 0), 0);
+    const fullTot = ['', 'الإجمالي', '', tt('salary'), tt('half'), tt('dExc') + tt('dNo'),
+      tt('dLate'), tt('vExt'), tt('dPen'), tt('adv'), tt('ins'), tt('totalDed'), tt('inc'), tt('net')];
+    const tot = fullTot.filter((_, k)=> on[k]);
     tot.__cls = 'total-row'; rows.push(tot);
-    return {title: 'كشف الإرسال - ' + QP_HALF_LBL(h), head, rows};
+    const lbl = QP_HALF_LBL(h) + (QP.expBranch ? ' — فرع ' + QP.expBranch : '');
+    return {title: 'كشف الإرسال - ' + lbl, head, rows};
   };
   if(which === 'half') { out.push(mk(QP.half), send(QP.half)); return out; }
   if(which === 'send') { out.push(send(QP.half)); return out; }
@@ -8785,6 +9063,9 @@ function qpImport(wb){
 
 function renderQP(){
   const el = $('qpApp'); if(!el) return;
+  nkPreserve(el, ()=> renderQP_impl(el));
+}
+function renderQP_impl(el){
   const c = qpCalc(QP.half);
   let body = '';
   c.rows.forEach((r, i)=>{
@@ -8827,7 +9108,21 @@ function renderQP(){
         <td class="wh-num">${nkF(c.t.dLate, 0)}</td><td class="wh-num">${nkF(c.t.vExt, 0)}</td>
         <td class="wh-num">${nkF(c.t.dPen, 0)}</td><td class="wh-num">${nkF(c.t.net, 0)}</td></tr>
     </tbody></table></div>
-    ${nkBar('qpH', '<span class="pill">الكشف + كشف الإرسال</span>')}
+    <div class="card" style="background:var(--panel2);margin-top:12px">
+      <b>⚙️ تخصيص التصدير</b>
+      <div class="row" style="margin-top:8px">
+        <label>الفرع <select id="qpExpBranch">
+          <option value="">كل الفروع</option>
+          ${[...new Set(QP.emps.map(e=> e.branch).filter(Boolean))].map(b=> `<option value="${esc(b)}" ${QP.expBranch === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}
+        </select></label>
+      </div>
+      <div class="sub" style="margin-top:8px">أعمدة كشف الإرسال:</div>
+      <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:10px">
+        ${QP_SEND_COLS.map((c, k)=> `<label class="chk" style="display:flex;gap:5px;align-items:center;font-size:12.5px">
+          <input type="checkbox" data-qpcol="${k}" ${qpSendColsOn()[k] ? 'checked' : ''}> ${esc(c)}</label>`).join('')}
+      </div>
+    </div>
+    ${nkBar('qpH', '<span class="pill">الكشف + كشف الإرسال' + (QP.expBranch ? ' — فرع ' + esc(QP.expBranch) : '') + '</span>')}
     ${nkBar('qpS', '<span class="pill">الملخص الشهري</span>')}
   </div>
 
@@ -8865,6 +9160,12 @@ function renderQP(){
     };
     rd.readAsArrayBuffer(f);
   };
+  const eb = $('qpExpBranch'); if(eb) eb.onchange = ()=>{ QP.expBranch = eb.value; qpSave(); renderQP(); };
+  el.querySelectorAll('[data-qpcol]').forEach(cb=> cb.onchange = ()=>{
+    const on = qpSendColsOn().slice();
+    on[+cb.dataset.qpcol] = cb.checked;
+    QP.sendCols = on; qpSave(); renderQP();
+  });
   $('qpAdd').onclick = ()=>{ QP.emps.push({name:'موظف جديد', branch:'', salary:0, h1:true, h2:true}); qpSave(); renderQP(); };
   el.querySelectorAll('[data-qpdel]').forEach(b=> b.onclick = ()=>{ QP.emps.splice(+b.dataset.qpdel, 1); qpSave(); renderQP(); });
   el.querySelectorAll('[data-qpc]').forEach(cb=> cb.onchange = ()=>{
@@ -9041,6 +9342,9 @@ function fpImport(wb){
 
 function renderFP(){
   const el = $('fpApp'); if(!el) return;
+  nkPreserve(el, ()=> renderFP_impl(el));
+}
+function renderFP_impl(el){
   const c = fpCalc();
   const tab = FP.tab || 'pay';
   const optsFor = (v)=> FP_CODES.map(x=> `<option value="${esc(x)}" ${x === v ? 'selected' : ''}>${esc(x || '—')}</option>`).join('');
@@ -9328,6 +9632,9 @@ function axImport(wb){
 
 function renderAX(){
   const el = $('axApp'); if(!el) return;
+  nkPreserve(el, ()=> renderAX_impl(el));
+}
+function renderAX_impl(el){
   const c = axCalc();
   const vis = axVisible();
   let rows = '';
@@ -9432,6 +9739,7 @@ function renderAX(){
 }
 
 window.renderGV = renderGV; window.renderQP = renderQP; window.renderFP = renderFP; window.renderAX = renderAX;
+nkCloudPullAll();
 
 </script>
 </body>
