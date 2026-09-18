@@ -799,9 +799,13 @@ async function apiFetch(url, options, opts){
   const offline = networkDown || (typeof navigator !== 'undefined' && navigator.onLine === false);
   const retries = offline ? 0 : (opts.retries == null ? NET_RETRIES : opts.retries);
   let lastErr;
+  // المهلة بتكبر مع حجم اللي بنبعته: رفع شهر مبيعات ممكن يبقى ميجا أو اتنين،
+  // وعلى نت موبايل ضعيف الـ٦٠ ثانية الثابتة كانت بتقطع الرفع في نصه وتفشّله.
+  const bodyLen = (options && typeof options.body === 'string') ? options.body.length : 0;
+  const timeoutMs = Math.min(300000, NET_TIMEOUT_MS + Math.round(bodyLen / 1024) * 60);
   for(let attempt = 0; attempt <= retries; attempt++){
     const ctrl = new AbortController();
-    const timer = setTimeout(()=> ctrl.abort(), NET_TIMEOUT_MS);
+    const timer = setTimeout(()=> ctrl.abort(), timeoutMs);
     try{
       const res = await fetch(url, Object.assign({signal: ctrl.signal}, options||{}));
       if(!res.ok) throw new Error('HTTP ' + res.status);
@@ -813,7 +817,9 @@ async function apiFetch(url, options, opts){
       }
       return data;
     }catch(e){
-      lastErr = e.name === 'AbortError' ? new Error('الطلب أخد وقت أطول من اللازم') : e;
+      lastErr = e.name === 'AbortError'
+        ? new Error(`الطلب أخد وقت أطول من ${Math.round(timeoutMs/1000)} ثانية — جرّب وانت على نت أحسن`)
+        : e;
       if(looksOffline(lastErr)) networkDown = true;
       if(attempt < retries) await new Promise(r=> setTimeout(r, 800 * Math.pow(2, attempt)));
     }finally{ clearTimeout(timer); }
@@ -851,6 +857,17 @@ window.storage = {
     }
     return {key, value: data.value, shared:true};
   },
+  // اتحاد مصفوفة على السيرفر جوه قفل واحد (فهرس الشهور، قايمة القطاعات...)
+  async union(key, add, remove){
+    const data = await apiFetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({
+      action:'union', key, add: JSON.stringify(add || []),
+      remove: JSON.stringify(remove || []), token: SHARED_TOKEN})}, {retries:1});
+    if(!data.ok){
+      if(/unauthorized/i.test(data.error || '')) askAppToken();
+      throw new Error(data.error || 'union failed');
+    }
+    return {key, value: data.value, shared:true};
+  },
   async delete(key){
     const data = await apiFetch(APPS_SCRIPT_URL, {method:'POST', body: JSON.stringify({action:'delete', key, token: SHARED_TOKEN})});
     if(!data.ok) throw new Error(data.error || 'delete failed');
@@ -879,7 +896,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v106';
+const APP_VERSION = 'v107';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1360,7 +1377,9 @@ async function loadStorage(){
   let clsMissing = false;
   try{
     const cd = await getKey('classificationDiff');
-    classification = migrateClassification(mergeWithSeed(clsSeed, JSON.parse(cd.value)));
+    const cdObj = JSON.parse(cd.value) || {};
+    setBaseline('classificationDiff', cdObj);
+    classification = migrateClassification(mergeWithSeed(clsSeed, cdObj));
     clsLoaded = true;
   }catch(e){ clsMissing = isMissingKey(e); if(!clsMissing) settingsStale = true; }
   if(!clsLoaded){
@@ -1391,7 +1410,9 @@ async function loadStorage(){
   let itemsLoaded = false;
   try{
     const idf = await getKey('itemOverrideDiff');
-    itemOverride = mergeWithSeed(ITEM_SECTOR_SEED, JSON.parse(idf.value));
+    const idObj = JSON.parse(idf.value) || {};
+    setBaseline('itemOverrideDiff', idObj);
+    itemOverride = mergeWithSeed(ITEM_SECTOR_SEED, idObj);
     itemsLoaded = true;
   }catch(e){ if(!isMissingKey(e)) settingsStale = true; }
   if(!itemsLoaded){
@@ -1434,6 +1455,7 @@ async function loadStorage(){
   try{
     const ss = await getKey('sectorSheets');
     sectorSheet = JSON.parse(ss.value) || {};
+    setBaseline('sectorSheets', sectorSheet);
     sheetsLoaded = true;
   }catch(e){
     // نفس القاعدة: مانمسحش الخريطة اللي في الذاكرة/الكاش لمجرد إن القراءة فشلت
@@ -1478,7 +1500,9 @@ async function loadStorage(){
   ]){
     try{
       const r = await getKey(key);
-      setter(JSON.parse(r.value) || {});
+      const v = JSON.parse(r.value) || {};
+      if(key === 'whBalances') setBaseline(key, v);
+      setter(v);
     }catch(e){ if(!isMissingKey(e)) settingsStale = true; }
   }
   whSyncAt = Date.now();
@@ -1601,8 +1625,8 @@ function updateLocalCache(immediate){
 // ---- الأرشيف ----
 // السنة المؤرشفة بتختفي من التقرير الحالي، بس بياناتها بتفضل محفوظة زي ما هي
 // (نفس مفاتيح month:YYYY-MM) — الأرشفة بتسجّل السنة في قائمة archivedYears بس.
-async function saveArchivedYears(){
-  await setKey('archivedYears', JSON.stringify(archivedYears));
+async function saveArchivedYears(removed){
+  archivedYears = await saveArrUnion('archivedYears', archivedYears, removed);
 }
 function yearOf(m){ return (m||'').split('-')[0]; }
 
@@ -1703,7 +1727,7 @@ function renderArchivePanel(){
     btn.addEventListener('click', async ()=>{
       const y = btn.getAttribute('data-restore-year');
       archivedYears = archivedYears.filter(x=>x!==y);
-      try{ await saveArchivedYears(); }catch(e){ alert('الاستعادة فشلت: ' + e.message); archivedYears.push(y); return; }
+      try{ await saveArchivedYears([y]); }catch(e){ alert('الاستعادة فشلت: ' + e.message); archivedYears.push(y); return; }
       updateLocalCache();
       renderArchivePanel(); renderMonthPills(); renderReport();
     });
@@ -1739,7 +1763,9 @@ async function saveMonths(changedMonths){
   for(const m of toSave){
     if(monthsData[m]) await setKey('month:' + m, JSON.stringify(monthsData[m]));
   }
-  await setKey('monthsIndex', JSON.stringify(months));
+  // الفهرس اتحاد مع اللي على السيرفر: جهاز تاني ممكن يكون رفع شهر جديد في
+  // نفس اللحظة، وكتابة نسختنا فوقه كانت بتخلي شهره يتيم ويختفي من التطبيق.
+  await saveArrUnion('monthsIndex', months, deletedMonths);
   if(skipped.length){
     alert(`التعديل اتحفظ محليًا بس ${skipped.length} شهر (${skipped.map(monthLabel).join('، ')}) `
       + 'مترفعش للسيرفر عشان تحميلهم فشل ومش مضمون إن اللي عندنا هو الأحدث. '
@@ -1767,20 +1793,116 @@ function seedClassificationMap(){
   return m;
 }
 
-async function saveItemOverride(){
-  await setKey('itemOverrideDiff', JSON.stringify(diffFromSeed(itemOverride, ITEM_SECTOR_SEED)));
+// ---- حفظ ذرّي للإعدادات المشتركة ----
+// كانت كل دالة حفظ بتكتب نسختها كاملة فوق اللي على السيرفر. لو اتنين
+// شغالين في نفس الوقت (واحد بيصنّف عملاء وواحد بيغيّر قطاع أصناف)، آخر
+// واحد يحفظ كان بيمسح شغل التاني من غير ما حد ياخد باله. الحل نفس فكرة
+// المخازن: نبعت *الفرق* بس، والسيرفر يدمجه جوه قفل واحد.
+//
+// kvBaseline = آخر نسخة اتأكدنا إنها على السيرفر لكل مفتاح. الفرق بينها
+// وبين اللي عندنا دلوقتي هو التعديل بتاعنا بالظبط (وdمسح = null).
+const kvBaseline = {};
+function setBaseline(key, obj){
+  try{ kvBaseline[key] = JSON.parse(JSON.stringify(obj || {})); }catch(e){ kvBaseline[key] = {}; }
 }
-async function saveSectors(){
-  await setKey('sectorsList', JSON.stringify(SECTORS));
+function objPatch(key, cur){
+  const base = kvBaseline[key] || {};
+  const patch = {};
+  Object.keys(cur || {}).forEach(k=>{
+    if(JSON.stringify(cur[k]) !== JSON.stringify(base[k])) patch[k] = cur[k];
+  });
+  Object.keys(base).forEach(k=>{ if(!(k in (cur||{}))) patch[k] = null; });
+  return patch;
+}
+// wipeChanged: للأرصدة — المخزن اللي اتغيّر يتمسح الأول بعدين يتكتب،
+// عشان الأصناف اللي اتشالت من الرفعة الجديدة ما تفضلش.
+async function saveObjMerged(key, cur, wipeChanged){
+  const patch = objPatch(key, cur);
+  if(!Object.keys(patch).length && kvBaseline[key]) return cur;
+  const wipe = wipeChanged ? Object.keys(patch).filter(k => patch[k] !== null) : [];
+  if(serverHasMerge !== false){
+    try{
+      const r = await window.storage.merge(key, patch, wipe);
+      const merged = JSON.parse(r.value) || {};
+      serverHasMerge = true; bumpVersion(key); setBaseline(key, merged);
+      return merged;
+    }catch(e){
+      if(!/unknown action/i.test(e && e.message || '')) throw e;
+      serverHasMerge = false;   // سيرفر قديم — نكمّل بالطريقة اليدوية
+    }
+  }
+  let server = null;
+  try{ const r = await window.storage.get(key); server = JSON.parse(r.value) || {}; }
+  catch(e){ server = isMissingKey(e) ? {} : null; }
+  if(server === null){ await setKey(key, JSON.stringify(cur)); setBaseline(key, cur); return cur; }
+  wipe.forEach(k => { delete server[k]; });
+  Object.keys(patch).forEach(k=>{ if(patch[k] === null) delete server[k]; else server[k] = patch[k]; });
+  await setKey(key, JSON.stringify(server));
+  setBaseline(key, server);
+  return server;
+}
+// المصفوفات (قايمة القطاعات، فهرس الشهور، السنين المؤرشفة): السيرفر مابيعرفش
+// يدمج مصفوفات، فبنقرا نسخته ونعمل اتحاد قبل الكتابة على طول. مش ذرّي ١٠٠٪
+// بس بيقفل الفجوة من "أكيد هيضيع" لـ"جزء من الثانية".
+let serverHasUnion = null;
+async function saveArrUnion(key, arr, removed){
+  const rm = removed || [];
+  // ١) الأضمن: الاتحاد بيحصل على السيرفر جوه قفل واحد.
+  if(serverHasUnion !== false){
+    try{
+      const r = await window.storage.union(key, arr || [], rm);
+      serverHasUnion = true; bumpVersion(key);
+      const v = JSON.parse(r.value);
+      if(Array.isArray(v)) return v;
+    }catch(e){
+      if(!/unknown action/i.test(e && e.message || '')) throw e;
+      serverHasUnion = false;   // سيرفر قديم — نكمّل بالطريقة اليدوية
+    }
+  }
+  // ٢) سيرفر قديم: اقرا واعمل اتحاد واكتب، وبعدين اتأكد إن اللي كتبناه وصل.
+  //    لو جهاز تاني كتب في نفس اللحظة بنعيد الدمج مرة كمان.
+  let final = null;
+  for(let attempt = 0; attempt < 3; attempt++){
+    let server = null;
+    try{
+      const r = await window.storage.get(key);
+      const v = JSON.parse(r.value);
+      server = Array.isArray(v) ? v : [];
+    }catch(e){ server = isMissingKey(e) ? [] : null; }
+    if(server === null){ await setKey(key, JSON.stringify(arr)); return (arr || []).slice(); }
+    const out = server.slice();
+    (arr || []).forEach(v => { if(!out.includes(v)) out.push(v); });
+    final = rm.length ? out.filter(v => !rm.includes(v)) : out;
+    await setKey(key, JSON.stringify(final));
+    // تأكيد: هل كل حاجة بتاعتنا فعلًا على السيرفر؟
+    try{
+      const chk = await window.storage.get(key);
+      const cur = JSON.parse(chk.value);
+      if(Array.isArray(cur)
+         && (arr || []).every(v => cur.includes(v))
+         && rm.every(v => !cur.includes(v))) return cur;
+      if(Array.isArray(cur)) arr = cur.concat((arr || []).filter(v => !cur.includes(v)));
+    }catch(e){ return final; }
+  }
+  return final;
+}
+
+async function saveItemOverride(){
+  await saveObjMerged('itemOverrideDiff', diffFromSeed(itemOverride, ITEM_SECTOR_SEED));
+}
+// removed = القطاعات اللي المستخدم حذفها دلوقتي — من غيرها الاتحاد مع
+// نسخة السيرفر كان هيرجّعها تاني.
+async function saveSectors(removed){
+  SECTORS = await saveArrUnion('sectorsList', SECTORS, removed);
 }
 async function saveSectorSheets(){
-  await setKey('sectorSheets', JSON.stringify(sectorSheet));
+  await saveObjMerged('sectorSheets', sectorSheet);
 }
 async function saveWarehouseForcing(){
   await setKey('warehouseForcing', JSON.stringify(warehouseForcingOn));
 }
 async function saveClassification(){
-  await setKey('classificationDiff', JSON.stringify(diffFromSeed(classification, seedClassificationMap())));
+  await saveObjMerged('classificationDiff', diffFromSeed(classification, seedClassificationMap()));
 }
 
 function findHeaderRow(rows){
@@ -4108,7 +4230,7 @@ function renderOwnSectorsList(){
       const hadSheet = sectorSheet[s];
       delete sectorSheet[s]; // ما نسيبش قطاع محذوف في خريطة الشيتات
       try{
-        await saveSectors();
+        await saveSectors([s]);
         if(hadSheet) await saveSectorSheets();
         if(affected.length) await saveItemOverride();
       }catch(err){ alert('الحفظ فشل: ' + err.message); return; }
@@ -4580,6 +4702,11 @@ const PDF_STYLE = `
   th,td{overflow:hidden}
   /* عمود الاسم بالنسبة مش بالبكسل — عشان يفضل متزن مع أي مقاس خط */
   td:nth-child(2),th:nth-child(2){width:21%;text-align:right}
+  /* جداول القوائم المالية بتحدد عروضها بنفسها بـcolgroup */
+  table.fin-tbl{table-layout:auto}
+  table.fin-tbl td:nth-child(2), table.fin-tbl th:nth-child(2){width:auto}
+  table.fin-tbl td:first-child, table.fin-tbl th:first-child{text-align:right}
+  tr.fin-band td, tr.fin-band:nth-child(even) td{background:#16307a;color:#fff;font-weight:700}
   /* نفس تدرّج ألوان الشاشة بالظبط: شريط غامق للمجموعة الرئيسية والإجمالي،
      وأزرق فاتح للمجموعة الفرعية وإجمالياتها. كان رمادي باهت فالورقة كانت
      مسطّحة ومش واضح فيها مستويات التجميع. */
@@ -5154,7 +5281,9 @@ async function saveWhCatalog(){
   await setKey('whCatalog', JSON.stringify(whCatalog));
   whCatDirty = {};
 }
-async function saveWhBalances(){ await setKey('whBalances', JSON.stringify(whBalances)); }
+// المخزن اللي اتغيّر بس هو اللي بيترفع (مع مسحه الأول عشان الأصناف
+// المشالة)، فجهاز بيرفع أرصدة طنطا مابيمسحش أرصدة الاسكندرية.
+async function saveWhBalances(){ whBalances = await saveObjMerged('whBalances', whBalances, true); }
 // الطلبية والجرد ممكن اتنين يشتغلوا فيهم في نفس الوقت (واحد في طنطا وواحد في
 // الإسكندرية). لو كل جهاز كتب نسخته كاملة، آخر واحد يحفظ يمسح شغل التاني.
 // عشان كده بنسجّل الأصناف اللي اتعدّلت هنا بس، وعند الحفظ بنقرا نسخة السيرفر
@@ -6894,15 +7023,23 @@ function finGroups(items){
   out.forEach(g => g.items.sort((a,b)=> Math.abs(b.v) - Math.abs(a.v)));
   return out.sort((a,b)=> Math.abs(b.total) - Math.abs(a.total));
 }
+// نسبة البند من الأساس (صافي المبيعات في قائمة الدخل، إجمالي الأصول في المركز المالي)
+function finPct(v, base){
+  if(!base) return '';
+  const n = (Number(v)||0) / base * 100;
+  const t = n.toFixed(1);
+  return (t === '-0.0' ? '0.0' : t) + '%';
+}
+let finPctBase = 0;   // الأساس اللي بتتحسب عليه نسب الجدول الحالي
 function finLine(label, val, cls, indent){
   return `<tr${cls?` class="${cls}"`:''}><td style="text-align:right;padding-inline-start:${(indent||0)*18}px">${esc(label)}</td>
-    <td class="wh-num">${finFmt(val)}</td></tr>`;
+    <td class="wh-num">${finFmt(val)}</td><td class="wh-num">${finPct(val, finPctBase)}</td></tr>`;
 }
 function finSection(title, items, total, totalLabel){
-  let h = `<tr class="grp-row"><td colspan="2" style="text-align:right">${esc(title)}</td></tr>`;
+  let h = `<tr class="grp-row"><td colspan="3" style="text-align:right">${esc(title)}</td></tr>`;
   finGroups(items).forEach(g=>{
     if(!g.code){ h += finLine(g.items[0].name, g.items[0].v, '', 1); return; }
-    h += `<tr class="fin-sub"><td colspan="2" style="text-align:right;padding-inline-start:18px">${esc(g.name)}</td></tr>`;
+    h += `<tr class="fin-sub"><td colspan="3" style="text-align:right;padding-inline-start:18px">${esc(g.name)}</td></tr>`;
     g.items.forEach(x => { h += finLine(x.name, x.v, '', 2); });
     h += finLine('إجمالي ' + g.name, g.total, 'fin-subtot', 2);
   });
@@ -6941,7 +7078,8 @@ function finIncomeView(){
     <div class="kpi-card"><div class="kpi-title">هامش صافي الربح</div>
       <div class="kpi-sum">${(I.margin*100).toFixed(2)}%</div></div>
   </div>`;
-  let t = `<div class="tbl-wrap"><table><thead><tr><th>البند</th><th>القيمة</th></tr></thead><tbody>`;
+  finPctBase = I.netSales || I.totalSales || 0;
+  let t = `<div class="tbl-wrap"><table><thead><tr><th>البند</th><th>القيمة</th><th>% من صافي المبيعات</th></tr></thead><tbody>`;
   t += finSection('1) صافي المبيعات', I.sales, I.totalSales, 'إجمالي المبيعات');
   t += finLine('يخصم: مردود المبيعات', I.sum(I.returns), '', 1);
   t += finLine('يخصم: خصم مسموح به', I.sum(I.discAllow), '', 1);
@@ -6952,7 +7090,7 @@ function finIncomeView(){
     [].concat(I.othVar, I.othDisc, I.othFreight, I.othRev), I.otherInc, 'إجمالي الإيرادات الأخرى');
   t += finSection('4) المصروفات العمومية',
     [].concat(I.expenses, I.othExp), I.totalExp, 'إجمالي المصروفات العمومية');
-  t += `<tr class="grp-row"><td colspan="2" style="text-align:right">5) صافي الربح</td></tr>`;
+  t += `<tr class="grp-row"><td colspan="3" style="text-align:right">5) صافي الربح</td></tr>`;
   t += finLine('صافي الربح', I.netProfit, 'total-row', 1);
   t += '</tbody></table></div>';
   // مساهمة الفروع
@@ -6984,27 +7122,29 @@ function finDetailView(){
     ['إيرادات النقل', I.othFreight], ['إيرادات أخرى غير مصنفة', I.othRev],
     ['المصروفات العمومية', I.expenses], ['مصروفات أخرى غير مصنفة', I.othExp],
   ];
-  let h = `<div class="tbl-wrap"><table><thead><tr><th>الكود</th><th>الحساب</th><th>القيمة</th></tr></thead><tbody>`;
+  let h = `<div class="tbl-wrap"><table><thead><tr><th>الكود</th><th>الحساب</th><th>القيمة</th><th>% من البند</th></tr></thead><tbody>`;
   blocks.forEach(([title, items])=>{
     if(!items.length) return;
-    h += `<tr class="total-row"><td colspan="3" style="text-align:right">${esc(title)}</td></tr>`;
+    const bTotal = I.sum(items);
+    const pc = (v)=> finPct(v, bTotal);
+    h += `<tr class="total-row"><td colspan="4" style="text-align:right">${esc(title)}</td></tr>`;
     finGroups(items).forEach(g=>{
       if(!g.code){
         const x = g.items[0];
         h += `<tr><td>${esc(x.code)}</td><td style="text-align:right">${esc(x.name)}</td>
-          <td class="wh-num">${finFmt(x.v)}</td></tr>`;
+          <td class="wh-num">${finFmt(x.v)}</td><td class="wh-num">${pc(x.v)}</td></tr>`;
         return;
       }
-      h += `<tr class="fin-sub"><td>${esc(g.code)}</td><td colspan="2" style="text-align:right">${esc(g.name)}</td></tr>`;
+      h += `<tr class="fin-sub"><td>${esc(g.code)}</td><td colspan="3" style="text-align:right">${esc(g.name)}</td></tr>`;
       g.items.forEach(x=>{
         h += `<tr><td>${esc(x.code)}</td><td style="text-align:right;padding-inline-start:18px">${esc(x.name)}</td>
-          <td class="wh-num">${finFmt(x.v)}</td></tr>`;
+          <td class="wh-num">${finFmt(x.v)}</td><td class="wh-num">${pc(x.v)}</td></tr>`;
       });
       h += `<tr class="fin-subtot"><td></td><td style="text-align:right;padding-inline-start:18px">إجمالي ${esc(g.name)}</td>
-        <td class="wh-num">${finFmt(g.total)}</td></tr>`;
+        <td class="wh-num">${finFmt(g.total)}</td><td class="wh-num">${pc(g.total)}</td></tr>`;
     });
     h += `<tr class="grp-row"><td colspan="2" style="text-align:right">إجمالي ${esc(title)}</td>
-      <td class="wh-num">${finFmt(I.sum(items))}</td></tr>`;
+      <td class="wh-num">${finFmt(bTotal)}</td><td class="wh-num">100%</td></tr>`;
   });
   h += '</tbody></table></div>';
   const n = blocks.reduce((a,[,items])=>a+items.length, 0);
@@ -7015,18 +7155,19 @@ function finBalanceView(){
   const months = finSelectedMonths();
   if(!months.length) return {html:'<div class="sub">مفيش بيانات للفترة دي.</div>', count:''};
   const B = finBalance(months[months.length - 1]);
+  const pc = (v)=> finPct(v, B.tAssets);
   const rowsOf = (list)=> list.map(x=>{
     let h = `<tr><td>${esc(x.code||'')}</td><td style="text-align:right">${esc(x.name)}</td>
-      <td class="wh-num">${finFmt(x.v)}</td></tr>`;
+      <td class="wh-num">${finFmt(x.v)}</td><td class="wh-num">${pc(x.v)}</td></tr>`;
     (x.items || []).forEach(it=>{
       h += `<tr><td>${esc(it.code)}</td><td style="text-align:right;padding-inline-start:22px;color:var(--muted)">${esc(it.name)}</td>
-        <td class="wh-num" style="color:var(--muted)">${finFmt(it.v)}</td></tr>`;
+        <td class="wh-num" style="color:var(--muted)">${finFmt(it.v)}</td><td class="wh-num" style="color:var(--muted)">${pc(it.v)}</td></tr>`;
     });
     return h;
   }).join('');
-  const band = (t)=> `<tr class="total-row"><td colspan="3" style="text-align:right">${esc(t)}</td></tr>`;
-  const tot = (t,v)=> `<tr class="grp-row"><td colspan="2" style="text-align:right">${esc(t)}</td><td class="wh-num">${finFmt(v)}</td></tr>`;
-  let h = `<div class="tbl-wrap"><table><thead><tr><th>الكود</th><th>البند</th><th>الرصيد</th></tr></thead><tbody>`;
+  const band = (t)=> `<tr class="total-row"><td colspan="4" style="text-align:right">${esc(t)}</td></tr>`;
+  const tot = (t,v)=> `<tr class="grp-row"><td colspan="2" style="text-align:right">${esc(t)}</td><td class="wh-num">${finFmt(v)}</td><td class="wh-num">${pc(v)}</td></tr>`;
+  let h = `<div class="tbl-wrap"><table><thead><tr><th>الكود</th><th>البند</th><th>الرصيد</th><th>% من الأصول</th></tr></thead><tbody>`;
   h += band('أولاً: الأصول الثابتة') + rowsOf(B.fixed) + tot('إجمالي الأصول الثابتة', B.tFixed);
   h += band('ثانياً: الأصول المتداولة') + rowsOf(B.cur) + tot('إجمالي الأصول المتداولة', B.tCur);
   h += tot('إجمالي الأصول', B.tAssets);
@@ -7034,7 +7175,7 @@ function finBalanceView(){
   h += band('رابعاً: الالتزامات المتداولة') + rowsOf(B.liab) + tot('إجمالي الالتزامات المتداولة', B.tLiab);
   h += tot('إجمالي حقوق الملكية والالتزامات', B.tEqLiab);
   h += `<tr class="total-row"><td colspan="2" style="text-align:right">فرق التوازن (المفروض صفر)</td>
-    <td class="wh-num" style="color:${Math.abs(B.diff)<1?'inherit':'var(--danger)'}">${finFmt(B.diff)}</td></tr>`;
+    <td class="wh-num" style="color:${Math.abs(B.diff)<1?'inherit':'var(--danger)'}">${finFmt(B.diff)}</td><td></td></tr>`;
   h += '</tbody></table></div>';
   let note = finWarn(B);
   if(Math.abs(B.retained - B.periodProfit) > 1){
@@ -7228,68 +7369,86 @@ function finExportAoa(){
   const period = finPeriodLabel(months);
   if(finTab === 'balance'){
     const B = finBalance(months[months.length-1]);
-    const aoa = [['الكود','البند','الرصيد']];
-    const push = (t)=> aoa.push(['', t, '']);
+    const pc = (v)=> finPct(v, B.tAssets);
+    const aoa = [['الكود','البند','الرصيد','% من الأصول']];
+    const push = (t)=> aoa.push(['', t, '', '']);
     const rows = (list)=> list.forEach(x=>{
-      aoa.push([x.code||'', x.name, x.v]);
-      (x.items||[]).forEach(it=> aoa.push([it.code, '   ' + it.name, it.v]));
+      aoa.push([x.code||'', x.name, x.v, pc(x.v)]);
+      (x.items||[]).forEach(it=> aoa.push([it.code, '   ' + it.name, it.v, pc(it.v)]));
     });
-    push('أولاً: الأصول الثابتة'); rows(B.fixed); aoa.push(['','إجمالي الأصول الثابتة', B.tFixed]);
-    push('ثانياً: الأصول المتداولة'); rows(B.cur); aoa.push(['','إجمالي الأصول المتداولة', B.tCur]);
-    aoa.push(['','إجمالي الأصول', B.tAssets]);
-    push('ثالثاً: حقوق الملكية'); rows(B.equity); aoa.push(['','إجمالي حقوق الملكية', B.tEq]);
-    push('رابعاً: الالتزامات المتداولة'); rows(B.liab); aoa.push(['','إجمالي الالتزامات المتداولة', B.tLiab]);
-    aoa.push(['','إجمالي حقوق الملكية والالتزامات', B.tEqLiab]);
-    aoa.push(['','فرق التوازن', B.diff]);
-    return {aoa: finRoundAoa(aoa), numFrom:2, title:`المركز المالي — ${finMonthLabel(B.month)}`, sheet:'المركز المالي'};
+    push('أولاً: الأصول الثابتة'); rows(B.fixed); aoa.push(['','إجمالي الأصول الثابتة', B.tFixed, pc(B.tFixed)]);
+    push('ثانياً: الأصول المتداولة'); rows(B.cur); aoa.push(['','إجمالي الأصول المتداولة', B.tCur, pc(B.tCur)]);
+    aoa.push(['','إجمالي الأصول', B.tAssets, pc(B.tAssets)]);
+    push('ثالثاً: حقوق الملكية'); rows(B.equity); aoa.push(['','إجمالي حقوق الملكية', B.tEq, pc(B.tEq)]);
+    push('رابعاً: الالتزامات المتداولة'); rows(B.liab); aoa.push(['','إجمالي الالتزامات المتداولة', B.tLiab, pc(B.tLiab)]);
+    aoa.push(['','إجمالي حقوق الملكية والالتزامات', B.tEqLiab, pc(B.tEqLiab)]);
+    aoa.push(['','فرق التوازن', B.diff, '']);
+    const aoaR = finRoundAoa(aoa);
+    return {aoa: aoaR, numFrom:2, title:`المركز المالي — ${finMonthLabel(B.month)}`, sheet:'المركز المالي',
+      blocks:[{head:aoaR[0], rows:aoaR.slice(1), widths:['12%','', '22%','13%'], numFrom:2}]};
   }
   const I = finIncome(months);
   if(finTab === 'detail'){
-    const aoa = [['الكود','الحساب','القيمة']];
+    const aoa = [['الكود','الحساب','القيمة','% من البند']];
     const blocks = [['المبيعات', I.sales], ['مردود المبيعات', I.returns], ['خصم مسموح به', I.discAllow],
       ['تكلفة البضاعة المباعة', I.cost], ['إيرادات متنوعة', I.othVar], ['خصم مكتسب', I.othDisc],
       ['إيرادات النقل', I.othFreight], ['إيرادات أخرى غير مصنفة', I.othRev],
       ['المصروفات العمومية', I.expenses], ['مصروفات أخرى غير مصنفة', I.othExp]];
     blocks.forEach(([t, items])=>{
       if(!items.length) return;
-      aoa.push(['', t, '']);
+      const bT = I.sum(items);
+      const pc = (v)=> finPct(v, bT);
+      aoa.push(['', t, '', '']);
       finGroups(items).forEach(g=>{
-        if(!g.code){ aoa.push([g.items[0].code, g.items[0].name, g.items[0].v]); return; }
-        aoa.push([g.code, g.name, '']);
-        g.items.forEach(x=> aoa.push([x.code, '   ' + x.name, x.v]));
-        aoa.push(['', 'إجمالي ' + g.name, g.total]);
+        if(!g.code){ const x=g.items[0]; aoa.push([x.code, x.name, x.v, pc(x.v)]); return; }
+        aoa.push([g.code, g.name, '', '']);
+        g.items.forEach(x=> aoa.push([x.code, '   ' + x.name, x.v, pc(x.v)]));
+        aoa.push(['', 'إجمالي ' + g.name, g.total, pc(g.total)]);
       });
-      aoa.push(['', 'إجمالي ' + t, I.sum(items)]);
+      aoa.push(['', 'إجمالي ' + t, bT, '100%']);
     });
-    return {aoa: finRoundAoa(aoa), numFrom:2, title:`تفاصيل القوائم الفرعية — ${period}`, sheet:'تفاصيل فرعية'};
+    const aoaR = finRoundAoa(aoa);
+    return {aoa: aoaR, numFrom:2, title:`تفاصيل القوائم الفرعية — ${period}`, sheet:'تفاصيل فرعية',
+      blocks:[{head:aoaR[0], rows:aoaR.slice(1), widths:['12%','','22%','13%'], numFrom:2}]};
   }
-  const aoa = [['البند','القيمة']];
+  const base = I.netSales || I.totalSales || 0;
+  const pc = (v)=> finPct(v, base);
+  const aoa = [['البند','القيمة','% من صافي المبيعات']];
   const sec = (t, items, total, tl)=>{
-    aoa.push([t, '']);
+    aoa.push([t, '', '']);
     finGroups(items).forEach(g=>{
-      if(!g.code){ aoa.push(['   ' + g.items[0].name, g.items[0].v]); return; }
-      aoa.push(['   ' + g.name, '']);
-      g.items.forEach(x=> aoa.push(['      ' + x.name, x.v]));
-      aoa.push(['      إجمالي ' + g.name, g.total]);
+      if(!g.code){ const x=g.items[0]; aoa.push(['   ' + x.name, x.v, pc(x.v)]); return; }
+      aoa.push(['   ' + g.name, '', '']);
+      g.items.forEach(x=> aoa.push(['      ' + x.name, x.v, pc(x.v)]));
+      aoa.push(['      إجمالي ' + g.name, g.total, pc(g.total)]);
     });
-    if(tl) aoa.push(['   ' + tl, total]);
+    if(tl) aoa.push(['   ' + tl, total, pc(total)]);
   };
   sec('1) صافي المبيعات', I.sales, I.totalSales, 'إجمالي المبيعات');
-  aoa.push(['   يخصم: مردود المبيعات', I.sum(I.returns)]);
-  aoa.push(['   يخصم: خصم مسموح به', I.sum(I.discAllow)]);
-  aoa.push(['   صافي المبيعات', I.netSales]);
+  aoa.push(['   يخصم: مردود المبيعات', I.sum(I.returns), pc(I.sum(I.returns))]);
+  aoa.push(['   يخصم: خصم مسموح به', I.sum(I.discAllow), pc(I.sum(I.discAllow))]);
+  aoa.push(['   صافي المبيعات', I.netSales, pc(I.netSales)]);
   sec('2) تكلفة البضاعة المباعة', I.cost, I.totalCost, 'إجمالي تكلفة البضاعة المباعة');
-  aoa.push(['   مجمل الربح', I.grossProfit]);
+  aoa.push(['   مجمل الربح', I.grossProfit, pc(I.grossProfit)]);
   sec('3) إيرادات أخرى', [].concat(I.othVar, I.othDisc, I.othFreight, I.othRev), I.otherInc, 'إجمالي الإيرادات الأخرى');
   sec('4) المصروفات العمومية', [].concat(I.expenses, I.othExp), I.totalExp, 'إجمالي المصروفات العمومية');
-  aoa.push(['5) صافي الربح', '']);
-  aoa.push(['   صافي الربح', I.netProfit]);
-  aoa.push(['   هامش صافي الربح', I.margin]);
-  aoa.push(['', '']);
-  aoa.push(['مساهمة الفروع', '']);
-  aoa.push(['الفرع', 'صافي المبيعات', 'التكلفة', 'مجمل الربح']);
-  I.branches.forEach(x=> aoa.push([x.branch, x.sales, x.cost, x.gross]));
-  return {aoa: finRoundAoa(aoa), numFrom:1, title:`قائمة الدخل — ${period}`, sheet:'قائمة الدخل'};
+  aoa.push(['5) صافي الربح', '', '']);
+  aoa.push(['   صافي الربح', I.netProfit, pc(I.netProfit)]);
+  const mainR = finRoundAoa(aoa.map(r=>r.slice()));
+  // جدول الفروع أعمدته مختلفة — كان مدموج مع القائمة في نفس الجدول، فكان
+  // بيخلي كل صفوف القائمة فيها عمودين فاضيين وشكل الورقة يبقى نص فاضي.
+  const brHead = ['الفرع', 'صافي المبيعات', 'التكلفة', 'مجمل الربح', 'الهامش'];
+  const brRows = I.branches.map(x=> [x.branch, x.sales, x.cost, x.gross,
+    x.sales ? ((x.gross/x.sales)*100).toFixed(1) + '%' : '0.0%']);
+  const bs = I.branches.reduce((a,x)=>({s:a.s+x.sales, c:a.c+x.cost, g:a.g+x.gross}), {s:0,c:0,g:0});
+  brRows.push(['الإجمالي', bs.s, bs.c, bs.g, bs.s ? ((bs.g/bs.s)*100).toFixed(1) + '%' : '0.0%']);
+  const brR = finRoundAoa([brHead].concat(brRows));
+  const flat = mainR.concat([['', '', '']], [['مساهمة الفروع', '', '']], brR);
+  return {aoa: flat, numFrom:1, title:`قائمة الدخل — ${period}`, sheet:'قائمة الدخل',
+    blocks:[
+      {head:mainR[0], rows:mainR.slice(1), widths:['','24%','16%'], numFrom:1},
+      {head:brR[0], rows:brR.slice(1), widths:['26%','','','','13%'], numFrom:1, title:'مساهمة الفروع'},
+    ]};
 }
 if($('finExcelBtn')){
   $('finExcelBtn').addEventListener('click', ()=>{
@@ -7306,29 +7465,48 @@ if($('finExcelBtn')){
   $('finPdfBtn').addEventListener('click', async ()=>{
     if(!finMonths().length){ alert('ارفع ميزان مراجعة الأول.'); return; }
     if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
-    const {aoa, title, numFrom} = finExportAoa();
+    const {aoa, title, numFrom, blocks} = finExportAoa();
     exportBusy = true; setExportButtons(false);
     const btn = $('finPdfBtn'); const label = btn.textContent; btn.textContent = 'بيجهّز...';
     try{
-      const head = aoa[0], body = aoa.slice(1);
-      const numAt = numFrom == null ? 1 : numFrom;
-      const rowHtml = (cells, cls)=> `<tr${cls?` class="${cls}"`:''}>` + cells.map((c,i)=>
+      // كل كتلة جدول لوحدها بعروض أعمدة خاصة بيها. قبل كده كان كل حاجة
+      // في جدول واحد بعروض تقرير المبيعات، فجدول الفروع (٤ أعمدة) كان
+      // بيزوّد أعمدة فاضية على قائمة الدخل (عمودين) ونص الورقة يطلع فاضي.
+      const parts = blocks && blocks.length
+        ? blocks
+        : [{head: aoa[0], rows: aoa.slice(1), numFrom: numFrom == null ? 1 : numFrom}];
+      const cellHtml = (c, i, numAt)=>
         `<td class="${i>=numAt?'num':''}" style="${i<numAt?'text-align:right':''}">${esc(c === '' || c == null ? '' :
-          (typeof c === 'number' ? c.toLocaleString('en-US',{maximumFractionDigits:2}) : String(c)))}</td>`).join('') + '</tr>';
-      const tbl = `<div class="tbl-wrap"><table style="font-size:13px"><thead><tr>` +
-        head.map(h=>`<th>${esc(h)}</th>`).join('') + '</tr></thead><tbody>' +
-        body.map(r=>{
+          (typeof c === 'number' ? c.toLocaleString('en-US',{maximumFractionDigits:2}) : String(c)))}</td>`;
+      const tbl = parts.map(bk=>{
+        const numAt = bk.numFrom == null ? 1 : bk.numFrom;
+        const cols = (bk.widths || []).length
+          ? '<colgroup>' + bk.widths.map(w=>`<col${w?` style="width:${w}"`:''}>`).join('') + '</colgroup>'
+          : '';
+        const rows = bk.rows.map(r=>{
+          const filled = r.filter(c => c !== '' && c != null);
           const first = String(r[0] || r[1] || '');
           const isTotal = /^\s*(إجمالي|صافي|مجمل|فرق|أولاً|ثانياً|ثالثاً|رابعاً|\d\))/.test(first.trim());
-          return rowHtml(r, isTotal ? 'grp-row' : '');
-        }).join('') + '</tbody></table></div>';
+          // صف فيه عنوان بس (باقي الخانات فاضية) بيتعرض شريط على عرض الجدول
+          // بدل ما يسيب خانات فاضية وشكل الورقة يبقى مقطّع.
+          if(filled.length === 1 && typeof filled[0] === 'string'){
+            return `<tr class="${isTotal ? 'grp-row' : 'fin-band'}">`
+              + `<td colspan="${bk.head.length}" style="text-align:right">${esc(String(filled[0]).trim())}</td></tr>`;
+          }
+          return `<tr${isTotal?' class="grp-row"':''}>` +
+            r.map((c,i)=> cellHtml(c, i, numAt)).join('') + '</tr>';
+        }).join('');
+        return (bk.title ? `<div class="grp-title" style="margin-top:10px">${esc(bk.title)}</div>` : '')
+          + `<div class="tbl-wrap"><table class="fin-tbl" style="font-size:13px">${cols}<thead><tr>`
+          + bk.head.map(h=>`<th>${esc(h)}</th>`).join('') + `</tr></thead><tbody>${rows}</tbody></table></div>`;
+      }).join('');
       pdfNeededW = 0;
       PDF_RENDER_W = PDF_WIDTH_BY_SIZE.large;
       whReportMode = true;
       await renderPdfFromHtml(`<div class="blk"><div class="grp-title">${esc(title)}</div>${tbl}</div>`, {
         subtitle: title,
         orient: whPdfOrient === 'auto' ? 'p' : whPdfOrient,
-        wideCols: head.length,
+        wideCols: Math.max.apply(null, parts.map(bk => bk.head.length)),
         fileName: safeFileName(title) + '.pdf',
       });
     }catch(e){

@@ -55,6 +55,21 @@ function getSheet_(){
 // بيرجع كل الصفوف الخاصة بمفتاح معيّن مرتبة حسب ترتيب الأجزاء.
 // بنقرا الأعمدة الصغيرة بس (المفتاح/الترتيب/الإصدار) — عمود القيمة فيه
 // ملايين الحروف والقراءة الكاملة بتاعته كانت أبطأ جزء في كل طلب.
+// أرقام الصفوف المتتالية بتتجمع في مجموعة واحدة. أجزاء أي مفتاح بتتكتب
+// ورا بعضها، فده بيحوّل ٧٥ نداء على الشيت لنداء واحد.
+function runs_(rowNums){
+  var sorted = rowNums.slice().sort(function(a,b){ return a - b; });
+  var out = [];
+  for(var i = 0; i < sorted.length; i++){
+    if(out.length && sorted[i] === out[out.length-1].start + out[out.length-1].len){
+      out[out.length-1].len++;
+    } else {
+      out.push({start: sorted[i], len: 1});
+    }
+  }
+  return out;
+}
+
 function findRows_(sh, key){
   if(sh.getLastRow() < 2) return [];
   var n = sh.getLastRow() - 1;
@@ -107,11 +122,18 @@ function kvGet_(key){
     if(!group) return PARTIAL_;
   }
   group.sort(function(a,b){ return a.idx - b.idx; });
-  // بنقرا عمود القيمة للصفوف بتاعة المفتاح ده بس، مش الشيت كله
-  var parts = [];
-  for(var i = 0; i < group.length; i++){
-    parts.push(sh.getRange(group[i].row, 3).getValue());
+  // بنقرا عمود القيمة للصفوف بتاعة المفتاح ده بس، مش الشيت كله — وبنقراهم
+  // في مجموعات متتالية. قبل كده كانت قراءة لكل صف لوحده، يعني مفتاح فيه
+  // ٧٥ جزء = ٧٥ نداء على الشيت، وده اللي كان بيخلي التحميل والرفع بطيئين
+  // جدًا وساعات يوصلوا لمهلة Apps Script.
+  var byRow = {};
+  var rr = runs_(group.map(function(g){ return g.row; }));
+  for(var r = 0; r < rr.length; r++){
+    var vals = sh.getRange(rr[r].start, 3, rr[r].len, 1).getValues();
+    for(var v = 0; v < vals.length; v++) byRow[rr[r].start + v] = vals[v][0];
   }
+  var parts = [];
+  for(var i = 0; i < group.length; i++) parts.push(byRow[group[i].row]);
   return parts.join('');
 }
 
@@ -147,9 +169,15 @@ function kvSetLocked_(key, value){
     // ده كان بيقرّب من مهلة الـ6 دقايق بتاعة Apps Script ويخاطر بضياع بيانات مفاتيح تانية
     // لو الاستدعاء اتقطع في النص.
     var own = findRows_(sh, key).map(function(r){ return r.row; });
+    own.sort(function(a,b){ return a - b; });
     var reuse = Math.min(own.length, chunks.length);
-    for(var i = 0; i < reuse; i++){
-      sh.getRange(own[i], 1, 1, 4).setValues([chunks[i]]);
+    // نفس الفكرة في الكتابة: الصفوف المتتالية تتكتب مرة واحدة بدل نداء لكل صف.
+    var used = own.slice(0, reuse);
+    var wr = runs_(used);
+    var done = 0;
+    for(var w = 0; w < wr.length; w++){
+      sh.getRange(wr[w].start, 1, wr[w].len, 4).setValues(chunks.slice(done, done + wr[w].len));
+      done += wr[w].len;
     }
     if(chunks.length > own.length){
       var extra = chunks.slice(own.length);
@@ -286,6 +314,41 @@ function handle_(e, method){
       lock.releaseLock();
     }
   }
+  // اتحاد مصفوفة جوه قفل واحد. الدمج العادي مابيعرفش المصفوفات (بيستبدلها)،
+  // فجهازين بيضيفوا شهر أو قطاع في نفس اللحظة كان واحد فيهم بيضيع.
+  // add = عناصر تتضاف لو مش موجودة، remove = عناصر تتشال بعد الإضافة.
+  if(action === 'union'){
+    if(!req.key) return jsonOut_({ok:false, error:'الاتحاد وصل من غير مفتاح'});
+    var ulock = LockService.getScriptLock();
+    ulock.waitLock(30000);
+    try{
+      var ucur = kvGet_(req.key);
+      if(ucur === PARTIAL_) return jsonOut_({ok:false, error:'busy: write in progress'});
+      var arr = [];
+      if(ucur !== null){
+        try{ var parsed = JSON.parse(ucur); if(parsed instanceof Array) arr = parsed; }catch(e5){ arr = []; }
+      }
+      var add = [], rem = [];
+      try{ add = JSON.parse(req.add || '[]') || []; }catch(e6){ add = []; }
+      try{ rem = JSON.parse(req.remove || '[]') || []; }catch(e7){ rem = []; }
+      for(var a2 = 0; a2 < add.length; a2++){
+        if(arr.indexOf(add[a2]) === -1) arr.push(add[a2]);
+      }
+      if(rem.length){
+        var kept = [];
+        for(var b2 = 0; b2 < arr.length; b2++){
+          if(rem.indexOf(arr[b2]) === -1) kept.push(arr[b2]);
+        }
+        arr = kept;
+      }
+      var uout = JSON.stringify(arr);
+      kvSetLocked_(req.key, uout);
+      return jsonOut_({ok:true, key:req.key, value: uout});
+    } finally {
+      ulock.releaseLock();
+    }
+  }
+
   if(action === 'delete'){
     if(!req.key) return jsonOut_({ok:false, error:'المسح وصل من غير مفتاح'});
     kvDelete_(req.key);
