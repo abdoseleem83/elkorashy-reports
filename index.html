@@ -424,7 +424,7 @@
 
   <div class="row" style="margin-top:10px;padding:10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;gap:8px">
     <span class="badge">تصنيف جماعي:</span>
-    <span id="bulkCount" style="font-size:13px">حوّل الأصناف الظاهرة تحت لقطاع:</span>
+    <span style="font-size:13px">حوّل الأصناف الظاهرة تحت لقطاع:</span>
     <select id="bulkSector" style="min-width:170px"></select>
     <button id="bulkApplyBtn">طبّق على المعروض</button>
   </div>
@@ -562,7 +562,7 @@
     <button type="button" class="refresh-ico" id="salesTabRefreshBtn" title="تحديث بيانات المبيعات من السيرفر">🔄</button>
   </div>
 
-  <div class="row" id="reportToolbar" style="margin-bottom:12px;gap:8px">
+  <div class="row" style="margin-bottom:12px;gap:8px">
     <input type="text" id="reportSearch" placeholder="بحث باسم العميل..." style="min-width:180px">
     <select id="reportClassFilter" title="فلتر بالتصنيف"></select>
     <label class="chk"><input type="checkbox" id="reportAggWholesale" checked> اجمع الجملة في صف واحد</label>
@@ -651,11 +651,11 @@
 
     <div class="row" id="whToolbar" style="margin-bottom:12px;gap:8px">
       <input type="text" id="whSearch" placeholder="بحث باسم الصنف..." style="min-width:190px">
-      <div class="msdrop" id="whGroupDrop">
+      <div class="msdrop">
         <button type="button" class="msdrop-btn" id="whGroupBtn">كل المجموعات</button>
         <div class="msdrop-panel" id="whGroupPanel" hidden></div>
       </div>
-      <div class="msdrop" id="whSubDrop">
+      <div class="msdrop">
         <button type="button" class="msdrop-btn" id="whSubBtn">كل الفرعية</button>
         <div class="msdrop-panel" id="whSubPanel" hidden></div>
       </div>
@@ -665,7 +665,7 @@
       <label class="chk"><input type="checkbox" id="whHideZero" checked> اخفي الأصناف اللي رصيدها صفر</label>
       <span class="badge" id="whCount"></span>
       <span style="flex:1"></span>
-      <label class="chk" id="whOrientWrap" style="gap:6px" title="اتجاه ورقة الـPDF">📄
+      <label class="chk" style="gap:6px" title="اتجاه ورقة الـPDF">📄
         <select id="whPdfOrient" style="font-size:12.5px">
           <option value="auto">تلقائي</option>
           <option value="p">طولي</option>
@@ -715,7 +715,7 @@
       <div class="tab" data-ftab="detail">تفاصيل فرعية</div>
       <div class="tab" data-ftab="balance">المركز المالي</div>
     </div>
-    <div class="row" id="finToolbar" style="margin-bottom:12px;gap:8px">
+    <div class="row" style="margin-bottom:12px;gap:8px">
       <label class="chk" style="gap:6px">الفترة
         <select id="finPeriod"></select>
       </label>
@@ -879,7 +879,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v105';
+const APP_VERSION = 'v106';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2219,18 +2219,6 @@ function customerSectorTotals(c, months){
 function asSectorSet(sectorOrList){
   const list = Array.isArray(sectorOrList) ? sectorOrList : [sectorOrList];
   return new Set(list);
-}
-function customerSectorMonthlySeries(c, sector, months){
-  const want = asSectorSet(sector);
-  return months.map(m=>{
-    const cd = monthsData[m] && monthsData[m][c];
-    if(!cd) return 0;
-    let t = 0;
-    Object.keys(cd).forEach(item=>{
-      itemEffectiveSectors(item, cd[item]).forEach(({sector:s, amt})=>{ if(want.has(s)) t += amt; });
-    });
-    return t;
-  });
 }
 // ---- أعمدة مقارنة قابلة للاختيار (شهور / كوارترات / سنين) — للـPDF/الإكسل بس ----
 // عمود = {key, label, months:[...]}. mode: 'month' كل شهر عمود، 'quarter' كل 3
@@ -4238,16 +4226,19 @@ function allItemsWithTotals(){
   return Object.keys(map).map(item => ({item, cat: map[item].cat, total: map[item].total}));
 }
 
-function renderItemSectorFilter(){
-  const sel = $('itemSectorFilter');
+// بتملا أي <select> بقايمة القطاعات وبتحافظ على اللي كان مختار.
+// (كانت متكتوبة مرتين: مرة لفلتر الأصناف ومرة لقايمة التحويل الجماعي.)
+function fillSectorSelect(id, allLabel){
+  const sel = $(id);
+  if(!sel) return;
   const prev = sel.value;
-  sel.innerHTML = `<option value="">كل القطاعات</option>` +
+  sel.innerHTML = `<option value="">${esc(allLabel)}</option>` +
     SECTORS.map(sc=>`<option value="${esc(sc)}">${esc(sc)}</option>`).join('');
   if(prev && SECTORS.includes(prev)) sel.value = prev;
 }
 
 function renderItemsList(){
-  renderItemSectorFilter();
+  fillSectorSelect('itemSectorFilter', 'كل القطاعات');
   const filter = $('itemSearch').value;
   const secFilter = $('itemSectorFilter').value;
   const items = allItemsWithTotals().sort((a,b)=> b.total - a.total);
@@ -4288,7 +4279,7 @@ function renderItemsList(){
     </tr>`;
   }).join('');
   bulkVisibleItems = matched.map(o => o.item);
-  renderBulkSectorOptions();
+  fillSectorSelect('bulkSector', '— اختار القطاع —');
   const shownTotal = matched.reduce((a,o)=> a + o.total, 0);
   $('itemsList').innerHTML =
     `<div class="badge" style="padding:4px 2px">ظاهر ${matched.length} من ${items.length} صنف — إجمالي المعروض ${shownTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</div>` +
@@ -4319,13 +4310,6 @@ $('closeItemsBtn').addEventListener('click', ()=> $('itemsPanel').style.display=
 // دي بتحوّل كل الأصناف الظاهرة بعد البحث/الفلتر لقطاع واحد دفعة واحدة.
 let bulkVisibleItems = [];
 
-function renderBulkSectorOptions(){
-  const sel = $('bulkSector');
-  const prev = sel.value;
-  sel.innerHTML = `<option value="">— اختار القطاع —</option>` +
-    SECTORS.map(sc=>`<option value="${esc(sc)}">${esc(sc)}</option>`).join('');
-  if(prev && SECTORS.includes(prev)) sel.value = prev;
-}
 
 $('bulkApplyBtn').addEventListener('click', async ()=>{
   const target = $('bulkSector').value;
