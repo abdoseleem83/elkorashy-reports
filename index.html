@@ -339,8 +339,13 @@
 
 <div class="card" style="margin-top:10px">
   <div class="flex-between">
-    <div><b>💾 نسخة احتياطية / نقل بين الأجهزة</b>
-      <div class="sub" style="margin-top:2px">صدّر بياناتك (الطلبيات والمرتبات والأصناف) كملف واحد، وارفعه في الجهاز التاني لتفتح بنفس البيانات.</div></div>
+    <div><b>☁️ مزامنة جيفز/المرتبات/بونص اكسا بين الأجهزة</b>
+      <div id="nkSyncStatus" style="margin-top:3px;font-size:12.5px">⏳ لسه ما اتزامنش</div></div>
+    <button class="secondary" id="nkSyncNowBtn">🔄 زامن دلوقتي</button>
+  </div>
+  <div class="flex-between" style="margin-top:10px">
+    <div><b>💾 نسخة احتياطية / نقل يدوي</b>
+      <div class="sub" style="margin-top:2px">لو المزامنة مش شغالة لأي سبب، صدّر بياناتك كملف وارفعه في الجهاز التاني.</div></div>
     <div class="row">
       <button class="secondary" id="nkBackupBtn">⬇ تصدير نسخة</button>
       <input type="file" id="nkRestoreFile" accept=".json" style="max-width:170px">
@@ -948,7 +953,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v113';
+const APP_VERSION = 'v114';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8357,6 +8362,7 @@ function nkRestoreRun(file){
   const b = document.getElementById('nkBackupBtn'); if(b) b.onclick = nkBackupRun;
   const r = document.getElementById('nkRestoreFile');
   if(r) r.onchange = (e)=>{ const f = e.target.files && e.target.files[0]; if(f && confirm('استرجاع النسخة دي هيستبدل بيانات جيفز/المرتبات/بونص اكسا الحالية. تكمل؟')) nkRestoreRun(f); };
+  const sb = document.getElementById('nkSyncNowBtn'); if(sb) sb.onclick = nkSyncNow;
 })();
 
 function nkGet(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
@@ -8364,21 +8370,41 @@ function nkSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e)
 
 // ---- مزامنة جيفز/المرتبات/بونص اكسا بين الأجهزة — بنفس التخزين المركزي
 // (Google Sheets عبر Apps Script) اللي بيشتغل بيه المبيعات والمخازن.
-// كل حفظ محلي بيتبعت للسيرفر في الخلفية (debounce ثانية)، وعند فتح
-// التطبيق بنسحب أحدث نسخة من السيرفر ونعرضها لو لقينا نت.
+// كل حفظ محلي بيتبعت للسيرفر فورًا (من غير تأخير — تأخير كان بيضيّع
+// الحفظ لو المستخدم قفل المتصفح بسرعة على الموبايل)، وعند فتح التطبيق
+// بنسحب أحدث نسخة من السيرفر ونعرضها. الحالة (نجح/فشل) بتُعرض للمستخدم
+// بدل ما تفشل بصمت، عشان تقدر تعرف لو حصل مشكلة فعلًا.
 const NK_CLOUD_KEYS = {gvData:'renderGV', qpData:'renderQP', fpData:'renderFP', axData:'renderAX'};
-const nkPushTimers = {};
+let nkSyncState = {ok: null, msg: '', at: null};
+function nkSyncBadge(){
+  const el = document.getElementById('nkSyncStatus'); if(!el) return;
+  if(nkSyncState.ok === null){ el.textContent = '⏳ لسه ما اتزامنش'; el.style.color = 'var(--muted)'; return; }
+  if(nkSyncState.ok){
+    el.textContent = '☁️ متزامن — آخر مرة ' + new Date(nkSyncState.at).toLocaleTimeString('ar-EG');
+    el.style.color = 'var(--accent2)';
+  } else {
+    el.textContent = '⚠️ فشلت المزامنة: ' + nkSyncState.msg;
+    el.style.color = 'var(--danger)';
+  }
+}
 function nkCloudPush(k){
   if(!NK_CLOUD_KEYS[k] || typeof window === 'undefined' || !window.storage) return;
-  clearTimeout(nkPushTimers[k]);
-  nkPushTimers[k] = setTimeout(()=>{
-    const raw = (function(){ try{ return localStorage.getItem(k); }catch(e){ return null; } })();
-    if(raw == null) return;
-    window.storage.set(k, raw).catch(()=>{ /* هيتبعت تاني مع أي حفظ جاي */ });
-  }, 900);
+  const raw = (function(){ try{ return localStorage.getItem(k); }catch(e){ return null; } })();
+  if(raw == null) return;
+  window.storage.set(k, raw).then(()=>{
+    nkSyncState = {ok:true, msg:'', at: Date.now()}; nkSyncBadge();
+  }).catch((e)=>{
+    nkSyncState = {ok:false, msg: (e && e.message) || String(e), at: Date.now()};
+    nkSyncBadge();
+    console.error('nkCloudPush failed for', k, e);
+  });
 }
-async function nkCloudPullAll(){
-  if(typeof window === 'undefined' || !window.storage) return;
+async function nkCloudPullAll(silent){
+  if(typeof window === 'undefined' || !window.storage){
+    if(!silent){ nkSyncState = {ok:false, msg:'التخزين المركزي غير متاح', at: Date.now()}; nkSyncBadge(); }
+    return;
+  }
+  let anyErr = null;
   for(const k of Object.keys(NK_CLOUD_KEYS)){
     try{
       const r = await window.storage.get(k);
@@ -8394,8 +8420,20 @@ async function nkCloudPullAll(){
           if(typeof fn === 'function') fn();
         }
       }
-    }catch(e){ /* أوفلاين أو المفتاح مش موجود على السيرفر لسه — نفضل على النسخة المحلية */ }
+    }catch(e){
+      // "not found" يعني المفتاح لسه ملوش نسخة على السيرفر — ده طبيعي أول مرة، مش خطأ فعلي
+      if(!/not found/i.test((e && e.message) || '')){ anyErr = e; console.error('nkCloudPull failed for', k, e); }
+    }
   }
+  nkSyncState = anyErr ? {ok:false, msg: anyErr.message || String(anyErr), at: Date.now()}
+                        : {ok:true, msg:'', at: Date.now()};
+  nkSyncBadge();
+}
+function nkSyncNow(){
+  const el = document.getElementById('nkSyncStatus'); if(el){ el.textContent = '🔄 بتزامن الآن...'; el.style.color = 'var(--muted)'; }
+  nkCloudPullAll().then(()=>{
+    Object.keys(NK_CLOUD_KEYS).forEach(k=> nkCloudPush(k));
+  });
 }
 const nkN  = (v)=>{ const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; };
 const nkR  = (v, d)=>{ const m = Math.pow(10, d || 0); return Math.round(((Number(v)||0) + Number.EPSILON) * m) / m; };
