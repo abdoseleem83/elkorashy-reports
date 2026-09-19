@@ -951,7 +951,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v124';
+const APP_VERSION = 'v125';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8320,10 +8320,16 @@ window.addEventListener('appinstalled', () => { $('installBanner').style.display
 // بتحفظ مكان السكرول والفوكس قبل الرسم وترجعهم زي ما كانوا بعده.
 function nkPreserve(el, fn){
   const sy = window.scrollY;
+  // جدول "الأصناف والأسعار" وغيره من الجداول الطويلة عندها سكرول داخلي
+  // خاص بيها (overflow:auto) منفصل عن سكرول الصفحة — لازم نحفظه لوحده،
+  // وإلا الجدول يرجع لأول صف (أول صنف) كل ما تحفظ حاجة فيه.
+  const scrollers = Array.from(el.querySelectorAll('.tbl-wrap')).map(w=> w.scrollTop);
   const act = document.activeElement;
   const path = act && act.dataset ? (act.dataset.nk || act.dataset.gvq || act.dataset.fpa || act.id) : null;
   const sel = act ? act.selectionStart : null;
   fn();
+  const newScrollers = el.querySelectorAll('.tbl-wrap');
+  scrollers.forEach((top, k)=>{ if(newScrollers[k]) newScrollers[k].scrollTop = top; });
   if(path){
     let ninp = el.querySelector(`[data-nk="${path}"]`) || el.querySelector(`[data-gvq="${path}"]`)
       || el.querySelector(`[data-fpa="${path}"]`) || (act.id ? document.getElementById(act.id) : null);
@@ -8333,8 +8339,12 @@ function nkPreserve(el, fn){
   }
   window.scrollTo(0, sy);
   // تثبيت إضافي: لو الكيبورد على الموبايل قافل/فاتح متأخر شوية وعمل سكرول
-  // تلقائي بعد كده، نرجّع نفس المكان تاني على الفريم اللي بعده.
-  requestAnimationFrame(()=> window.scrollTo(0, sy));
+  // تلقائي بعد كده، نرجّع نفس المكان تاني (الصفحة والجداول الداخلية) على الفريم اللي بعده.
+  requestAnimationFrame(()=>{
+    window.scrollTo(0, sy);
+    const ns2 = el.querySelectorAll('.tbl-wrap');
+    scrollers.forEach((top, k)=>{ if(ns2[k]) ns2[k].scrollTop = top; });
+  });
 }
 
 // ---- نسخة احتياطية / استرجاع — لنقل بيانات جيفز/المرتبات/بونص اكسا بين جهازين ----
