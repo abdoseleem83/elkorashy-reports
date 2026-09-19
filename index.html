@@ -323,9 +323,6 @@
   <button class="mod-btn" data-mod="qp" aria-expanded="false" aria-controls="qpApp">
     <span class="mod-ico">💵</span><span class="mod-txt"><b>مرتبات القرشي</b><span class="mod-sub">نصفين وكشف إرسال وملخص</span></span><span class="mod-car">▾</span>
   </button>
-  <button class="mod-btn" data-mod="fp" aria-expanded="false" aria-controls="fpApp">
-    <span class="mod-ico">🏭</span><span class="mod-txt"><b>مرتبات المصنع</b><span class="mod-sub">حضور يومي وكشف مرتبات</span></span><span class="mod-car">▾</span>
-  </button>
   <button class="mod-btn" data-mod="ax" aria-expanded="false" aria-controls="axApp">
     <span class="mod-ico">🎁</span><span class="mod-txt"><b>بونص اكسا</b><span class="mod-sub">بونص المشتريات والموزعين</span></span><span class="mod-car">▾</span>
   </button>
@@ -339,7 +336,7 @@
 
 <div class="card" style="margin-top:10px">
   <div class="flex-between">
-    <div><b>☁️ مزامنة جيفز/المرتبات/بونص اكسا بين الأجهزة</b>
+    <div><b>☁️ مزامنة جيفز/المرتبات/بونص اكسا بين الأجهزة (تلقائية)</b>
       <div id="nkSyncStatus" style="margin-top:3px;font-size:12.5px">⏳ لسه ما اتزامنش</div>
       <div id="nkStorageUsage" style="margin-top:3px;font-size:11.5px"></div></div>
     <button class="secondary" id="nkSyncNowBtn">🔄 زامن دلوقتي</button>
@@ -954,7 +951,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v119';
+const APP_VERSION = 'v120';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8619,42 +8616,53 @@ function gvCalc(o){
   const rows = (o.rows || []).map(r=>{
     const it = gvItemByName(r.name);
     const qty = nkN(r.qty);
+    // الاستلام: لو مكتوب بنستخدمه في حساب الوزن والسعر، ولو فاضي بنفترض إنك استلمت المطلوب بالظبط
+    const hasRecv = r.received !== undefined && r.received !== '' && r.received != null;
+    const received = hasRecv ? nkN(r.received) : qty;
+    const recvDiff = received - qty;
     const pcs = nkN(it.pcs);
     const w = nkN(it.weight);
     const price = mode === 'after' ? (nkN(it.price2) || nkN(it.price)) : (nkN(it.price) || nkN(it.price2));
-    return {name: r.name || '', code: it.code || '', found: !!it.name, qty, pcs,
-      cartons: pcs ? qty / pcs : 0, weight: w, totalW: qty * w, price, totalV: qty * price};
+    return {name: r.name || '', code: it.code || '', found: !!it.name, qty, received, hasRecv, recvDiff, pcs,
+      cartons: pcs ? received / pcs : 0, weight: w, totalW: received * w, price, totalV: received * price};
   });
-  const t = rows.reduce((a, r)=> ({qty: a.qty + r.qty, cart: a.cart + r.cartons,
-    w: a.w + r.totalW, v: a.v + r.totalV}), {qty:0, cart:0, w:0, v:0});
+  const t = rows.reduce((a, r)=> ({qty: a.qty + r.qty, received: a.received + r.received, cart: a.cart + r.cartons,
+    w: a.w + r.totalW, v: a.v + r.totalV}), {qty:0, received:0, cart:0, w:0, v:0});
   const capacity = nkN(o.containerW) * nkN(o.containers);
   const diff = capacity - t.w;
   return {rows, t, capacity, diff,
     fill: capacity ? Math.min(200, t.w / capacity * 100) : 0,
     status: diff > 0 ? 'لسه فيها مكان' : (diff === 0 ? 'مظبوطة تمامًا' : 'زيادة عن الحاويه')};
 }
-function gvBlocks(withPrices){
+// أعمدة تصدير الطلبية — تختار إنت أي عمود يظهر (إكسل/PDF/صورة)، بدل
+// التقسيم الثابت "بالأسعار / بدون أسعار" اللي كان قبل كده.
+const GV_ORDER_COLS = ['م','اسم الصنف','الكود CODE','الكمية المطلوبة','الاستلام','الفرق (استلام-مطلوب)',
+  'عدد القطع بالكرتونة','عدد الكراتين','وزن القطعة (كجم)','اجمالي وزن الصنف (كجم)','سعر القطعة $','اجمالي قيمة الصنف $'];
+const gvOrderColsOn = ()=> GV.orderCols && GV.orderCols.length === GV_ORDER_COLS.length ? GV.orderCols
+  : GV_ORDER_COLS.map(()=> true);
+function gvBlocks(){
   const o = gvOrder(); const c = gvCalc(o);
-  const head = ['م','اسم الصنف','الكود CODE','الكمية','عدد القطع بالكرتونة','عدد الكراتين','وزن القطعة (كجم)','اجمالي وزن الصنف (كجم)']
-    .concat(withPrices ? ['سعر القطعة $','اجمالي قيمة الصنف $'] : []);
-  const rows = c.rows.map((r, i)=> [i + 1, r.name, r.code, nkR(r.qty, 2), nkR(r.pcs, 2), nkR(r.cartons, 2),
-    nkR(r.weight, 4), nkR(r.totalW, 2)].concat(withPrices ? [nkR(r.price, 4), nkR(r.totalV, 2)] : []));
-  const tot = ['', 'الإجمالي', '', nkR(c.t.qty, 2), '', nkR(c.t.cart, 2), '', nkR(c.t.w, 2)]
-    .concat(withPrices ? ['', nkR(c.t.v, 2)] : []);
+  const on = gvOrderColsOn();
+  const head = GV_ORDER_COLS.filter((_, k)=> on[k]);
+  const full = c.rows.map((r, i)=> [i + 1, r.name, r.code, nkR(r.qty, 2), nkR(r.received, 2), nkR(r.recvDiff, 2),
+    nkR(r.pcs, 2), nkR(r.cartons, 2), nkR(r.weight, 4), nkR(r.totalW, 2), nkR(r.price, 4), nkR(r.totalV, 2)]);
+  const rows = full.map(row=> row.filter((_, k)=> on[k]));
+  const fullTot = ['', 'الإجمالي', '', nkR(c.t.qty, 2), nkR(c.t.received, 2), nkR(c.t.received - c.t.qty, 2),
+    '', nkR(c.t.cart, 2), '', nkR(c.t.w, 2), '', nkR(c.t.v, 2)];
+  const tot = fullTot.filter((_, k)=> on[k]);
   tot.__cls = 'total-row';
   rows.push(tot);
   const cont = {title: 'بيانات الحاوية', head: ['البيان', 'القيمة'], rows: [
     ['وزن الحاويه ( كجم )', nkR(nkN(o.containerW), 2)],
     ['عدد الحاويات', nkN(o.containers)],
     ['اجمالي وزن الحاويات المطلوبة', nkR(c.capacity, 2)],
-    ['إجمالي وزن الطلبية', nkR(c.t.w, 2)],
+    ['إجمالي وزن الطلبية (حسب الاستلام)', nkR(c.t.w, 2)],
     ['الفرق في الميزان', nkR(c.diff, 2)],
     ['الحالة', c.status],
   ]};
-  return [{title: `طلبية جيفيز رقم ${o.no} — ${nkDateAr(o.date)}` + (withPrices ? '' : ' (بدون أسعار)'), head, rows}, cont];
+  return [{title: `طلبية جيفيز رقم ${o.no} — ${nkDateAr(o.date)}`, head, rows}, cont];
 }
-NK_EXPORTERS['gvP'] = ()=> ({blocks: gvBlocks(true),  title: `طلبية جيفيز ${gvOrder().no} بالأسعار`,  subtitle: `طلبية رقم ${gvOrder().no} — ${nkDateAr(gvOrder().date)}`});
-NK_EXPORTERS['gvN'] = ()=> ({blocks: gvBlocks(false), title: `طلبية جيفيز ${gvOrder().no} بدون أسعار`, subtitle: `طلبية رقم ${gvOrder().no} — ${nkDateAr(gvOrder().date)}`});
+NK_EXPORTERS['gvOrd'] = ()=> ({blocks: gvBlocks(), title: `طلبية جيفيز ${gvOrder().no}`, subtitle: `طلبية رقم ${gvOrder().no} — ${nkDateAr(gvOrder().date)}`});
 NK_EXPORTERS['gvI'] = ()=> ({blocks: [{title:'دليل أصناف جيفيز والأسعار', head:['م','الكود CODE','اسم الصنف','الوصف','عدد القطع بالكرتونة','وزن القطعة (كجم)','سعر قبل الزيادة $','سعر بعد الزيادة $','نسبة الزيادة %'],
   rows: GV.items.map((x, i)=> [i+1, x.code||'', x.name||'', x.desc||'', nkN(x.pcs), nkN(x.weight), nkN(x.price), nkN(x.price2),
     nkN(x.price) ? nkR((nkN(x.price2) / nkN(x.price) - 1) * 100, 2) + '%' : ''])}],
@@ -8800,9 +8808,15 @@ function renderGV(){
   nkPreserve(el, ()=> renderGV_impl(el));
 }
 function renderGV_impl(el){
-  const o = gvOrder(); const c = gvCalc(o); const wp = GV.withPrices !== false;
+  const o = gvOrder(); const c = gvCalc(o);
   const tab = GV.tab || 'order';
-  const opts = GV.orders.map((x, i)=> `<option value="${i}" ${i === GV.cur ? 'selected' : ''}>طلبية ${x.no} — ${esc(nkDateAr(x.date))}</option>`).join('');
+  const orderOpts = ()=> GV.orders.map((x, i)=>{
+    const cc = gvCalc(x);
+    return `<tr><td>${i + 1}</td><td style="text-align:right">طلبية ${esc(x.no)}</td><td>${esc(nkDateAr(x.date))}</td>
+      <td class="wh-num">${(x.rows||[]).length}</td><td class="wh-num">${nkF(cc.t.w, 0)}</td>
+      <td><button class="${i === GV.cur ? 'secondary' : 'ghost'}" data-gvopen="${i}">${i === GV.cur ? '● مفتوحة' : 'فتح'}</button></td>
+      <td><button class="ghost" data-gvdelorder="${i}">🗑</button></td></tr>`;
+  }).join('');
   let rowsH = '';
   c.rows.forEach((r, i)=>{
     rowsH += `<tr><td>${i + 1}</td>
@@ -8812,14 +8826,17 @@ function renderGV_impl(el){
         ${r.name && !r.found ? '<div class="badge" style="color:var(--danger)">الصنف مش في الدليل</div>' : ''}
       </td>
       <td>${esc(r.code)}</td>
-      <td style="min-width:90px">${nkInp(o.rows[i].qty, 'gv.row.' + i + '.qty')}</td>
+      <td style="min-width:80px">${nkInp(o.rows[i].qty, 'gv.row.' + i + '.qty')}</td>
+      <td style="min-width:80px">${nkInp(o.rows[i].received, 'gv.row.' + i + '.received', 'type="number" step="any" placeholder="زي المطلوب"')}</td>
+      <td class="wh-num" style="color:${r.recvDiff < 0 ? 'var(--danger)' : (r.recvDiff > 0 ? 'var(--accent2)' : 'var(--muted)')}">${nkF(r.recvDiff, 2)}</td>
       <td class="wh-num">${nkF(r.pcs, 0)}</td><td class="wh-num">${nkF(r.cartons, 2)}</td>
       <td class="wh-num">${nkF(r.weight, 4)}</td><td class="wh-num">${nkF(r.totalW, 2)}</td>
-      ${wp ? `<td class="wh-num">${nkF(r.price, 4)}</td><td class="wh-num">${nkF(r.totalV, 2)}</td>` : ''}
+      <td class="wh-num">${nkF(r.price, 4)}</td><td class="wh-num">${nkF(r.totalV, 2)}</td>
       <td><button class="ghost" data-gvdel="${i}">✕</button></td></tr>`;
   });
   const pct = c.fill;
   const barColor = pct > 100 ? 'var(--danger)' : (pct >= 98 ? 'var(--accent2)' : 'var(--accent)');
+  const costOrderOpts = GV.orders.map((x, i)=> `<option value="${i}" ${i === GV.cur ? 'selected' : ''}>طلبية ${esc(x.no)} — ${esc(nkDateAr(x.date))}</option>`).join('');
   el.innerHTML = `
   <div class="tabs">
     <div class="tab ${tab === 'order' ? 'active' : ''}" data-gvtab="order">🧾 الطلبية</div>
@@ -8829,36 +8846,39 @@ function renderGV_impl(el){
 
   <div class="card" style="display:${tab === 'order' ? '' : 'none'}">
     <div class="flex-between"><h2 style="margin:0">🚢 طلبيات جيفز</h2>
-      <div class="row">
-        <select id="gvSel">${opts}</select>
-        <button class="secondary" id="gvNew">+ طلبية جديدة</button>
-        <button class="ghost" id="gvDelOrder">حذف الطلبية</button>
-        <input type="file" id="gvOrderFile" accept=".xlsx,.xls" style="max-width:190px">
-      </div>
+      <input type="file" id="gvOrderFile" accept=".xlsx,.xls" style="max-width:190px">
     </div>
-    <div class="sub" style="margin-top:4px">عندك طلبية قديمة؟ ارفع ملفها وهيتضم صنف صنف على الطلبية الحالية بدل ما تكتبها من جديد (بيربط كل صنف بالدليل تلقائيًا).</div>
-    <div class="flex-between" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+    <div class="sub" style="margin-top:4px">عندك طلبية قديمة؟ ارفع ملفها وهيتضم صنف صنف على الطلبية المفتوحة بدل ما تكتبها من جديد (بيربط كل صنف بالدليل تلقائيًا).</div>
+
+    <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr>
+      <th>م</th><th>رقم الطلبية</th><th>التاريخ</th><th>عدد الأصناف</th><th>الوزن (كجم)</th><th></th><th></th>
+    </tr></thead><tbody>${orderOpts()}</tbody></table></div>
+    <div class="flex-between" style="margin-top:10px">
       <span class="sub">عدد الطلبيات المحفوظة في الجهاز: <b>${GV.orders.length}</b> (الحد الأمن ${GV_KEEP_ORDERS})</span>
       <div class="row">
+        <button class="secondary" id="gvNew">+ طلبية جديدة</button>
         <button class="ghost" id="gvArchive">📦 أرشفة القديم</button>
-        <input type="file" id="gvArchiveFile" accept=".json" style="max-width:170px">
+        <input type="file" id="gvArchiveFile" accept=".json" style="max-width:150px">
       </div>
     </div>
-    <div class="row" style="margin-top:10px">
-      <label>رقم الطلبية <input type="number" id="gvNo" value="${esc(o.no)}" style="width:90px"></label>
-      <label>التاريخ <input type="date" id="gvDate" value="${esc(o.date)}"></label>
-      <label>السعر المستخدم
-        <select id="gvPriceMode">
-          <option value="before" ${o.priceMode !== 'after' ? 'selected' : ''}>قبل الزيادة</option>
-          <option value="after" ${o.priceMode === 'after' ? 'selected' : ''}>بعد الزيادة</option>
-        </select></label>
-      <label class="chk" style="display:flex;gap:6px;align-items:center">
-        <input type="checkbox" id="gvWithPrices" ${wp ? 'checked' : ''}> إظهار الأسعار</label>
+
+    <div class="card" style="margin:14px 0 0;background:var(--panel2)">
+      <div class="flex-between"><b>الطلبية المفتوحة: رقم ${esc(o.no)}</b>
+        <button class="ghost" id="gvDelOrder">🗑 حذف الطلبية دي</button></div>
+      <div class="row" style="margin-top:10px">
+        <label>رقم الطلبية <input type="number" id="gvNo" value="${esc(o.no)}" style="width:90px"></label>
+        <label>التاريخ <input type="date" id="gvDate" value="${esc(o.date)}"></label>
+        <label>السعر المستخدم
+          <select id="gvPriceMode">
+            <option value="before" ${o.priceMode !== 'after' ? 'selected' : ''}>قبل الزيادة</option>
+            <option value="after" ${o.priceMode === 'after' ? 'selected' : ''}>بعد الزيادة</option>
+          </select></label>
+      </div>
     </div>
 
     <div class="card" style="margin:12px 0 0;background:var(--panel2)">
       <div class="flex-between">
-        <b>وزن الحاوية</b>
+        <b>وزن الحاوية (على أساس الاستلام)</b>
         <span class="pill ${c.diff >= 0 ? 'done' : ''}">${esc(c.status)} — الفرق ${nkF(c.diff, 0)} كجم</span>
       </div>
       <div style="height:14px;border-radius:999px;background:#dfe3ef;margin-top:8px;overflow:hidden">
@@ -8872,23 +8892,34 @@ function renderGV_impl(el){
     </div>
 
     <div class="tbl-wrap" style="margin-top:10px;overflow:visible;max-height:none"><table><thead><tr>
-      <th>م</th><th>اسم الصنف</th><th>الكود</th><th>الكمية</th><th>ق/كرتونة</th><th>الكراتين</th>
-      <th>وزن القطعة</th><th>إجمالي الوزن</th>${wp ? '<th>سعر القطعة $</th><th>إجمالي القيمة $</th>' : ''}<th></th>
+      <th>م</th><th>اسم الصنف</th><th>الكود</th><th>المطلوب</th><th>الاستلام</th><th>الفرق</th>
+      <th>ق/كرتونة</th><th>الكراتين</th><th>وزن القطعة</th><th>إجمالي الوزن</th><th>سعر القطعة $</th><th>إجمالي القيمة $</th><th></th>
     </tr></thead><tbody>${rowsH}
       <tr class="total-row"><td></td><td style="text-align:right">الإجمالي</td><td></td>
-        <td class="wh-num">${nkF(c.t.qty, 2)}</td><td></td><td class="wh-num">${nkF(c.t.cart, 2)}</td>
+        <td class="wh-num">${nkF(c.t.qty, 2)}</td><td class="wh-num">${nkF(c.t.received, 2)}</td>
+        <td class="wh-num">${nkF(c.t.received - c.t.qty, 2)}</td>
+        <td></td><td class="wh-num">${nkF(c.t.cart, 2)}</td>
         <td></td><td class="wh-num">${nkF(c.t.w, 2)}</td>
-        ${wp ? `<td></td><td class="wh-num">${nkF(c.t.v, 2)}</td>` : ''}<td></td></tr>
+        <td></td><td class="wh-num">${nkF(c.t.v, 2)}</td><td></td></tr>
     </tbody></table></div>
     <div class="row" style="margin-top:8px"><button id="gvAddRow">+ سطر صنف</button></div>
-    <div class="sub" style="margin-top:10px">تصدير الطلبية — نسخة بالأسعار ونسخة من غير أسعار (إكسل / PDF / صورة).</div>
-    ${nkBar('gvP', '<span class="pill">بالأسعار</span>')}
-    ${nkBar('gvN', '<span class="pill">بدون أسعار</span>')}
+    <div class="sub" style="margin-top:10px">السعر والوزن محسوبين على أساس "الاستلام" — لو سايبها فاضية بيفترض إنك استلمت المطلوب بالظبط.</div>
+
+    <div class="card" style="background:var(--panel2);margin-top:12px">
+      <b>⚙️ تخصيص أعمدة التصدير</b>
+      <div class="sub" style="margin-top:4px">اختار الأعمدة اللي تظهر في تصدير الطلبية (إكسل / PDF / صورة).</div>
+      <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:10px">
+        ${GV_ORDER_COLS.map((cl, k)=> `<label class="chk" style="display:flex;gap:5px;align-items:center;font-size:12.5px">
+          <input type="checkbox" data-gvcol="${k}" ${gvOrderColsOn()[k] ? 'checked' : ''}> ${esc(cl)}</label>`).join('')}
+      </div>
+    </div>
+    ${nkBar('gvOrd')}
   </div>
 
   <div class="card" style="display:${tab === 'cost' ? '' : 'none'}">
-    <h2 style="margin:0">💰 حساب التكلفة بالمصري</h2>
-    <div class="sub" style="margin-top:4px">المصاريف الإضافية (جمارك + شحن + تخليص + بنكية + أخرى) بتوزّع على الأصناف حسب نصيب كل صنف من إجمالي وزن الشحنة.</div>
+    <div class="flex-between"><h2 style="margin:0">💰 حساب التكلفة بالمصري</h2>
+      <label>الطلبية <select id="gvCostOrder">${costOrderOpts}</select></label></div>
+    <div class="sub" style="margin-top:4px">المصاريف الإضافية (جمارك + شحن + تخليص + بنكية + أخرى) بتوزّع على الأصناف حسب نصيب كل صنف من إجمالي وزن الشحنة (على أساس الاستلام).</div>
     <div class="row" style="margin-top:10px;gap:14px;flex-wrap:wrap">
       <label>سعر صرف الدولار (جنيه) <input type="number" id="gvCRate" value="${esc((o.cost||{}).rate ?? 50)}" style="width:100px"></label>
       <label>نسبة الجمارك % <input type="number" step="0.001" id="gvCCustoms" value="${esc((o.cost||{}).customsPct ?? 0.05)}" style="width:90px"></label>
@@ -8950,7 +8981,16 @@ function renderGV_impl(el){
   </div>`;
 
   el.querySelectorAll('[data-gvtab]').forEach(t=> t.onclick = ()=>{ GV.tab = t.dataset.gvtab; gvSave(); renderGV(); });
-  $('gvSel').onchange = (e)=>{ GV.cur = +e.target.value; gvSave(); renderGV(); };
+  el.querySelectorAll('[data-gvopen]').forEach(b=> b.onclick = ()=>{ GV.cur = +b.dataset.gvopen; gvSave(); renderGV(); });
+  el.querySelectorAll('[data-gvdelorder]').forEach(b=> b.onclick = ()=>{
+    const i = +b.dataset.gvdelorder;
+    const x = GV.orders[i];
+    if(!confirm(`حذف طلبية رقم ${x.no} — ${nkDateAr(x.date)} نهائيًا؟`)) return;
+    GV.orders.splice(i, 1);
+    if(GV.cur >= GV.orders.length) GV.cur = Math.max(0, GV.orders.length - 1);
+    gvSave(); renderGV();
+  });
+  const co = $('gvCostOrder'); if(co) co.onchange = ()=>{ GV.cur = +co.value; gvSave(); renderGV(); };
   $('gvNew').onclick = ()=>{
     const no = GV.orders.reduce((a, x)=> Math.max(a, nkN(x.no)), 0) + 1;
     GV.orders.push({no, date: nkToday(), rows: [], containerW: o.containerW || 28000, containers: 1, priceMode: o.priceMode});
@@ -8958,8 +8998,15 @@ function renderGV_impl(el){
   };
   $('gvDelOrder').onclick = ()=>{
     if(!confirm('حذف الطلبية دي؟')) return;
-    GV.orders.splice(GV.cur, 1); GV.cur = 0; gvSave(); renderGV();
+    GV.orders.splice(GV.cur, 1);
+    if(GV.cur >= GV.orders.length) GV.cur = Math.max(0, GV.orders.length - 1);
+    gvSave(); renderGV();
   };
+  el.querySelectorAll('[data-gvcol]').forEach(cb=> cb.onchange = ()=>{
+    const on = gvOrderColsOn().slice();
+    on[+cb.dataset.gvcol] = cb.checked;
+    GV.orderCols = on; gvSave(); renderGV();
+  });
   $('gvAddRow').onclick = ()=>{ o.rows.push({name:'', qty:''}); gvSave(); renderGV();
     const inp = el.querySelector(`[data-gvq="${o.rows.length - 1}"]`); if(inp) inp.focus(); };
   $('gvAddItem').onclick = ()=>{ GV.items.unshift({code:'', name:'', pcs:'', weight:'', price:'', price2:''}); gvSave(); renderGV(); };
@@ -8985,7 +9032,6 @@ function renderGV_impl(el){
   $('gvNo').onchange = (e)=>{ o.no = nkN(e.target.value); gvSave(); renderGV(); };
   $('gvDate').onchange = (e)=>{ o.date = e.target.value; gvSave(); renderGV(); };
   $('gvPriceMode').onchange = (e)=>{ o.priceMode = e.target.value; gvSave(); renderGV(); };
-  $('gvWithPrices').onchange = (e)=>{ GV.withPrices = e.target.checked; gvSave(); renderGV(); };
   $('gvContW').onchange = (e)=>{ o.containerW = nkN(e.target.value); gvSave(); renderGV(); };
   $('gvContN').onchange = (e)=>{ o.containers = nkN(e.target.value); gvSave(); renderGV(); };
   o.cost = o.cost || {};
@@ -9865,6 +9911,14 @@ function renderAX_impl(el){
 
 window.renderGV = renderGV; window.renderQP = renderQP; window.renderFP = renderFP; window.renderAX = renderAX;
 nkCloudPullAll();
+// مزامنة تلقائية دورية — من غير أي زرار: كل 20 ثانية بيسحب من السيرفر بصمت
+// طول ما التطبيق مفتوح، عشان أي تعديل من جهاز تاني يظهر عندك لوحده.
+// بنتجنب السحب وإنت بتكتب في خانة عشان مانبوظش اللي بتكتبه دلوقتي.
+setInterval(()=>{
+  const act = document.activeElement;
+  const typing = act && /^(INPUT|SELECT|TEXTAREA)$/.test(act.tagName);
+  if(!typing) nkCloudPullAll(true);
+}, 20000);
 
 </script>
 </body>
