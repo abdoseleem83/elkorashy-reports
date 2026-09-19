@@ -951,7 +951,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v122';
+const APP_VERSION = 'v123';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -9083,9 +9083,13 @@ function renderGV_impl(el){
     if(kind === 'item' && (field === 'price' || field === 'price2')){
       // الأسعار (قبل/بعد الزيادة): بنحفظ ونعيد الرسم وإنت لسه بتكتب (بعد نص ثانية سكون)
       // مش بس لما تسيب الخانة — عشان الكيبورد يفضل فاتح ومايحصلش نط بسبب قفله فجأة.
+      // onchange متعمّد إننا مانحطّهوش هنا: لو حطيناه، وقت ما العنصر القديم يتشال من
+      // الصفحة (بسبب إعادة الرسم) المتصفح بيولّد blur+change عليه لوحده، فيبعت نفس
+      // القيمة القديمة تاني ويمسح أي حرف كتبته لسه — وده اللي كان يمنعك تكتب أصلًا.
       let t;
-      inp.oninput = ()=>{ clearTimeout(t); t = setTimeout(commit, 500); };
-      inp.onchange = commit;
+      const flush = ()=>{ clearTimeout(t); inp.oninput = null; inp.onblur = null; commit(); };
+      inp.oninput = ()=>{ clearTimeout(t); t = setTimeout(flush, 500); };
+      inp.onblur = flush;
     } else {
       inp.onchange = commit;
     }
