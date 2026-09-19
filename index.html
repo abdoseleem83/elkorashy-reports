@@ -951,7 +951,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v120';
+const APP_VERSION = 'v121';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -9008,7 +9008,7 @@ function renderGV_impl(el){
     GV.orderCols = on; gvSave(); renderGV();
   });
   $('gvAddRow').onclick = ()=>{ o.rows.push({name:'', qty:''}); gvSave(); renderGV();
-    const inp = el.querySelector(`[data-gvq="${o.rows.length - 1}"]`); if(inp) inp.focus(); };
+    const inp = el.querySelector(`[data-gvq="${o.rows.length - 1}"]`); if(inp) inp.focus({preventScroll: true}); };
   $('gvAddItem').onclick = ()=>{ GV.items.unshift({code:'', name:'', pcs:'', weight:'', price:'', price2:''}); gvSave(); renderGV(); };
   const ab = $('gvArchive'); if(ab) ab.onclick = gvArchiveOld;
   const af = $('gvArchiveFile');
@@ -9040,7 +9040,7 @@ function renderGV_impl(el){
   cSet('gvCClear', 'clearEgp'); cSet('gvCBank', 'bankEgp'); cSet('gvCOther', 'otherEgp');
   const q = $('gvItemSearch');
   if(q) q.oninput = ()=>{ GV.q = q.value; gvSave(); const pos = q.selectionStart; renderGV();
-    const n = $('gvItemSearch'); if(n){ n.focus(); try{ n.setSelectionRange(pos, pos); }catch(e){} } };
+    const n = $('gvItemSearch'); if(n){ n.focus({preventScroll: true}); try{ n.setSelectionRange(pos, pos); }catch(e){} } };
   el.querySelectorAll('[data-gvdel]').forEach(b=> b.onclick = ()=>{ o.rows.splice(+b.dataset.gvdel, 1); gvSave(); renderGV(); });
   el.querySelectorAll('[data-gvidel]').forEach(b=> b.onclick = ()=>{ GV.items.splice(+b.dataset.gvidel, 1); gvSave(); renderGV(); });
 
@@ -9062,7 +9062,7 @@ function renderGV_impl(el){
         // بالنص اللي كان متكتوب للبحث وتبوّظ الاسم اللي دوسنا عليه
         inp.onchange = null;
         o.rows[i].name = d.dataset.pick; gvSave(); renderGV();
-        const nx = el.querySelector(`[data-nk="gv.row.${i}.qty"]`); if(nx) nx.focus();
+        const nx = el.querySelector(`[data-nk="gv.row.${i}.qty"]`); if(nx) nx.focus({preventScroll: true});
       });
     };
     inp.oninput = show;
