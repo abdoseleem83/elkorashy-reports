@@ -951,7 +951,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v121';
+const APP_VERSION = 'v122';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8332,6 +8332,9 @@ function nkPreserve(el, fn){
     if(ninp){ ninp.focus({preventScroll: true}); if(sel != null && ninp.setSelectionRange) try{ ninp.setSelectionRange(sel, sel); }catch(e){} }
   }
   window.scrollTo(0, sy);
+  // تثبيت إضافي: لو الكيبورد على الموبايل قافل/فاتح متأخر شوية وعمل سكرول
+  // تلقائي بعد كده، نرجّع نفس المكان تاني على الفريم اللي بعده.
+  requestAnimationFrame(()=> window.scrollTo(0, sy));
 }
 
 // ---- نسخة احتياطية / استرجاع — لنقل بيانات جيفز/المرتبات/بونص اكسا بين جهازين ----
@@ -9070,13 +9073,22 @@ function renderGV_impl(el){
     inp.onblur = ()=> setTimeout(close, 150);
   });
   el.querySelectorAll('[data-nk^="gv."]').forEach(inp=>{
-    inp.onchange = ()=>{
-      const [, kind, i, field] = inp.dataset.nk.split('.');
+    const [, kind, i, field] = inp.dataset.nk.split('.');
+    const commit = ()=>{
       const target = kind === 'row' ? o.rows[+i] : GV.items[+i];
       if(!target) return;
       target[field] = (field === 'name' || field === 'code') ? inp.value : nkN(inp.value);
       gvSave(); renderGV();
     };
+    if(kind === 'item' && (field === 'price' || field === 'price2')){
+      // الأسعار (قبل/بعد الزيادة): بنحفظ ونعيد الرسم وإنت لسه بتكتب (بعد نص ثانية سكون)
+      // مش بس لما تسيب الخانة — عشان الكيبورد يفضل فاتح ومايحصلش نط بسبب قفله فجأة.
+      let t;
+      inp.oninput = ()=>{ clearTimeout(t); t = setTimeout(commit, 500); };
+      inp.onchange = commit;
+    } else {
+      inp.onchange = commit;
+    }
   });
   const fi = $('gvFile');
   if(fi) fi.onchange = (e)=>{
