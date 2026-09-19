@@ -951,7 +951,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v123';
+const APP_VERSION = 'v124';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -9080,19 +9080,9 @@ function renderGV_impl(el){
       target[field] = (field === 'name' || field === 'code') ? inp.value : nkN(inp.value);
       gvSave(); renderGV();
     };
-    if(kind === 'item' && (field === 'price' || field === 'price2')){
-      // الأسعار (قبل/بعد الزيادة): بنحفظ ونعيد الرسم وإنت لسه بتكتب (بعد نص ثانية سكون)
-      // مش بس لما تسيب الخانة — عشان الكيبورد يفضل فاتح ومايحصلش نط بسبب قفله فجأة.
-      // onchange متعمّد إننا مانحطّهوش هنا: لو حطيناه، وقت ما العنصر القديم يتشال من
-      // الصفحة (بسبب إعادة الرسم) المتصفح بيولّد blur+change عليه لوحده، فيبعت نفس
-      // القيمة القديمة تاني ويمسح أي حرف كتبته لسه — وده اللي كان يمنعك تكتب أصلًا.
-      let t;
-      const flush = ()=>{ clearTimeout(t); inp.oninput = null; inp.onblur = null; commit(); };
-      inp.oninput = ()=>{ clearTimeout(t); t = setTimeout(flush, 500); };
-      inp.onblur = flush;
-    } else {
-      inp.onchange = commit;
-    }
+    // بنحفظ ونعيد الرسم مرة واحدة بس لما تسيب الخانة (مش وإنت بتكتب) —
+    // إعادة الرسم كل حرف كانت هي نفسها سبب النط، مش الحل.
+    inp.onchange = commit;
   });
   const fi = $('gvFile');
   if(fi) fi.onchange = (e)=>{
