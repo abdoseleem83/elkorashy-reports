@@ -340,7 +340,8 @@
 <div class="card" style="margin-top:10px">
   <div class="flex-between">
     <div><b>☁️ مزامنة جيفز/المرتبات/بونص اكسا بين الأجهزة</b>
-      <div id="nkSyncStatus" style="margin-top:3px;font-size:12.5px">⏳ لسه ما اتزامنش</div></div>
+      <div id="nkSyncStatus" style="margin-top:3px;font-size:12.5px">⏳ لسه ما اتزامنش</div>
+      <div id="nkStorageUsage" style="margin-top:3px;font-size:11.5px"></div></div>
     <button class="secondary" id="nkSyncNowBtn">🔄 زامن دلوقتي</button>
   </div>
   <div class="flex-between" style="margin-top:10px">
@@ -803,7 +804,7 @@ try{ SHARED_TOKEN = localStorage.getItem('appToken') || ''; }catch(e){}
 function setAppToken(t){
   SHARED_TOKEN = t || '';
   try{
-    if(SHARED_TOKEN) localStorage.setItem('appToken', SHARED_TOKEN);
+    if(SHARED_TOKEN) try{ localStorage.setItem('appToken', SHARED_TOKEN); }catch(e){}
     else localStorage.removeItem('appToken');
   }catch(e){}
 }
@@ -953,7 +954,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v114';
+const APP_VERSION = 'v119';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8329,7 +8330,9 @@ function nkPreserve(el, fn){
   if(path){
     let ninp = el.querySelector(`[data-nk="${path}"]`) || el.querySelector(`[data-gvq="${path}"]`)
       || el.querySelector(`[data-fpa="${path}"]`) || (act.id ? document.getElementById(act.id) : null);
-    if(ninp){ ninp.focus(); if(sel != null && ninp.setSelectionRange) try{ ninp.setSelectionRange(sel, sel); }catch(e){} }
+    // preventScroll مهم جدًا هنا — من غيرها المتصفح (خصوصًا على الموبايل) بيعمل
+    // سكرول تلقائي للعنصر اللي رجع له الفوكس، وده اللي كان بيحسسك إن الشاشة "بتنط"
+    if(ninp){ ninp.focus({preventScroll: true}); if(sel != null && ninp.setSelectionRange) try{ ninp.setSelectionRange(sel, sel); }catch(e){} }
   }
   window.scrollTo(0, sy);
 }
@@ -8351,7 +8354,13 @@ function nkRestoreRun(file){
       const obj = JSON.parse(ev.target.result);
       const data = obj && obj.data ? obj.data : obj;
       if(!data || typeof data !== 'object') throw new Error('ملف غير صالح');
-      NK_BACKUP_KEYS.forEach(k=>{ if(data[k]) nkSet(k, data[k]); });
+      NK_BACKUP_KEYS.forEach(k=>{
+        if(!data[k]) return;
+        if(data[k].data) nkPruneByMonth(data[k].data, NK_KEEP_MONTHS);
+        if(data[k].att) nkPruneByMonth(data[k].att, NK_KEEP_MONTHS);
+        if(data[k].pay) nkPruneByMonth(data[k].pay, NK_KEEP_MONTHS);
+        nkSet(k, data[k]);
+      });
       alert('تم استرجاع النسخة. التطبيق هيحمّل البيانات الجديدة دلوقتي.');
       location.reload();
     }catch(err){ alert('مش قادر أقرا الملف: ' + err.message); }
@@ -8363,7 +8372,41 @@ function nkRestoreRun(file){
   const r = document.getElementById('nkRestoreFile');
   if(r) r.onchange = (e)=>{ const f = e.target.files && e.target.files[0]; if(f && confirm('استرجاع النسخة دي هيستبدل بيانات جيفز/المرتبات/بونص اكسا الحالية. تكمل؟')) nkRestoreRun(f); };
   const sb = document.getElementById('nkSyncNowBtn'); if(sb) sb.onclick = nkSyncNow;
+  nkStorageBadge();
 })();
+
+// بيانات الحضور/الغياب بتتجمّع شهر ورا شهر من غير مسح، وده اللي كان بيكبّر
+// qpData/fpData لحد ما ياخد كل مساحة المتصفح (localStorage) ويبوّظ الحفظ.
+// الدالة دي بتفضّل بس آخر N شهر وتمسح الأقدم من كذا.
+function nkPruneByMonth(obj, keepMonths){
+  const months = [...new Set(Object.keys(obj).map(k=> k.slice(0, 7)))].sort();
+  if(months.length <= keepMonths) return false;
+  const drop = new Set(months.slice(0, months.length - keepMonths));
+  let changed = false;
+  Object.keys(obj).forEach(k=>{ if(drop.has(k.slice(0, 7))){ delete obj[k]; changed = true; } });
+  return changed;
+}
+const NK_KEEP_MONTHS = 6;   // احتفظ بتفاصيل آخر 6 شهور بس، والباقي يتشال أوتوماتيك
+
+// قراءة حجم مساحة التخزين المستخدمة فعليًا في المتصفح (كل المفاتيح، مش بس بتاعتنا)
+// عشان تقدر تتابع وإنت لسه بعيد عن السقف (المتصفحات بتعطي حوالي 5-10 ميجا للموقع).
+function nkStorageUsageKb(){
+  let total = 0;
+  try{
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      total += (k ? k.length : 0) + (localStorage.getItem(k) || '').length;
+    }
+  }catch(e){}
+  return Math.round(total / 1024);
+}
+function nkStorageBadge(){
+  const el = document.getElementById('nkStorageUsage'); if(!el) return;
+  const kb = nkStorageUsageKb();
+  const pct = Math.min(100, Math.round(kb / 5120 * 100));   // تقديري من حد شائع 5 ميجا
+  el.textContent = `📦 مساحة التخزين المستخدمة: ${kb.toLocaleString('en-US')} كيلوبايت (~${pct}% من الحد المعتاد)`;
+  el.style.color = pct > 80 ? 'var(--danger)' : (pct > 55 ? '#a67c00' : 'var(--muted)');
+}
 
 function nkGet(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
 function nkSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} nkCloudPush(k); }
@@ -8377,6 +8420,7 @@ function nkSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e)
 const NK_CLOUD_KEYS = {gvData:'renderGV', qpData:'renderQP', fpData:'renderFP', axData:'renderAX'};
 let nkSyncState = {ok: null, msg: '', at: null};
 function nkSyncBadge(){
+  nkStorageBadge();
   const el = document.getElementById('nkSyncStatus'); if(!el) return;
   if(nkSyncState.ok === null){ el.textContent = '⏳ لسه ما اتزامنش'; el.style.color = 'var(--muted)'; return; }
   if(nkSyncState.ok){
@@ -8411,7 +8455,20 @@ async function nkCloudPullAll(silent){
       if(r && r.value != null){
         const local = (function(){ try{ return localStorage.getItem(k); }catch(e){ return null; } })();
         if(r.value !== local){
-          localStorage.setItem(k, r.value);
+          let toStore = r.value;
+          try{ localStorage.setItem(k, toStore); }
+          catch(qe){
+            // مساحة المتصفح خلصت — نقلّم بيانات الشهور القديمة من النسخة الجاية من السيرفر ونجرب تاني
+            if(!/quota/i.test((qe && qe.message) || '')) throw qe;
+            try{
+              const tmp = JSON.parse(toStore);
+              if(tmp.data) nkPruneByMonth(tmp.data, NK_KEEP_MONTHS);
+              if(tmp.att) nkPruneByMonth(tmp.att, NK_KEEP_MONTHS);
+              if(tmp.pay) nkPruneByMonth(tmp.pay, NK_KEEP_MONTHS);
+              toStore = JSON.stringify(tmp);
+              localStorage.setItem(k, toStore);
+            }catch(qe2){ throw qe; }
+          }
           if(k === 'gvData') GV = nkGet('gvData', GV);
           if(k === 'qpData') QP = nkGet('qpData', QP);
           if(k === 'fpData') FP = nkGet('fpData', FP);
@@ -8605,6 +8662,46 @@ NK_EXPORTERS['gvI'] = ()=> ({blocks: [{title:'دليل أصناف جيفيز و�
 
 // ---- استيراد طلبية جيفز قديمة من إكسل ----
 // بيقرا أي شيت فيه عمود "اسم الصنف" و"الكمية"، ولو لقى وزن الحاويه/عدد الحاويات بيسحبهم كمان
+// ---- أرشفة الطلبيات القديمة ----
+// نفس فكرة تقليم المرتبات، بس هنا مبنمسحش من غير ما نصدّر الأول (بيانات
+// طلبيات فعلية مش سجل حضور، فمش مناسب نرميها بصمت). بيسيب آخر N طلبية
+// في الجهاز ويصدّر الباقي كملف واحد تقدر تفتحه أو ترجعه بالاستيراد.
+const GV_KEEP_ORDERS = 24;
+function gvArchiveOld(){
+  const sorted = GV.orders.slice().sort((a, b)=> (a.date || '').localeCompare(b.date || ''));
+  if(sorted.length <= GV_KEEP_ORDERS){ alert(`عدد الطلبيات (${sorted.length}) لسه في الحد الأمن (${GV_KEEP_ORDERS}) — لسه مش لازم أرشفة.`); return; }
+  const keepFrom = sorted.length - GV_KEEP_ORDERS;
+  const old = sorted.slice(0, keepFrom);
+  const keep = sorted.slice(keepFrom);
+  if(!confirm(`هيتم تصدير ${old.length} طلبية قديمة كملف، وحذفهم من الجهاز (هيفضل آخر ${keep.length} طلبية). تكمل؟`)) return;
+  const blob = new Blob([JSON.stringify({app:'elkorashy-reports', type:'gv-archive', v:1, orders: old}, null, 0)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'أرشيف-طلبيات-جيفز-' + nkToday() + '.json'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 4000);
+  GV.orders = keep;
+  if(GV.cur >= GV.orders.length) GV.cur = GV.orders.length - 1;
+  gvSave(); renderGV();
+  alert(`تم أرشفة ${old.length} طلبية في الملف اللي نزل، وفضل ${keep.length} طلبية في التطبيق.`);
+}
+// استرجاع ملف أرشيف طلبيات قديم — بيضيفهم تاني على الطلبيات الحالية
+function gvArchiveRestore(file){
+  const rd = new FileReader();
+  rd.onload = (ev)=>{
+    try{
+      const obj = JSON.parse(ev.target.result);
+      const orders = obj && obj.orders ? obj.orders : (Array.isArray(obj) ? obj : null);
+      if(!orders) throw new Error('ملف أرشيف غير صالح');
+      const nos = new Set(GV.orders.map(o=> o.no));
+      let added = 0;
+      orders.forEach(o=>{ if(!nos.has(o.no)){ GV.orders.push(o); added++; } });
+      gvSave(); renderGV();
+      alert(`تم استرجاع ${added} طلبية من الأرشيف.`);
+    }catch(err){ alert('مش قادر أقرا ملف الأرشيف: ' + err.message); }
+  };
+  rd.readAsText(file);
+}
+
 function gvOrderImport(wb){
   const S = (v)=> String(v == null ? '' : v).trim();
   let matched = 0, unmatched = 0;
@@ -8740,6 +8837,13 @@ function renderGV_impl(el){
       </div>
     </div>
     <div class="sub" style="margin-top:4px">عندك طلبية قديمة؟ ارفع ملفها وهيتضم صنف صنف على الطلبية الحالية بدل ما تكتبها من جديد (بيربط كل صنف بالدليل تلقائيًا).</div>
+    <div class="flex-between" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+      <span class="sub">عدد الطلبيات المحفوظة في الجهاز: <b>${GV.orders.length}</b> (الحد الأمن ${GV_KEEP_ORDERS})</span>
+      <div class="row">
+        <button class="ghost" id="gvArchive">📦 أرشفة القديم</button>
+        <input type="file" id="gvArchiveFile" accept=".json" style="max-width:170px">
+      </div>
+    </div>
     <div class="row" style="margin-top:10px">
       <label>رقم الطلبية <input type="number" id="gvNo" value="${esc(o.no)}" style="width:90px"></label>
       <label>التاريخ <input type="date" id="gvDate" value="${esc(o.date)}"></label>
@@ -8859,6 +8963,9 @@ function renderGV_impl(el){
   $('gvAddRow').onclick = ()=>{ o.rows.push({name:'', qty:''}); gvSave(); renderGV();
     const inp = el.querySelector(`[data-gvq="${o.rows.length - 1}"]`); if(inp) inp.focus(); };
   $('gvAddItem').onclick = ()=>{ GV.items.unshift({code:'', name:'', pcs:'', weight:'', price:'', price2:''}); gvSave(); renderGV(); };
+  const ab = $('gvArchive'); if(ab) ab.onclick = gvArchiveOld;
+  const af = $('gvArchiveFile');
+  if(af) af.onchange = (e)=>{ const f = e.target.files && e.target.files[0]; if(f) gvArchiveRestore(f); };
   const of = $('gvOrderFile');
   if(of) of.onchange = (e)=>{
     const f = e.target.files && e.target.files[0]; if(!f) return;
@@ -8965,7 +9072,7 @@ function renderGV_impl(el){
 /* ==================== 2) مرتبات شركة القرشي ==================== */
 const QP_DEF = {month: nkToday().slice(0, 7), emps: [], half: 1, data: {}};
 let QP = nkGet('qpData', null) || JSON.parse(JSON.stringify(QP_DEF));
-const qpSave = ()=> nkSet('qpData', QP);
+const qpSave = ()=>{ nkPruneByMonth(QP.data, NK_KEEP_MONTHS); nkSet('qpData', QP); };
 const qpKey = (h)=> QP.month + '#' + h;
 function qpRow(h, name){
   const k = qpKey(h);
@@ -9223,33 +9330,24 @@ function renderQP_impl(el){
 }
 
 /* ==================== 3) مرتبات المصنع (سمارتي) ==================== */
-const FP_CODES = ['ح', 'غ.إذن', 'غ', 'راحة', 'غ.راحة', 'إجازة', ''];
 let FP = nkGet('fpData', null) || {start: nkToday().slice(0, 8) + '01', end: '', transitional: false,
-  emps: [], att: {}, pay: {}, period: 'full', tab: 'pay'};
+  emps: [], pay: {}, period: 'full', tab: 'pay'};
 if(!FP.period) FP.period = 'full';
-const fpSave = ()=> nkSet('fpData', FP);
+const fpSave = ()=>{ nkPruneByMonth(FP.pay, NK_KEEP_MONTHS); nkSet('fpData', FP); };
 function fpDays(){
   if(!FP.transitional) return 30;
   const a = new Date(FP.start), b = new Date(FP.end || FP.start);
   const n = Math.round((b - a) / 86400000) + 1;
   return isFinite(n) && n > 0 ? Math.min(n, 31) : 30;
 }
-const fpDayDate = (i)=>{ const d = new Date(FP.start); d.setDate(d.getDate() + i); return d; };
-const fpDayLbl = (i)=>{ const d = fpDayDate(i); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0'); };
-const fpKey = ()=> FP.start + '_' + fpDays();
-const fpPeriodKey = ()=> fpKey() + '_' + FP.period;
-function fpAtt(name){
-  const k = fpKey(); FP.att[k] = FP.att[k] || {};
-  FP.att[k][name] = FP.att[k][name] || {};
-  return FP.att[k][name];
-}
+const fpPeriodKey = ()=> FP.start + '_' + fpDays() + '_' + FP.period;
+// نفس فكرة مرتبات القرشي بالظبط: تكتب الغياب والتأخير والإضافي يدوي،
+// من غير كشف حضور يومي.
 function fpPay(name){
   const k = fpPeriodKey(); FP.pay[k] = FP.pay[k] || {};
-  FP.pay[k][name] = FP.pay[k][name] || {late:'', extra:'', pen:'', adv:'', inc:''};
+  FP.pay[k][name] = FP.pay[k][name] || {absExc:'', absNo:'', late:'', extra:'', pen:'', adv:'', ins:'', inc:''};
   return FP.pay[k][name];
 }
-// الجمعة راحة افتراضيًا (زي معادلة WEEKDAY في الشيت)
-const fpDefault = (i)=> fpDayDate(i).getDay() === 5 ? 'راحة' : 'ح';
 // الموظف بيقبض نصفين ولا مرة واحدة آخر الشهر؟
 const fpBoth = (e)=> e.pay2 !== false;   // pay2=false يعني بيقبض النصف التاني بس
 function fpInPeriod(e){
@@ -9257,52 +9355,55 @@ function fpInPeriod(e){
   if(FP.period === 'h1') return fpBoth(e);
   return true;   // النصف التاني: الكل بيظهر
 }
-// مدى الأيام اللي بتتحسب للموظف في الفترة المختارة
-function fpRange(e){
+// عدد أيام الفترة اللي بتحسب عليها المستحق — زي راتب النصف في القرشي
+function fpPeriodDays(e){
   const days = fpDays();
-  if(FP.period === 'full') return [0, days];
+  if(FP.period === 'full') return days;
   const half = Math.min(15, days);
-  if(FP.period === 'h1') return [0, half];
-  return fpBoth(e) ? [half, days] : [0, days];   // اللي بيقبض مرة واحدة بياخد الشهر كله في النصف التاني
+  if(FP.period === 'h1') return half;
+  return fpBoth(e) ? (days - half) : days;   // اللي بيقبض مرة واحدة بياخد الشهر كله في النصف التاني
 }
 function fpCalc(){
   const rows = FP.emps.filter(fpInPeriod).map(e=>{
-    const a = fpAtt(e.name), p = fpPay(e.name);
-    const [from, to] = fpRange(e);
-    let filled = 0, present = 0, absExc = 0, absNo = 0;
-    for(let i = from; i < to; i++){
-      const v = a[i] == null ? fpDefault(i) : a[i];
-      if(v === '' || v == null) continue;
-      filled++;
-      if(v === 'ح' || v === 'راحة') present++;
-      if(v === 'غ.إذن') absExc++;
-      if(v === 'غ' || v === 'غ.راحة') absNo++;
-    }
+    const p = fpPay(e.name);
     const salary = nkN(e.salary);
+    const periodDays = fpPeriodDays(e);
     const day = salary / 30, hour = salary / 30 / 8;
+    const due = periodDays * day;
+    const absExc = nkN(p.absExc), absNo = nkN(p.absNo);
     const absDed = (absExc * 1 + absNo * 2 + nkN(p.pen)) * day;
-    const totalDed = absDed + nkN(p.late) * hour * 1 + nkN(p.adv);
-    const net = nkMR(filled * day - totalDed + nkN(p.extra) * hour * 1.5 + nkN(p.inc), 5);
-    return {name: e.name, job: e.job || '', place: e.place || '', salary, days: filled, present,
-      absExc, absNo, p, from, to, due: nkR(filled * day, 2),
-      absDed: nkR(absDed, 2), totalDed: nkR(totalDed, 2), net};
+    const totalDed = absDed + nkN(p.late) * hour * 1 + nkN(p.adv) + nkN(p.ins);
+    const net = nkMR(due - totalDed + nkN(p.extra) * hour * 1.5 + nkN(p.inc), 5);
+    return {name: e.name, job: e.job || '', place: e.place || '', salary, days: periodDays,
+      absExc, absNo, p, due: nkR(due, 2), absDed: nkR(absDed, 2), totalDed: nkR(totalDed, 2), net};
   });
   const t = rows.reduce((a, r)=> ({salary:a.salary+r.salary, due:a.due+r.due, absDed:a.absDed+r.absDed,
-    totalDed:a.totalDed+r.totalDed, net:a.net+r.net, adv:a.adv+nkN(r.p.adv), inc:a.inc+nkN(r.p.inc)}),
-    {salary:0, due:0, absDed:0, totalDed:0, net:0, adv:0, inc:0});
+    totalDed:a.totalDed+r.totalDed, net:a.net+r.net, adv:a.adv+nkN(r.p.adv), ins:a.ins+nkN(r.p.ins), inc:a.inc+nkN(r.p.inc)}),
+    {salary:0, due:0, absDed:0, totalDed:0, net:0, adv:0, ins:0, inc:0});
   return {rows, t, days: fpDays()};
 }
 const FP_PERIODS = {full:'الشهر كامل', h1:'النصف الأول (1-15)', h2:'النصف الثاني (16-آخر الشهر)'};
 const fpPeriodLbl = ()=> `${FP_PERIODS[FP.period]} — ${nkDateAr(FP.start)}${FP.transitional && FP.end ? ' حتى ' + nkDateAr(FP.end) : ''} (${fpDays()} يوم)`;
+// كشف الإرسال المبسّط للمصنع — نفس فكرة كشف إرسال القرشي: أعمدة قليلة
+// تختارها بنفسك، وتقدر تصدّرها لمكان/قسم بعينه لوحده.
+const FP_SEND_COLS = ['م','اسم الموظف','الوظيفة','المكان','الراتب الشهري','أيام الفترة','المستحق','خصم الغياب','إجمالي الخصومات','حوافز','صافي الراتب'];
+const fpSendColsOn = ()=> FP.sendCols && FP.sendCols.length === FP_SEND_COLS.length ? FP.sendCols : FP_SEND_COLS.map(()=> true);
+const fpPlaceRows = (c)=> FP.expPlace ? c.rows.filter(r=> (r.place || '') === FP.expPlace) : c.rows;
 function fpBlocks(which){
   const c = fpCalc();
-  if(which === 'att'){
-    const head = ['م','اسم الموظف','المكان'].concat(Array.from({length: c.days}, (_, i)=> fpDayLbl(i)));
-    const rows = FP.emps.map((e, i)=>{
-      const a = fpAtt(e.name);
-      return [i + 1, e.name, e.place || ''].concat(Array.from({length: c.days}, (_, d)=> a[d] == null ? fpDefault(d) : a[d]));
-    });
-    return [{title: 'كشف الحضور اليومي', head, rows}];
+  if(which === 'send'){
+    const rr = fpPlaceRows(c);
+    const on = fpSendColsOn();
+    const head = FP_SEND_COLS.filter((_, k)=> on[k]);
+    const full = rr.map((r, i)=> [i+1, r.name, r.job, r.place, r.salary, r.days, r.due, r.absDed, r.totalDed, nkN(r.p.inc), r.net]);
+    const rows = full.map(row=> row.filter((_, k)=> on[k]));
+    const tt = (k)=> rr.reduce((a, r)=> a + (typeof r[k] === 'number' ? r[k] : nkN(r.p ? r.p[k] : 0)), 0);
+    const fullTot = ['', 'الإجمالي', '', '', tt('salary'), '', nkR(tt('due'), 2), nkR(tt('absDed'), 2), nkR(tt('totalDed'), 2),
+      rr.reduce((a, r)=> a + nkN(r.p.inc), 0), tt('net')];
+    const tot = fullTot.filter((_, k)=> on[k]);
+    tot.__cls = 'total-row'; rows.push(tot);
+    const lbl = FP_PERIODS[FP.period] + (FP.expPlace ? ' — ' + FP.expPlace : '');
+    return [{title: 'كشف الإرسال - مصنع سمارتي - ' + lbl, head, rows}];
   }
   if(which === 'emps'){
     return [{title: 'بيانات عاملين المصنع',
@@ -9310,18 +9411,18 @@ function fpBlocks(which){
       rows: FP.emps.map((e, i)=> [i+1, e.name, e.job || '', e.place || '', nkN(e.salary),
         fpBoth(e) ? 'نصفين' : 'النصف الثاني فقط'])}];
   }
-  const head = ['م','اسم الموظف','الوظيفة','المكان','الراتب الشهري','أيام الفترة','أيام الحضور','غياب بإذن','غياب بدون إذن',
-    'تأخيرات (ساعات)','إضافي (ساعات)','جزاءات (أيام)','سلف','حوافز','المستحق','خصم الغياب','إجمالي الخصومات','صافي الراتب'];
-  const rows = c.rows.map((r, i)=> [i+1, r.name, r.job, r.place, r.salary, r.days, r.present, r.absExc, r.absNo,
-    nkN(r.p.late), nkN(r.p.extra), nkN(r.p.pen), nkN(r.p.adv), nkN(r.p.inc), r.due, r.absDed, r.totalDed, r.net]);
-  const tot = ['', 'الإجمالي', '', '', c.t.salary, '', '', '', '', '', '', '', c.t.adv, c.t.inc,
+  const head = ['م','اسم الموظف','الوظيفة','المكان','الراتب الشهري','أيام الفترة','غياب بإذن (أيام)','غياب بدون إذن (أيام)',
+    'تأخيرات (ساعات)','إضافي (ساعات)','جزاءات (أيام)','سلف','تأمينات','حوافز','المستحق','خصم الغياب','إجمالي الخصومات','صافي الراتب'];
+  const rows = c.rows.map((r, i)=> [i+1, r.name, r.job, r.place, r.salary, r.days, r.absExc, r.absNo,
+    nkN(r.p.late), nkN(r.p.extra), nkN(r.p.pen), nkN(r.p.adv), nkN(r.p.ins), nkN(r.p.inc), r.due, r.absDed, r.totalDed, r.net]);
+  const tot = ['', 'الإجمالي', '', '', c.t.salary, '', '', '', '', '', '', c.t.adv, c.t.ins, c.t.inc,
     nkR(c.t.due, 2), nkR(c.t.absDed, 2), nkR(c.t.totalDed, 2), c.t.net];
   tot.__cls = 'total-row'; rows.push(tot);
   return [{title: 'كشف مرتبات المصنع — ' + FP_PERIODS[FP.period], head, rows}];
 }
 NK_EXPORTERS['fpP'] = ()=> ({blocks: fpBlocks('pay'), title: 'مرتبات مصنع سمارتي ' + FP_PERIODS[FP.period] + ' ' + FP.start, subtitle: fpPeriodLbl()});
-NK_EXPORTERS['fpA'] = ()=> ({blocks: fpBlocks('att'), title: 'حضور مصنع سمارتي ' + FP.start, subtitle: fpPeriodLbl()});
 NK_EXPORTERS['fpE'] = ()=> ({blocks: fpBlocks('emps'), title: 'عاملين مصنع سمارتي', subtitle: 'بيانات العاملين والمرتبات'});
+NK_EXPORTERS['fpS'] = ()=> ({blocks: fpBlocks('send'), title: 'كشف إرسال مصنع سمارتي ' + FP.start, subtitle: fpPeriodLbl() + (FP.expPlace ? ' — ' + FP.expPlace : '')});
 
 // ---- استيراد شيت مرتبات المصنع ----
 // بيقرا الإعدادات (بداية/نهاية الشهر) + بيانات الموظفين + كشف الحضور اليومي
@@ -9336,7 +9437,7 @@ function fpImport(wb){
     const s = S(v);
     return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : '';
   };
-  let emps = 0, att = 0;
+  let emps = 0;
   wb.SheetNames.forEach(sn=>{
     const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true});
     // الإعدادات
@@ -9353,7 +9454,6 @@ function fpImport(wb){
     const head = (aoa[hi] || []).map(c=> S(c));
     const at = (re)=> head.findIndex(h=> re.test(h));
     const cName = at(/^اسم الموظف$/), cJob = at(/^الوظيفة$/), cSal = at(/الراتب الشهري/), cPl = at(/المكان|القسم/);
-    const isAtt = /حضور/.test(sn) || head.filter(h=> /^\d{1,2}\/\d{1,2}$/.test(h)).length >= 5;
     aoa.slice(hi + 1).forEach(r=>{
       const name = S((r || [])[cName]);
       if(!name || /الإجمالي|الاجمالي|total/i.test(name)) return;
@@ -9362,20 +9462,10 @@ function fpImport(wb){
       if(cJob >= 0 && S(r[cJob])) e.job = S(r[cJob]);
       if(cPl >= 0 && S(r[cPl])) e.place = S(r[cPl]);
       if(cSal >= 0 && nkN(r[cSal])) e.salary = nkN(r[cSal]);
-      if(isAtt){
-        const a = fpAtt(name);
-        let d = 0;
-        for(let ci = cName + 1; ci < r.length; ci++){
-          const v = S(r[ci]);
-          if(FP_CODES.indexOf(v) >= 0 && v !== ''){ a[d] = v; }
-          d++;
-        }
-        att++;
-      }
     });
   });
   fpSave();
-  return {emps, att};
+  return {emps};
 }
 
 function renderFP(){
@@ -9385,26 +9475,16 @@ function renderFP(){
 function renderFP_impl(el){
   const c = fpCalc();
   const tab = FP.tab || 'pay';
-  const optsFor = (v)=> FP_CODES.map(x=> `<option value="${esc(x)}" ${x === v ? 'selected' : ''}>${esc(x || '—')}</option>`).join('');
-  let att = '';
-  FP.emps.forEach((e, i)=>{
-    const a = fpAtt(e.name);
-    const [from, to] = fpRange(e);
-    att += `<tr><td>${i + 1}</td><td style="text-align:right;min-width:170px">${esc(e.name)}</td>` +
-      Array.from({length: c.days}, (_, d)=>{
-        const on = d >= from && d < to;
-        return `<td style="padding:2px;${on ? '' : 'opacity:.35'}"><select data-fpa="${i}.${d}" style="padding:3px;font-size:11.5px">${optsFor(a[d] == null ? fpDefault(d) : a[d])}</select></td>`;
-      }).join('') + '</tr>';
-  });
   let pay = '';
   c.rows.forEach((r, i)=>{
     const p = 'fpp.' + i + '.';
     pay += `<tr><td>${i + 1}</td><td style="text-align:right;min-width:170px">${esc(r.name)}</td>
       <td>${esc(r.job)}</td><td>${esc(r.place)}</td>
-      <td class="wh-num">${nkF(r.salary, 0)}</td><td class="wh-num">${r.days}</td><td class="wh-num">${r.present}</td>
-      <td class="wh-num">${r.absExc}</td><td class="wh-num">${r.absNo}</td>
+      <td class="wh-num">${nkF(r.salary, 0)}</td><td class="wh-num">${r.days}</td>
+      <td>${nkInp(r.p.absExc, p + 'absExc')}</td><td>${nkInp(r.p.absNo, p + 'absNo')}</td>
       <td>${nkInp(r.p.late, p + 'late')}</td><td>${nkInp(r.p.extra, p + 'extra')}</td>
-      <td>${nkInp(r.p.pen, p + 'pen')}</td><td>${nkInp(r.p.adv, p + 'adv')}</td><td>${nkInp(r.p.inc, p + 'inc')}</td>
+      <td>${nkInp(r.p.pen, p + 'pen')}</td><td>${nkInp(r.p.adv, p + 'adv')}</td>
+      <td>${nkInp(r.p.ins, p + 'ins')}</td><td>${nkInp(r.p.inc, p + 'inc')}</td>
       <td class="wh-num">${nkF(r.due, 0)}</td>
       <td class="wh-num">${nkF(r.absDed, 0)}</td><td class="wh-num">${nkF(r.totalDed, 0)}</td>
       <td class="wh-num" style="font-weight:700">${nkF(r.net, 0)}</td></tr>`;
@@ -9412,7 +9492,6 @@ function renderFP_impl(el){
   el.innerHTML = `
   <div class="tabs">
     <div class="tab ${tab === 'pay' ? 'active' : ''}" data-fptab="pay">💰 كشف المرتبات</div>
-    <div class="tab ${tab === 'att' ? 'active' : ''}" data-fptab="att">📅 الحضور اليومي</div>
     <div class="tab ${tab === 'emps' ? 'active' : ''}" data-fptab="emps">👷 العاملين (${FP.emps.length})</div>
   </div>
 
@@ -9429,7 +9508,8 @@ function renderFP_impl(el){
         <span class="pill">أيام الشهر: <b>${c.days}</b></span>
       </div>
     </div>
-    <div class="sub" style="margin-top:6px">قيمة اليوم = الراتب ÷ 30 · الساعة = اليوم ÷ 8 · غياب بدون إذن يُخصم يومين · الإضافي × 1.5 · الصافي لأقرب 5.
+    <div class="sub" style="margin-top:6px">زي مرتبات القرشي بالظبط: تكتب الغياب والتأخير والإضافي يدوي من غير كشف حضور يومي.
+      قيمة اليوم = الراتب ÷ 30 · الساعة = اليوم ÷ 8 · غياب بدون إذن يُخصم يومين · الإضافي × 1.5 · الصافي لأقرب 5.
       اللي بيقبض نصفين بياخد أيام نصفه، واللي بيقبض مرة واحدة بيظهر في النصف التاني بالشهر كله.</div>
   </div>
 
@@ -9437,27 +9517,34 @@ function renderFP_impl(el){
     <div class="flex-between"><h2 style="margin:0">كشف المرتبات — ${esc(FP_PERIODS[FP.period])}</h2>
       <span class="badge">${esc(fpPeriodLbl())}</span></div>
     <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr>
-      <th>م</th><th>الموظف</th><th>الوظيفة</th><th>المكان</th><th>الراتب</th><th>أيام الفترة</th><th>أيام الحضور</th>
+      <th>م</th><th>الموظف</th><th>الوظيفة</th><th>المكان</th><th>الراتب</th><th>أيام الفترة</th>
       <th>غياب بإذن</th><th>غياب بدون إذن</th><th>تأخيرات (س)</th><th>إضافي (س)</th><th>جزاءات (أيام)</th>
-      <th>سلف</th><th>حوافز</th><th>المستحق</th><th>خصم الغياب</th><th>إجمالي الخصومات</th><th>صافي الراتب</th>
+      <th>سلف</th><th>تأمينات</th><th>حوافز</th><th>المستحق</th><th>خصم الغياب</th><th>إجمالي الخصومات</th><th>صافي الراتب</th>
     </tr></thead><tbody>${pay}
       <tr class="total-row"><td></td><td style="text-align:right">الإجمالي</td><td></td><td></td>
-        <td class="wh-num">${nkF(c.t.salary, 0)}</td><td></td><td></td><td></td><td></td>
-        <td></td><td></td><td></td><td class="wh-num">${nkF(c.t.adv, 0)}</td><td class="wh-num">${nkF(c.t.inc, 0)}</td>
+        <td class="wh-num">${nkF(c.t.salary, 0)}</td><td></td><td></td><td></td>
+        <td></td><td></td><td></td><td class="wh-num">${nkF(c.t.adv, 0)}</td>
+        <td class="wh-num">${nkF(c.t.ins, 0)}</td><td class="wh-num">${nkF(c.t.inc, 0)}</td>
         <td class="wh-num">${nkF(c.t.due, 0)}</td>
         <td class="wh-num">${nkF(c.t.absDed, 0)}</td><td class="wh-num">${nkF(c.t.totalDed, 0)}</td>
         <td class="wh-num">${nkF(c.t.net, 0)}</td></tr>
     </tbody></table></div>
-    ${nkBar('fpP', '<span class="pill">إكسل / PDF / صورة</span>')}
-  </div>
-
-  <div class="card" style="display:${tab === 'att' ? '' : 'none'}">
-    <div class="flex-between"><h2 style="margin:0">كشف الحضور اليومي</h2>
-      <button class="ghost" id="fpReset">إرجاع الافتراضي (ح / راحة الجمعة)</button></div>
-    <div class="tbl-wrap" style="margin-top:10px;max-height:460px"><table><thead><tr>
-      <th>م</th><th>الموظف</th>${Array.from({length: c.days}, (_, i)=> `<th style="font-size:11px">${fpDayLbl(i)}</th>`).join('')}
-    </tr></thead><tbody>${att}</tbody></table></div>
-    ${nkBar('fpA')}
+    <div class="card" style="background:var(--panel2);margin-top:12px">
+      <b>⚙️ تخصيص التصدير</b>
+      <div class="row" style="margin-top:8px">
+        <label>المكان / القسم <select id="fpExpPlace">
+          <option value="">كل الأماكن</option>
+          ${[...new Set(FP.emps.map(e=> e.place).filter(Boolean))].map(pl=> `<option value="${esc(pl)}" ${FP.expPlace === pl ? 'selected' : ''}>${esc(pl)}</option>`).join('')}
+        </select></label>
+      </div>
+      <div class="sub" style="margin-top:8px">أعمدة كشف الإرسال:</div>
+      <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:10px">
+        ${FP_SEND_COLS.map((cl, k)=> `<label class="chk" style="display:flex;gap:5px;align-items:center;font-size:12.5px">
+          <input type="checkbox" data-fpcol="${k}" ${fpSendColsOn()[k] ? 'checked' : ''}> ${esc(cl)}</label>`).join('')}
+      </div>
+    </div>
+    ${nkBar('fpP', '<span class="pill">الكشف التفصيلي</span>')}
+    ${nkBar('fpS', '<span class="pill">كشف الإرسال' + (FP.expPlace ? ' — ' + esc(FP.expPlace) : '') + '</span>')}
   </div>
 
   <div class="card" style="display:${tab === 'emps' ? '' : 'none'}">
@@ -9466,7 +9553,7 @@ function renderFP_impl(el){
         <input type="file" id="fpFile" accept=".xlsx,.xls" style="max-width:230px">
         <button class="secondary" id="fpAdd">+ موظف</button>
       </div></div>
-    <div class="sub" style="margin-top:6px">ارفع شيت المصنع — بيقرا الإعدادات (بداية ونهاية الشهر) وبيانات الموظفين وكشف الحضور اليومي بالرموز.</div>
+    <div class="sub" style="margin-top:6px">ارفع شيت المصنع — بيقرا الإعدادات (بداية ونهاية الشهر) وبيانات الموظفين (الاسم/الوظيفة/المكان/الراتب).</div>
     <div class="tbl-wrap" style="margin-top:10px;max-height:460px"><table><thead><tr>
       <th>م</th><th>اسم الموظف</th><th>الوظيفة</th><th>المكان / القسم</th><th>الراتب الشهري</th><th>نصفين</th><th>النصف التاني بس</th><th></th>
     </tr></thead><tbody>${FP.emps.map((e, i)=> `<tr><td>${i + 1}</td>
@@ -9481,6 +9568,12 @@ function renderFP_impl(el){
   </div>`;
 
   el.querySelectorAll('[data-fptab]').forEach(t=> t.onclick = ()=>{ FP.tab = t.dataset.fptab; fpSave(); renderFP(); });
+  const epl = $('fpExpPlace'); if(epl) epl.onchange = ()=>{ FP.expPlace = epl.value; fpSave(); renderFP(); };
+  el.querySelectorAll('[data-fpcol]').forEach(cb=> cb.onchange = ()=>{
+    const on = fpSendColsOn().slice();
+    on[+cb.dataset.fpcol] = cb.checked;
+    FP.sendCols = on; fpSave(); renderFP();
+  });
   $('fpStart').onchange = (e)=>{ FP.start = e.target.value; fpSave(); renderFP(); };
   $('fpEnd').onchange = (e)=>{ FP.end = e.target.value; fpSave(); renderFP(); };
   $('fpTrans').onchange = (e)=>{ FP.transitional = e.target.checked; fpSave(); renderFP(); };
@@ -9493,22 +9586,16 @@ function renderFP_impl(el){
         const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
         const res = fpImport(wb);
         renderFP();
-        alert(res.emps || res.att ? `تم: ${res.emps} موظف جديد، و${res.att} سطر حضور.`
-          : 'مش لاقي شيت فيه عمود "اسم الموظف".');
+        alert(res.emps ? `تم: ${res.emps} موظف جديد.` : 'مش لاقي شيت فيه عمود "اسم الموظف".');
       }catch(err){ alert('مش قادر أقرا الملف: ' + err.message); }
     };
     rd.readAsArrayBuffer(f);
   };
   const add = $('fpAdd'); if(add) add.onclick = ()=>{ FP.emps.push({name:'موظف جديد', job:'', place:'', salary:0, pay2:true}); fpSave(); renderFP(); };
-  const rst = $('fpReset'); if(rst) rst.onclick = ()=>{ if(!confirm('هيرجّع كل أيام الفترة دي للافتراضي؟')) return; delete FP.att[fpKey()]; fpSave(); renderFP(); };
   el.querySelectorAll('[data-fpdel]').forEach(b=> b.onclick = ()=>{ FP.emps.splice(+b.dataset.fpdel, 1); fpSave(); renderFP(); });
   el.querySelectorAll('[data-fpm]').forEach(r=> r.onchange = ()=>{
     const [i, m] = r.dataset.fpm.split('.');
     FP.emps[+i].pay2 = m === 'both'; fpSave(); renderFP();
-  });
-  el.querySelectorAll('[data-fpa]').forEach(sel=> sel.onchange = ()=>{
-    const [i, d] = sel.dataset.fpa.split('.');
-    fpAtt(FP.emps[+i].name)[+d] = sel.value; fpSave(); renderFP();
   });
   el.querySelectorAll('[data-nk^="fpe."]').forEach(inp=> inp.onchange = ()=>{
     const [, i, field] = inp.dataset.nk.split('.');
