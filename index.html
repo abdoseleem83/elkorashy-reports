@@ -73,8 +73,10 @@
   .tbl-wrap{overflow:auto;max-height:520px;border-radius:8px}
   .pill{display:inline-block;background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:2px 10px;font-size:12px;margin:2px;color:var(--muted)}
   .pill.done{color:var(--accent2);border-color:var(--accent2)}
-  .tabs{display:flex;gap:8px;margin-bottom:14px}
-  .tab{padding:8px 14px;border-radius:8px;cursor:pointer;background:var(--panel2);border:1px solid var(--border);font-size:13px}
+  .tabs{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;padding-bottom:2px}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{padding:8px 14px;border-radius:999px;cursor:pointer;background:var(--panel2);border:1px solid var(--border);font-size:13px;flex:none;white-space:nowrap}
   .tab.active{background:var(--accent);color:#fff}
   .msg{font-size:13px;padding:10px 12px;border-radius:8px;margin-top:10px}
   .msg.ok{background:#e7f7ef;color:#0a7a4a;border:1px solid #b7e6cc}
@@ -282,7 +284,7 @@
     .flex-between .row button{width:auto;flex:1}
     #monthsPills{gap:6px}
     .tabs{gap:6px}
-    .tab{flex:1;text-align:center;padding:9px 6px;font-size:12px}
+    .tab{flex:none;white-space:nowrap;text-align:center;padding:8px 12px;font-size:12px}
     table{font-size:11px}
     th,td{padding:5px 4px}
     .tbl-wrap{max-height:65vh}
@@ -1004,7 +1006,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v134';
+const APP_VERSION = 'v135';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8916,7 +8918,12 @@ function gvArchiveOld(){
 /* ---------- الواجهة ---------- */
 function renderGV(){
   const el = $('gvApp'); if(!el) return;
-  nkPreserve(el, ()=> renderGV_impl(el));
+  try{ nkPreserve(el, ()=> renderGV_impl(el)); }
+  catch(e){
+    console.error('renderGV crashed', e);
+    el.innerHTML = `<div class="card"><div class="msg err">حصل خطأ وإحنا بنعرض الشاشة: ${esc(e.message)}
+      <br>جرّب تدوس على قسم "جيفز" تاني، ولو تكرر قولّي بالظبط إنت كنت بتعمل إيه.</div></div>`;
+  }
 }
 function renderGV_impl(el){
   const tab = (GV.tab === 'items' ? 'orders' : (GV.tab || 'orders'));
@@ -8936,7 +8943,12 @@ function renderGV_impl(el){
 /* ---------- 📦 الأصناف — دليل موحّد لوحده، مرجع لكل الأقسام ---------- */
 function renderIT(){
   const el = $('itApp'); if(!el) return;
-  nkPreserve(el, ()=> renderIT_impl(el));
+  try{ nkPreserve(el, ()=> renderIT_impl(el)); }
+  catch(e){
+    console.error('renderIT crashed', e);
+    el.innerHTML = `<div class="card"><div class="msg err">حصل خطأ وإحنا بنعرض الشاشة: ${esc(e.message)}
+      <br>جرّب تدوس على قسم "الأصناف" تاني، ولو تكرر قولّي بالظبط إنت كنت بتعمل إيه.</div></div>`;
+  }
 }
 function renderIT_impl(el){
   el.innerHTML = gvItemsHtml();
