@@ -14,10 +14,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
-    --bg:#f5f2fb; --panel:#ffffff; --panel2:#f4f0fa; --border:#e4dcf3;
-    --text:#241b33; --muted:#7a7189; --accent:#6c2eb5; --accent2:#0f9d63;
+    --bg:#eef3fb; --panel:#ffffff; --panel2:#eaf1fb; --border:#d6e3f5;
+    --text:#16233b; --muted:#64748b; --accent:#1f5fd6; --accent2:#0f9d63;
     --danger:#dc2626; --warn:#b45309;
-    --thead:#4a1f80; --thead-text:#ffffff;   /* رأس الأعمدة بنفسجي غامق بخط أبيض — زي انستاباي */
+    --thead:#123a86; --thead-text:#ffffff;   /* رأس الأعمدة أزرق غامق بخط أبيض */
     /* درجات الجداول: كل مستوى لون مختلف عن اللي فوقه عشان الورقة تتقرا
        من بعيد — قبل كده المجموعة الرئيسية والفرعية والإجمالي كانوا بنفس
        اللون الباهت فالتقرير كان شكله مسطّح. */
@@ -32,9 +32,9 @@
   body{background:var(--bg);color:var(--text);
     font-family:Arial,'Arial Unicode MS','Liberation Sans','Helvetica Neue',Helvetica,sans-serif;
     font-size:14px;margin:0;padding:16px;padding-top:0}
-  .app-bar{position:sticky;top:0;z-index:50;background:linear-gradient(135deg,#4a1f80,#6c2eb5);
+  .app-bar{position:sticky;top:0;z-index:50;background:linear-gradient(135deg,#123a86,#1f5fd6);
     margin:0 -16px 14px;padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));
-    display:flex;align-items:center;gap:12px;box-shadow:0 3px 10px rgba(74,31,128,.25)}
+    display:flex;align-items:center;gap:12px;box-shadow:0 3px 10px rgba(18,58,134,.25)}
   .app-bar img{height:30px;width:auto;display:block;flex:none;background:#fff;border-radius:10px;padding:3px 6px}
   .app-bar h1{font-size:16px;margin:0;flex:1;line-height:1.3;color:#fff}
   .app-bar .badge{background:rgba(255,255,255,.2);color:#fff}
@@ -47,7 +47,7 @@
   h1{font-size:22px;margin:0 0 4px}
   h2{font-size:17px;margin:0 0 12px;color:var(--accent)}
   .sub{color:var(--muted);font-size:13.5px;margin-bottom:20px}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:18px;margin-bottom:18px;box-shadow:0 2px 10px rgba(74,31,128,.06)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:18px;margin-bottom:18px;box-shadow:0 2px 10px rgba(18,58,134,.06)}
   .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
   label{font-size:13.5px;color:var(--muted)}
   input[type=file], input[type=month], select, input[type=text]{
@@ -57,7 +57,7 @@
   button{
     background:var(--accent);color:#fff;border:none;border-radius:999px;
     padding:10px 20px;font-size:13px;cursor:pointer;font-weight:700;
-    box-shadow:0 2px 6px rgba(108,46,181,.25);
+    box-shadow:0 2px 6px rgba(31,95,214,.25);
   }
   button.secondary{background:var(--panel2);border:1px solid var(--border);color:var(--text);box-shadow:none}
   button.ghost{background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px 14px;font-size:12px;box-shadow:none}
@@ -173,7 +173,7 @@
   .mod-bar{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 14px}
   .mod-btn{display:flex;align-items:center;gap:6px;background:var(--panel);color:var(--text);
     border:1px solid var(--border);border-radius:10px;padding:7px 11px;font-size:12px;
-    text-align:center;box-shadow:0 1px 3px rgba(74,31,128,.06);flex:1 1 auto;min-width:0;
+    text-align:center;box-shadow:0 1px 3px rgba(18,58,134,.06);flex:1 1 auto;min-width:0;
     justify-content:center}
   .mod-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
   .mod-btn .mod-ico{font-size:15px;line-height:1;flex:none}
@@ -330,8 +330,11 @@
     <span class="mod-ico">🏬</span><span class="mod-txt"><b>المخازن</b><span class="mod-sub">أرصدة ونواقص وجرد</span></span><span class="mod-car">▾</span>
   </button>
 
+  <button class="mod-btn" data-mod="it" aria-expanded="false" aria-controls="itApp">
+    <span class="mod-ico">📦</span><span class="mod-txt"><b>الأصناف</b><span class="mod-sub">دليل موحّد لكل الأقسام</span></span><span class="mod-car">▾</span>
+  </button>
   <button class="mod-btn" data-mod="gv" aria-expanded="false" aria-controls="gvApp">
-    <span class="mod-ico">🚢</span><span class="mod-txt"><b>طلبيات جيفز</b><span class="mod-sub">أصناف وطلبيات وحاويات</span></span><span class="mod-car">▾</span>
+    <span class="mod-ico">🚢</span><span class="mod-txt"><b>طلبيات جيفز</b><span class="mod-sub">طلبيات واستلام وتسعير</span></span><span class="mod-car">▾</span>
   </button>
   <button class="mod-btn" data-mod="ax" aria-expanded="false" aria-controls="axApp">
     <span class="mod-ico">🎁</span><span class="mod-txt"><b>بونص اكسا</b><span class="mod-sub">بونص المشتريات والموزعين</span></span><span class="mod-car">▾</span>
@@ -339,6 +342,7 @@
 </div>
 
 
+<div id="itApp" style="display:none"></div>
 <div id="gvApp" style="display:none"></div>
 <div id="qpApp" style="display:none"></div>
 <div id="fpApp" style="display:none"></div>
@@ -1000,7 +1004,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v133';
+const APP_VERSION = 'v134';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -3691,7 +3695,7 @@ function renderCharts(){
     .sort((a,b)=> b.total - a.total);
   $('chartsArea').style.display = chartsOpen ? 'block' : 'none';
   if(!chartsOpen) return;   // من غير داعي نرسم شارتات مخفية
-  drawBarChart('topCustomersChart', custTotals.map(o=>o.label), custTotals.map(o=>o.total), '#6c2eb5');
+  drawBarChart('topCustomersChart', custTotals.map(o=>o.label), custTotals.map(o=>o.total), '#1f5fd6');
   drawBarChart('sectorTotalsChart', sectorTotals.map(o=>o.label), sectorTotals.map(o=>o.total), '#0f9d63');
 }
 if(document.getElementById('chartsToggleBtn')) document.getElementById('chartsToggleBtn').onclick = ()=>{
@@ -7771,7 +7775,7 @@ function showModule(mod){
   $('salesApp').style.display = mod === 'sales' ? '' : 'none';
   $('whApp').style.display = mod === 'wh' ? '' : 'none';
   if($('finApp')) $('finApp').style.display = mod === 'fin' ? '' : 'none';
-  ['gv','qp','fp','ax'].forEach(m=>{
+  ['it','gv','qp','fp','ax'].forEach(m=>{
     const el = $(m + 'App'); if(!el) return;
     el.style.display = mod === m ? '' : 'none';
     if(mod === m && typeof window['render' + m.toUpperCase()] === 'function') window['render' + m.toUpperCase()]();
@@ -8502,7 +8506,8 @@ function nkStorageBadge(){
 }
 
 function nkGet(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
-function nkSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} nkCloudPush(k); }
+const nkLocalWriteAt = {};
+function nkSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} nkLocalWriteAt[k] = Date.now(); nkCloudPush(k); }
 
 // ---- مزامنة جيفز/المرتبات/بونص اكسا بين الأجهزة — بنفس التخزين المركزي
 // (Google Sheets عبر Apps Script) اللي بيشتغل بيه المبيعات والمخازن.
@@ -8533,8 +8538,12 @@ function nkCloudPush(k){
   if(!NK_CLOUD_KEYS[k] || typeof window === 'undefined' || !window.storage) return;
   const raw = (function(){ try{ return localStorage.getItem(k); }catch(e){ return null; } })();
   if(raw == null) return;
+  const myWriteAt = nkLocalWriteAt[k];
   window.storage.set(k, raw).then(()=>{
     nkSyncState = {ok:true, msg:'', at: Date.now()}; nkSyncBadge();
+    // خلّصنا رفع النسخة دي فعلًا — لو مفيش حفظ محلي أحدث منها، مبقى محتاجين
+    // نحمي منها تاني (كانت بتتحمى لغاية دلوقتي عشان مانديش سحب قديم يمسحها).
+    if(nkLocalWriteAt[k] === myWriteAt) delete nkLocalWriteAt[k];
   }).catch((e)=>{
     nkSyncState = {ok:false, msg: (e && e.message) || String(e), at: Date.now()};
     nkSyncBadge();
@@ -8548,6 +8557,10 @@ async function nkCloudPullAll(silent){
   }
   let anyErr = null;
   for(const k of Object.keys(NK_CLOUD_KEYS)){
+    // لو لسه فيه حفظ محلي جاري رفعه (أو اترفع من لحظات) — نتجاهل السحب ده
+    // للمفتاح ده تحديدًا، عشان ماندي نسخة قديمة من السيرفر تمسح حذف/تعديل
+    // حصل هنا لسه ماوصلش للسيرفر (ده اللي كان بيرجّع أصناف محذوفة تاني).
+    if(nkLocalWriteAt[k] && Date.now() - nkLocalWriteAt[k] < 8000) continue;
     try{
       const r = await window.storage.get(k);
       if(r && r.value != null){
@@ -8573,6 +8586,7 @@ async function nkCloudPullAll(silent){
           if(k === 'axData') AX = nkGet('axData', AX);
           const fn = window[NK_CLOUD_KEYS[k]];
           if(typeof fn === 'function') fn();
+          if(k === 'gvData' && typeof window.renderIT === 'function') window.renderIT();
         }
       }
     }catch(e){
@@ -8905,19 +8919,28 @@ function renderGV(){
   nkPreserve(el, ()=> renderGV_impl(el));
 }
 function renderGV_impl(el){
-  const tab = GV.tab || 'items';
+  const tab = (GV.tab === 'items' ? 'orders' : (GV.tab || 'orders'));
   el.innerHTML = `
+  <div class="sub" style="margin:-4px 0 10px">دليل الأصناف بقى قسم لوحده — أيقونة "📦 الأصناف" فوق — وبيتحدّث منه كل الشاشات هنا تلقائي.</div>
   <div class="tabs">
-    <div class="tab ${tab === 'items' ? 'active' : ''}" data-gvtab="items">📦 الأصناف (${GV.items.length})</div>
     <div class="tab ${tab === 'orders' ? 'active' : ''}" data-gvtab="orders">🧾 الطلبيات</div>
     <div class="tab ${tab === 'receive' ? 'active' : ''}" data-gvtab="receive">📥 الاستلام</div>
     <div class="tab ${tab === 'pricing' ? 'active' : ''}" data-gvtab="pricing">💰 التسعير</div>
   </div>
-  ${tab === 'items' ? gvItemsHtml() : ''}
   ${tab === 'orders' ? gvOrdersHtml() : ''}
   ${tab === 'receive' ? gvReceiveHtml() : ''}
   ${tab === 'pricing' ? gvPricingHtml() : ''}`;
   gvWire(el);
+}
+
+/* ---------- 📦 الأصناف — دليل موحّد لوحده، مرجع لكل الأقسام ---------- */
+function renderIT(){
+  const el = $('itApp'); if(!el) return;
+  nkPreserve(el, ()=> renderIT_impl(el));
+}
+function renderIT_impl(el){
+  el.innerHTML = gvItemsHtml();
+  gvWire(el, renderIT);
 }
 
 // نموذج إكسل فاضي بنفس الأعمدة المطلوبة بالظبط — تنزّله وتشوف الشكل المتوقع
@@ -9090,16 +9113,17 @@ function gvPricingHtml(){
   </div>`;
 }
 
-function gvWire(el){
+function gvWire(el, refresh){
+  refresh = refresh || renderGV;
   const o = gvOrder();
   el.querySelectorAll('[data-gvtab]').forEach(t=> t.onclick = ()=>{ GV.tab = t.dataset.gvtab; gvSave(); renderGV(); });
 
   // ---- تاب الأصناف ----
   const q = $('gvItemSearch');
-  if(q) q.oninput = ()=>{ GV.q = q.value; gvSave(); const pos = q.selectionStart; renderGV();
+  if(q) q.oninput = ()=>{ GV.q = q.value; gvSave(); const pos = q.selectionStart; refresh();
     const n = $('gvItemSearch'); if(n){ n.focus({preventScroll: true}); try{ n.setSelectionRange(pos, pos); }catch(e){} } };
-  const addItem = $('gvAddItem'); if(addItem) addItem.onclick = ()=>{ GV.items.unshift({code:'', name:'', pcs:'', weight:'', price:''}); gvSave(); renderGV(); };
-  el.querySelectorAll('[data-gvidel]').forEach(b=> b.onclick = ()=>{ GV.items.splice(+b.dataset.gvidel, 1); gvSave(); renderGV(); });
+  const addItem = $('gvAddItem'); if(addItem) addItem.onclick = ()=>{ GV.items.unshift({code:'', name:'', pcs:'', weight:'', price:''}); gvSave(); refresh(); };
+  el.querySelectorAll('[data-gvidel]').forEach(b=> b.onclick = ()=>{ GV.items.splice(+b.dataset.gvidel, 1); gvSave(); refresh(); });
   const tmplBtn = $('gvTemplateBtn'); if(tmplBtn) tmplBtn.onclick = gvItemsTemplate;
   const saveBtn = $('gvSaveItems'); if(saveBtn) saveBtn.onclick = ()=>{
     gvSave();
@@ -9115,7 +9139,7 @@ function gvWire(el){
         const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
         const sheetNames = wb.SheetNames.join('، ');
         const res = gvItemsImport(wb);
-        renderGV();
+        refresh();
         const m2 = $('gvItemsMsg');
         if(res.added || res.upd){
           if(m2) m2.innerHTML = `<div class="msg ok">تم: ${res.added} صنف جديد، ${res.upd} صنف اتحدّث.</div>`;
@@ -9134,7 +9158,7 @@ function gvWire(el){
     const [, , i, field] = inp.dataset.nk.split('.');
     const target = GV.items[+i]; if(!target) return;
     target[field] = (field === 'name' || field === 'code') ? inp.value : nkN(inp.value);
-    gvSave(); renderGV();
+    gvSave(); refresh();
   });
 
   // ---- تاب الطلبيات ----
@@ -9187,8 +9211,8 @@ function gvWire(el){
   const soBtn = $('gvSaveOrder'); if(soBtn) soBtn.onclick = ()=>{
     gvSave(); soBtn.textContent = '✔ تم الحفظ'; setTimeout(()=>{ soBtn.textContent = '💾 حفظ'; }, 2000);
   };
-  $('gvNo').onchange = (e)=>{ o.no = nkN(e.target.value); gvSave(); renderGV(); };
-  $('gvDate').onchange = (e)=>{ o.date = e.target.value; gvSave(); renderGV(); };
+  const gvNoEl = $('gvNo'); if(gvNoEl) gvNoEl.onchange = (e)=>{ o.no = nkN(e.target.value); gvSave(); renderGV(); };
+  const gvDateEl = $('gvDate'); if(gvDateEl) gvDateEl.onchange = (e)=>{ o.date = e.target.value; gvSave(); renderGV(); };
   const addRow = $('gvAddRow'); if(addRow) addRow.onclick = ()=>{ o.rows.push({name:'', qty:''}); gvSave(); renderGV();
     const inp = el.querySelector(`[data-gvq="${o.rows.length - 1}"]`); if(inp) inp.focus({preventScroll: true}); };
   const of = $('gvOrderFile');
@@ -10061,7 +10085,7 @@ function renderAX_impl(el){
   });
 }
 
-window.renderGV = renderGV; window.renderQP = renderQP; window.renderFP = renderFP; window.renderAX = renderAX;
+window.renderGV = renderGV; window.renderIT = renderIT; window.renderQP = renderQP; window.renderFP = renderFP; window.renderAX = renderAX;
 nkCloudPullAll();
 // مزامنة تلقائية دورية — من غير أي زرار: كل 20 ثانية بيسحب من السيرفر بصمت
 // طول ما التطبيق مفتوح، عشان أي تعديل من جهاز تاني يظهر عندك لوحده.
