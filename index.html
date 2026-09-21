@@ -14,10 +14,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
-    --bg:#f3f4f8; --panel:#ffffff; --panel2:#f0f1f6; --border:#dcdfe8;
-    --text:#1c1f2a; --muted:#6b7280; --accent:#3b5fe0; --accent2:#0f9d63;
+    --bg:#f5f2fb; --panel:#ffffff; --panel2:#f4f0fa; --border:#e4dcf3;
+    --text:#241b33; --muted:#7a7189; --accent:#6c2eb5; --accent2:#0f9d63;
     --danger:#dc2626; --warn:#b45309;
-    --thead:#16307a; --thead-text:#ffffff;   /* رأس الأعمدة أزرق غامق بخط أبيض */
+    --thead:#4a1f80; --thead-text:#ffffff;   /* رأس الأعمدة بنفسجي غامق بخط أبيض — زي انستاباي */
     /* درجات الجداول: كل مستوى لون مختلف عن اللي فوقه عشان الورقة تتقرا
        من بعيد — قبل كده المجموعة الرئيسية والفرعية والإجمالي كانوا بنفس
        اللون الباهت فالتقرير كان شكله مسطّح. */
@@ -31,11 +31,23 @@
      لو الجهاز مفيهوش أريال. */
   body{background:var(--bg);color:var(--text);
     font-family:Arial,'Arial Unicode MS','Liberation Sans','Helvetica Neue',Helvetica,sans-serif;
-    font-size:14px;margin:0;padding:24px;}
+    font-size:14px;margin:0;padding:16px;padding-top:0}
+  .app-bar{position:sticky;top:0;z-index:50;background:linear-gradient(135deg,#4a1f80,#6c2eb5);
+    margin:0 -16px 14px;padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));
+    display:flex;align-items:center;gap:12px;box-shadow:0 3px 10px rgba(74,31,128,.25)}
+  .app-bar img{height:30px;width:auto;display:block;flex:none;background:#fff;border-radius:10px;padding:3px 6px}
+  .app-bar h1{font-size:16px;margin:0;flex:1;line-height:1.3;color:#fff}
+  .app-bar .badge{background:rgba(255,255,255,.2);color:#fff}
+  @media(min-width:700px){
+    body{padding:24px}
+    .app-bar{margin:0 -24px 18px;padding:14px 24px}
+    .app-bar img{height:42px}
+    .app-bar h1{font-size:20px}
+  }
   h1{font-size:22px;margin:0 0 4px}
   h2{font-size:17px;margin:0 0 12px;color:var(--accent)}
   .sub{color:var(--muted);font-size:13.5px;margin-bottom:20px}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:18px;margin-bottom:18px;box-shadow:0 2px 10px rgba(74,31,128,.06)}
   .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
   label{font-size:13.5px;color:var(--muted)}
   input[type=file], input[type=month], select, input[type=text]{
@@ -43,11 +55,12 @@
     border-radius:8px;padding:8px 10px;font-size:13px;
   }
   button{
-    background:var(--accent);color:#fff;border:none;border-radius:8px;
-    padding:9px 16px;font-size:13px;cursor:pointer;font-weight:600;
+    background:var(--accent);color:#fff;border:none;border-radius:999px;
+    padding:10px 20px;font-size:13px;cursor:pointer;font-weight:700;
+    box-shadow:0 2px 6px rgba(108,46,181,.25);
   }
-  button.secondary{background:var(--panel2);border:1px solid var(--border);color:var(--text)}
-  button.ghost{background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 10px;font-size:12px}
+  button.secondary{background:var(--panel2);border:1px solid var(--border);color:var(--text);box-shadow:none}
+  button.ghost{background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px 14px;font-size:12px;box-shadow:none}
   button:disabled{opacity:.5;cursor:not-allowed}
   table{border-collapse:collapse;width:100%;font-size:14px;margin-top:10px}
   /* ملحوظة: ألوان الجداول مكتوبة بقيم صريحة مش var() — html2canvas (اللي
@@ -154,23 +167,22 @@
   /* شريط أيقونتين: المبيعات / المخازن */
   /* الأيقونتين جنب بعض دايمًا (حتى على الموبايل)، وكل واحدة قايمة منسدلة:
      محتواها ما يبانش غير لما تدوس عليها، ودوسة تانية تقفلها. */
-  .mod-bar{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:10px 0 16px}
-  @media(min-width:700px){ .mod-bar{grid-template-columns:repeat(4,1fr)} }
-  .mod-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-    background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:14px;
-    padding:12px 6px;font-size:13px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.04);
-    min-width:0;min-height:78px}
-  .mod-btn.active{background:var(--thead);color:#fff;border-color:var(--thead)}
-  .mod-btn .mod-ico{font-size:26px;line-height:1;flex:none}
-  .mod-btn .mod-txt{min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px}
-  .mod-btn .mod-txt b{font-size:12.5px;line-height:1.2;white-space:normal}
-  .mod-btn .mod-sub{font-size:10.5px;opacity:.75;font-weight:400;display:block}
+  /* شبكة "خدمات سريعة" زي شاشات الدفع (انستاباي وأشباهه): بلاطة بيضا لكل
+     قسم، فوقها دايرة ملوّنة فيها الأيقونة، وتحتها الاسم — مش صف نصي طويل. */
+  .mod-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0 18px}
+  @media(min-width:560px){ .mod-bar{grid-template-columns:repeat(5,1fr)} }
+  .mod-btn{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;
+    background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:16px;
+    padding:14px 6px 10px;font-size:12.5px;text-align:center;box-shadow:0 2px 8px rgba(74,31,128,.07);
+    min-height:96px}
+  .mod-btn.active{border-color:var(--accent);box-shadow:0 2px 10px rgba(108,46,181,.28)}
+  .mod-btn .mod-ico{font-size:22px;line-height:1;flex:none;width:46px;height:46px;border-radius:50%;
+    background:linear-gradient(135deg,var(--accent),#8b4fd1);color:#fff;
+    display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(108,46,181,.35)}
+  .mod-btn .mod-txt{display:flex;flex-direction:column;align-items:center;gap:2px}
+  .mod-btn .mod-txt b{font-size:12px;line-height:1.2;font-weight:700;color:var(--text)}
+  .mod-btn .mod-sub{font-size:9.5px;opacity:.65;font-weight:400;display:none}
   .mod-btn .mod-car{display:none}
-  @media(max-width:420px){
-    .mod-btn{padding:10px 4px;font-size:12px;min-height:72px}
-    .mod-btn .mod-sub{display:none}
-    .mod-btn .mod-ico{font-size:23px}
-  }
   .nk-exp{margin-top:14px;padding:10px;border-radius:12px;background:var(--panel2);border:1px solid var(--border)}
   .nk-exp-lbl{font-size:12px;color:var(--muted);margin-bottom:8px}
   .nk-exp-lbl .pill{margin:0}
@@ -246,6 +258,8 @@
   .card.foldable > .flex-between h2::after{content:' ▾';font-size:11px;opacity:.7}
   .card.folded  > .flex-between h2::after{content:' ▸'}
   @media (max-width: 760px){
+    .card{padding:13px;margin-bottom:12px;border-radius:10px}
+    .sub{margin-bottom:14px}
     .card.folded > *:not(.flex-between){display:none !important}
     /* تنبيه الأصناف اللي محتواها مش معروف + سطر آخر مزامنة بيفضلوا ظاهرين
        حتى والكارت متطوي — دول حاجات محتاج تشوفها من غير ما تفتح حاجة. */
@@ -301,9 +315,9 @@
 </head>
 <body>
 
-<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px">
-  <img id="appLogo" alt="ELKORASHI" style="height:42px;width:auto;display:block">
-  <h1 style="margin:0">تقارير مبيعات القرشي <span class="badge" id="appVersionBadge" style="font-size:11px;font-weight:400"></span></h1>
+<div class="app-bar">
+  <img id="appLogo" alt="ELKORASHI">
+  <h1>تقارير مبيعات القرشي <span class="badge" id="appVersionBadge" style="font-size:10px;font-weight:400"></span></h1>
 </div>
 <!-- التطبيق قسمين: المبيعات والمخازن. كل واحد بشاشاته وتقاريره. -->
 <div class="mod-bar">
@@ -592,6 +606,9 @@
   </div>
 </div>
 
+<div class="row" style="margin:6px 0 10px">
+  <button type="button" class="secondary" id="chartsToggleBtn">📊 عرض الرسوم البيانية</button>
+</div>
 <div class="card" id="chartsArea" style="display:none">
   <div class="row" style="align-items:flex-start;gap:24px">
     <div style="flex:1;min-width:260px">
@@ -618,7 +635,7 @@
     <input type="text" id="reportSearch" placeholder="بحث باسم العميل..." style="min-width:180px">
     <select id="reportClassFilter" title="فلتر بالتصنيف"></select>
     <label class="chk"><input type="checkbox" id="reportAggWholesale" checked> اجمع الجملة في صف واحد</label>
-    <label class="chk"><input type="checkbox" id="reportGrowthCols" checked> عمود الفرق والنمو %</label>
+    <label class="chk"><input type="checkbox" id="reportGrowthCols"> عمود الفرق والنمو %</label>
     <label class="chk"><input type="checkbox" id="reportShowClass"> عمود التصنيف</label>
     <label class="chk"><input type="checkbox" id="reportRanks" checked> ميداليات لأعلى 10</label>
     <label class="chk" id="itemsCodeWrap" style="display:none">
@@ -715,8 +732,11 @@
       <button type="button" class="refresh-ico" id="whTabRefreshBtn" title="تحديث بيانات المخازن من السيرفر">🔄</button>
     </div>
 
-    <div class="row" id="whToolbar" style="margin-bottom:12px;gap:8px">
-      <input type="text" id="whSearch" placeholder="بحث باسم الصنف..." style="min-width:190px">
+    <div class="row" id="whToolbar" style="margin-bottom:10px;gap:8px;flex-wrap:wrap">
+      <input type="text" id="whSearch" placeholder="🔍 بحث باسم الصنف..." style="min-width:190px;flex:1">
+      <span class="badge" id="whCount"></span>
+    </div>
+    <div class="row" style="margin-bottom:12px;gap:8px;flex-wrap:wrap">
       <div class="msdrop">
         <button type="button" class="msdrop-btn" id="whGroupBtn">كل المجموعات</button>
         <div class="msdrop-panel" id="whGroupPanel" hidden></div>
@@ -729,21 +749,27 @@
         <select id="whStore"></select>
       </label>
       <label class="chk"><input type="checkbox" id="whHideZero" checked> اخفي الأصناف اللي رصيدها صفر</label>
-      <span class="badge" id="whCount"></span>
-      <span style="flex:1"></span>
-      <label class="chk" style="gap:6px" title="اتجاه ورقة الـPDF">📄
-        <select id="whPdfOrient" style="font-size:12.5px">
-          <option value="auto">تلقائي</option>
-          <option value="p">طولي</option>
-          <option value="l">عرضي</option>
-        </select>
-      </label>
-      <button class="ghost" id="whExcelBtn">تصدير Excel</button>
-      <button class="ghost" id="whPdfBtn">تصدير PDF</button>
-      <button id="whImgBtn">تصدير صور</button>
     </div>
 
     <div id="whArea"><div class="sub">ارفع دليل الأصناف وأرصدة مخزن عشان يظهر التقرير.</div></div>
+
+    <div class="nk-exp" style="margin-top:14px">
+      <div class="nk-exp-lbl" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>تصدير الجدول المعروض</span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px" title="اتجاه ورقة الـPDF">📄 الاتجاه
+          <select id="whPdfOrient" style="font-size:12.5px">
+            <option value="auto">تلقائي</option>
+            <option value="p">طولي</option>
+            <option value="l">عرضي</option>
+          </select>
+        </label>
+      </div>
+      <div class="nk-exp-btns">
+        <button class="nk-x" id="whExcelBtn"><span>⬇️</span>إكسل</button>
+        <button class="nk-x" id="whPdfBtn"><span>📄</span>PDF</button>
+        <button class="nk-x" id="whImgBtn"><span>🖼️</span>صور</button>
+      </div>
+    </div>
   </div>
 </div><!-- /whApp -->
 
@@ -786,11 +812,15 @@
         <select id="finPeriod"></select>
       </label>
       <span class="badge" id="finCount"></span>
-      <span style="flex:1"></span>
-      <button class="ghost" id="finExcelBtn">تصدير Excel</button>
-      <button class="ghost" id="finPdfBtn">تصدير PDF</button>
     </div>
     <div id="finArea"><div class="sub">ارفع ميزان مراجعة شهر واحد على الأقل.</div></div>
+    <div class="nk-exp" style="margin-top:14px">
+      <div class="nk-exp-lbl">تصدير القائمة المعروضة</div>
+      <div class="nk-exp-btns" style="grid-template-columns:repeat(2,1fr)">
+        <button class="nk-x" id="finExcelBtn"><span>⬇️</span>إكسل</button>
+        <button class="nk-x" id="finPdfBtn"><span>📄</span>PDF</button>
+      </div>
+    </div>
   </div>
 </div><!-- /finApp -->
 
@@ -962,7 +992,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v127';
+const APP_VERSION = 'v132';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2769,7 +2799,7 @@ const reportView = {
   itemsByCode: true,  // البيان = كود الباب (A06)، وكل مقاساته في صف واحد
   sortKey: 'total',   // 'total' | 'label' | رقم عمود
   sortDir: 'desc',
-  growthCols: true,   // عمودَي الفرق والنمو % جوه جدول المبيعات
+  growthCols: false,   // عمودَي الفرق والنمو % جوه جدول المبيعات — مخفيين افتراضيًا
   showClass: false,   // عمود التصنيف — مقفول افتراضي
   ranks: true,        // ميداليات لأعلى 10
 };
@@ -3637,6 +3667,8 @@ function allSectorTotals(monthsArg){
   });
   return totals;
 }
+// الرسوم بقت اختيارية بضغطة زرار — مش بتظهر لوحدها لما فيه بيانات.
+let chartsOpen = false;
 function renderCharts(){
   const months = visibleMonths();
   if(!months.length){ $('chartsArea').style.display = 'none'; return; }
@@ -3649,10 +3681,16 @@ function renderCharts(){
   const sectorTotals = SECTORS.map(s => ({ label: s, total: sTotals[s]||0 }))
     .filter(o => o.total > 0)          // قطاع من غير مبيعات = عمود فاضي بيزحم الشارت
     .sort((a,b)=> b.total - a.total);
-  $('chartsArea').style.display = 'block';
-  drawBarChart('topCustomersChart', custTotals.map(o=>o.label), custTotals.map(o=>o.total), '#3b5fe0');
+  $('chartsArea').style.display = chartsOpen ? 'block' : 'none';
+  if(!chartsOpen) return;   // من غير داعي نرسم شارتات مخفية
+  drawBarChart('topCustomersChart', custTotals.map(o=>o.label), custTotals.map(o=>o.total), '#6c2eb5');
   drawBarChart('sectorTotalsChart', sectorTotals.map(o=>o.label), sectorTotals.map(o=>o.total), '#0f9d63');
 }
+if(document.getElementById('chartsToggleBtn')) document.getElementById('chartsToggleBtn').onclick = ()=>{
+  chartsOpen = !chartsOpen;
+  document.getElementById('chartsToggleBtn').textContent = chartsOpen ? '📊 إخفاء الرسوم البيانية' : '📊 عرض الرسوم البيانية';
+  renderCharts();
+};
 
 // ---- Export ----
 // ---- تصدير Excel: بنفس اختيارات وتنسيق الـPDF ----
@@ -8869,17 +8907,34 @@ function renderGV_impl(el){
   gvWire(el);
 }
 
+// نموذج إكسل فاضي بنفس الأعمدة المطلوبة بالظبط — تنزّله وتشوف الشكل المتوقع
+// قبل ما ترفع ملفك، وتقدر تعبيه وترفعه هو نفسه.
+function gvItemsTemplate(){
+  const aoa = [
+    ['الكود CODE', 'اسم الصنف', 'DESCRIPTION', 'عدد القطع بالكرتونة', 'وزن القطعة', 'سعر القطعة'],
+    ['MKS 404 - 00', 'مقص 35- 60  GEVIS', '', 10, 0.325, 1.3494],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:16},{wch:26},{wch:16},{wch:14},{wch:12},{wch:12}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'data');
+  XLSX.writeFile(wb, 'نموذج-دليل-أصناف-جيفز.xlsx');
+}
 function gvItemsHtml(){
   const filtered = GV.items.map((x, i)=> ({x, i})).filter(({x})=> !GV.q || normName((x.name||'') + ' ' + (x.code||'')).indexOf(normName(GV.q)) >= 0);
   return `
   <div class="card">
     <div class="flex-between"><h2 style="margin:0">📦 دليل الأصناف</h2>
-      <div class="row">
-        <input type="file" id="gvFile" accept=".xlsx,.xls" style="max-width:200px">
-        <button class="secondary" id="gvAddItem">+ صنف يدوي</button>
-      </div>
+      <button class="secondary" id="gvSaveItems">💾 حفظ</button>
     </div>
-    <div class="sub" style="margin-top:6px">ارفع إكسل فيه "الكود CODE" و"اسم الصنف" (وياريت وزن القطعة ومحتوى الكرتونة والسعر) — بيتحدّث بالكود، أو اكتب صنف يدوي.</div>
+    <div class="row" style="margin-top:10px;flex-wrap:wrap">
+      <input type="file" id="gvFile" accept=".xlsx,.xls" style="max-width:200px">
+      <button class="ghost" id="gvTemplateBtn">⬇️ تنزيل نموذج إكسل</button>
+      <button class="secondary" id="gvAddItem">+ صنف يدوي</button>
+    </div>
+    <div class="sub" style="margin-top:6px">مش عارف الملف يتقبل؟ نزّل النموذج فوق وشوف شكل الأعمدة بالظبط، وارفع نفس الملف بعد ما تعبيه.
+      الأعمدة المطلوبة: <b>الكود CODE</b> و<b>اسم الصنف</b> (لازم)، وياريت <b>عدد القطع بالكرتونة</b> و<b>وزن القطعة</b> و<b>سعر القطعة</b>.</div>
+    <div id="gvItemsMsg" style="margin-top:6px"></div>
     <div class="row" style="margin-top:8px"><input type="text" id="gvItemSearch" placeholder="🔍 دوّر بالاسم أو الكود" value="${esc(GV.q || '')}" style="min-width:240px;flex:1"></div>
     <div class="tbl-wrap" style="margin-top:10px;max-height:480px"><table><thead><tr>
       <th>م</th><th>الكود</th><th>اسم الصنف</th><th>وزن القطعة (كجم)</th><th>محتوى الكرتونة</th><th>سعر القطعة $</th><th></th>
@@ -8922,7 +8977,7 @@ function gvOrdersHtml(){
   });
   return `
   <div class="card">
-    <div class="flex-between"><h2 style="margin:0">🧾 الطلبيات</h2><input type="file" id="gvOrderFile" accept=".xlsx,.xls" style="max-width:190px"></div>
+    <div class="flex-between"><h2 style="margin:0">🧾 الطلبيات</h2><div class="row"><input type="file" id="gvOrderFile" accept=".xlsx,.xls" style="max-width:190px"><button class="secondary" id="gvSaveOrder">💾 حفظ</button></div></div>
     <div class="sub" style="margin-top:4px">عندك طلبية قديمة؟ ارفع ملفها وهيتضم صنف صنف على الطلبية المفتوحة (بيربط كل صنف بالدليل تلقائيًا).</div>
     <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr>
       <th>م</th><th>رقم الطلبية</th><th>التاريخ</th><th>عدد الأصناف</th><th>الوزن (كجم)</th><th></th><th></th>
@@ -8971,7 +9026,8 @@ function gvReceiveHtml(){
   return `
   <div class="card">
     <div class="flex-between"><h2 style="margin:0">📥 استلام الطلبية</h2>
-      <label>الطلبية <select id="gvRecvOrder">${opts}</select></label></div>
+      <div class="row"><label>الطلبية <select id="gvRecvOrder">${opts}</select></label>
+      <button class="secondary" id="gvSaveRecv">💾 حفظ</button></div></div>
     <div class="sub" style="margin-top:6px">اكتب المستلم بالقطعة أو بالكرتونة — الخانة التانية تتحسب لوحدها تلقائي، والمتبقي بيتحدّث فورًا.</div>
     <div class="tbl-wrap" style="margin-top:10px;overflow:visible;max-height:none"><table><thead><tr>
       <th>م</th><th>اسم الصنف</th><th>المطلوب (قطعة)</th><th>المطلوب (كرتونة)</th>
@@ -8988,7 +9044,8 @@ function gvPricingHtml(){
   return `
   <div class="card">
     <div class="flex-between"><h2 style="margin:0">💰 تسعير الطلبية</h2>
-      <label>الطلبية <select id="gvPriceOrder">${opts}</select></label></div>
+      <div class="row"><label>الطلبية <select id="gvPriceOrder">${opts}</select></label>
+      <button class="secondary" id="gvSavePrice">💾 حفظ</button></div></div>
     <div class="sub" style="margin-top:4px">التسعير على أساس الكمية المستلمة (لو مسجّلة)، وإلا الكمية المطلوبة. المصاريف الإضافية بتوزّع على الأصناف حسب نصيب كل صنف من الوزن.</div>
     <div class="row" style="margin-top:10px;gap:14px;flex-wrap:wrap">
       <label>سعر صرف الدولار (جنيه) <input type="number" id="gvPRate" value="${esc(pr.rate)}" style="width:100px"></label>
@@ -9030,17 +9087,33 @@ function gvWire(el){
     const n = $('gvItemSearch'); if(n){ n.focus({preventScroll: true}); try{ n.setSelectionRange(pos, pos); }catch(e){} } };
   const addItem = $('gvAddItem'); if(addItem) addItem.onclick = ()=>{ GV.items.unshift({code:'', name:'', pcs:'', weight:'', price:''}); gvSave(); renderGV(); };
   el.querySelectorAll('[data-gvidel]').forEach(b=> b.onclick = ()=>{ GV.items.splice(+b.dataset.gvidel, 1); gvSave(); renderGV(); });
+  const tmplBtn = $('gvTemplateBtn'); if(tmplBtn) tmplBtn.onclick = gvItemsTemplate;
+  const saveBtn = $('gvSaveItems'); if(saveBtn) saveBtn.onclick = ()=>{
+    gvSave();
+    const m = $('gvItemsMsg'); if(m){ m.innerHTML = '<div class="msg ok">تم الحفظ ✔</div>'; setTimeout(()=>{ if(m) m.innerHTML = ''; }, 2500); }
+  };
   const fi = $('gvFile');
   if(fi) fi.onchange = (e)=>{
     const f = e.target.files && e.target.files[0]; if(!f) return;
+    const msg = $('gvItemsMsg'); if(msg) msg.innerHTML = '<div class="msg warn">بيقرا الملف...</div>';
     const rd = new FileReader();
     rd.onload = (ev)=>{
       try{
         const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+        const sheetNames = wb.SheetNames.join('، ');
         const res = gvItemsImport(wb);
         renderGV();
-        alert(res.added || res.upd ? `تم: ${res.added} صنف جديد، ${res.upd} صنف اتحدّث.` : 'مش لاقي شيت فيه عمود "الكود CODE" و"اسم الصنف".');
-      }catch(err){ alert('مش قادر أقرا الملف: ' + err.message); }
+        const m2 = $('gvItemsMsg');
+        if(res.added || res.upd){
+          if(m2) m2.innerHTML = `<div class="msg ok">تم: ${res.added} صنف جديد، ${res.upd} صنف اتحدّث.</div>`;
+        } else if(m2){
+          m2.innerHTML = `<div class="msg err">مش لاقي عمود "الكود CODE" و"اسم الصنف" في أي شيت.
+            الشيتات اللي في ملفك: <b>${esc(sheetNames)}</b> — نزّل النموذج فوق وقارن أسماء الأعمدة بالظبط.</div>`;
+        }
+      }catch(err){
+        const m3 = $('gvItemsMsg');
+        if(m3) m3.innerHTML = `<div class="msg err">مش قادر أقرا الملف: ${esc(err.message)}</div>`;
+      }
     };
     rd.readAsArrayBuffer(f);
   };
@@ -9098,6 +9171,9 @@ function gvWire(el){
     };
     rd.readAsText(f);
   };
+  const soBtn = $('gvSaveOrder'); if(soBtn) soBtn.onclick = ()=>{
+    gvSave(); soBtn.textContent = '✔ تم الحفظ'; setTimeout(()=>{ soBtn.textContent = '💾 حفظ'; }, 2000);
+  };
   $('gvNo').onchange = (e)=>{ o.no = nkN(e.target.value); gvSave(); renderGV(); };
   $('gvDate').onchange = (e)=>{ o.date = e.target.value; gvSave(); renderGV(); };
   const addRow = $('gvAddRow'); if(addRow) addRow.onclick = ()=>{ o.rows.push({name:'', qty:''}); gvSave(); renderGV();
@@ -9149,6 +9225,9 @@ function gvWire(el){
   });
 
   // ---- تاب الاستلام ----
+  const srBtn = $('gvSaveRecv'); if(srBtn) srBtn.onclick = ()=>{
+    gvSave(); srBtn.textContent = '✔ تم الحفظ'; setTimeout(()=>{ srBtn.textContent = '💾 حفظ'; }, 2000);
+  };
   const ro = $('gvRecvOrder'); if(ro) ro.onchange = ()=>{ GV.cur = +ro.value; gvSave(); renderGV(); };
   el.querySelectorAll('[data-nk^="gvr."]').forEach(inp=> inp.onchange = ()=>{
     const [, i, field] = inp.dataset.nk.split('.');
@@ -9166,6 +9245,9 @@ function gvWire(el){
   });
 
   // ---- تاب التسعير ----
+  const spBtn = $('gvSavePrice'); if(spBtn) spBtn.onclick = ()=>{
+    gvSave(); spBtn.textContent = '✔ تم الحفظ'; setTimeout(()=>{ spBtn.textContent = '💾 حفظ'; }, 2000);
+  };
   const po = $('gvPriceOrder'); if(po) po.onchange = ()=>{ GV.cur = +po.value; gvSave(); renderGV(); };
   const pr = gvPricing(o.no);
   const pSet = (id, field)=>{ const e = $(id); if(e) e.onchange = ()=>{ pr[field] = nkN(e.value); gvSave(); renderGV(); }; };
