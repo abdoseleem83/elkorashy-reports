@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-  :root{
+  :root{--gut:16px;
     --bg:#eef3fb; --panel:#ffffff; --panel2:#eaf1fb; --border:#d6e3f5;
     --text:#16233b; --muted:#64748b; --accent:#1f5fd6; --accent2:#0f9d63;
     --danger:#dc2626; --warn:#b45309;
@@ -31,16 +31,19 @@
      لو الجهاز مفيهوش أريال. */
   body{background:var(--bg);color:var(--text);
     font-family:Arial,'Arial Unicode MS','Liberation Sans','Helvetica Neue',Helvetica,sans-serif;
-    font-size:14px;margin:0;padding:16px;padding-top:0}
+    font-size:14px;margin:0;padding:var(--gut);padding-top:0}
+  /* الشريط بيتمدد لحواف الشاشة بهامش سالب. لازم الهامش السالب يساوي
+     padding الصفحة بالظبط، وإلا بيزيد عن عرض الشاشة ويعمل سكرول أفقي في
+     كل الشاشات. (كان -16 ثابت والـpadding بقى 10 على الموبايل = ١٢px زيادة.) */
   .app-bar{position:sticky;top:0;z-index:50;background:linear-gradient(135deg,#123a86,#1f5fd6);
-    margin:0 -16px 14px;padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));
+    margin:0 calc(-1 * var(--gut)) 14px;padding:12px var(--gut);padding-top:max(12px, env(safe-area-inset-top));
     display:flex;align-items:center;gap:12px;box-shadow:0 3px 10px rgba(18,58,134,.25)}
   .app-bar img{height:30px;width:auto;display:block;flex:none;background:#fff;border-radius:10px;padding:3px 6px}
   .app-bar h1{font-size:16px;margin:0;flex:1;line-height:1.3;color:#fff}
   .app-bar .badge{background:rgba(255,255,255,.2);color:#fff}
   @media(min-width:700px){
-    body{padding:24px}
-    .app-bar{margin:0 -24px 18px;padding:14px 24px}
+    :root{--gut:24px}
+    .app-bar{margin-bottom:18px;padding-top:14px;padding-bottom:14px}
     .app-bar img{height:42px}
     .app-bar h1{font-size:20px}
   }
@@ -268,7 +271,7 @@
   }
 
   @media (max-width: 640px){
-    body{padding:10px}
+    :root{--gut:10px}
     h1{font-size:17px}
     h2{font-size:14px}
     .sub{font-size:12px}
@@ -337,6 +340,12 @@
   </button>
   <button class="mod-btn" data-mod="gv" aria-expanded="false" aria-controls="gvApp">
     <span class="mod-ico">🚢</span><span class="mod-txt"><b>طلبيات جيفز</b><span class="mod-sub">طلبيات واستلام وتسعير</span></span><span class="mod-car">▾</span>
+  </button>
+  <button class="mod-btn" data-mod="qp" aria-expanded="false" aria-controls="qpApp">
+    <span class="mod-ico">💵</span><span class="mod-txt"><b>مرتبات القرشي</b><span class="mod-sub">كشف نصف شهري</span></span><span class="mod-car">▾</span>
+  </button>
+  <button class="mod-btn" data-mod="fp" aria-expanded="false" aria-controls="fpApp">
+    <span class="mod-ico">🏭</span><span class="mod-txt"><b>مرتبات المصنع</b><span class="mod-sub">سمارتي للأبواب</span></span><span class="mod-car">▾</span>
   </button>
   <button class="mod-btn" data-mod="ax" aria-expanded="false" aria-controls="axApp">
     <span class="mod-ico">🎁</span><span class="mod-txt"><b>بونص اكسا</b><span class="mod-sub">بونص المشتريات والموزعين</span></span><span class="mod-car">▾</span>
@@ -1006,7 +1015,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v135';
+const APP_VERSION = 'v136';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -3625,7 +3634,7 @@ function bindSortHeaders(){
   });
 }
 
-$('reportSearch').addEventListener('input', (e)=>{ reportView.search = e.target.value; renderReport(); });
+bindSearch('reportSearch', ()=>{ reportView.search = $('reportSearch').value; renderReport(); });
 $('reportClassFilter').addEventListener('change', (e)=>{ reportView.cls = e.target.value; renderReport(); });
 $('reportAggWholesale').addEventListener('change', (e)=>{ reportView.aggWholesale = e.target.checked; renderReport(); });
 $('reportGrowthCols').addEventListener('change', (e)=>{ reportView.growthCols = e.target.checked; renderReport(); });
@@ -4155,7 +4164,7 @@ $('manageCustomersBtn').addEventListener('click', ()=>{
   renderCustomersList();
 });
 $('closeCustomersBtn').addEventListener('click', ()=> $('customersPanel').style.display='none');
-$('custSearch').addEventListener('input', ()=> renderCustomersList());
+bindSearch('custSearch', renderCustomersList);
 $('custClassFilter').addEventListener('change', ()=> renderCustomersList());
 
 // ---- Sectors panel ----
@@ -4579,7 +4588,7 @@ $('bulkApplyBtn').addEventListener('click', async ()=>{
   alert(`تم: ${items.length} صنف اتحولوا لقطاع "${target}".`);
 });
 
-$('itemSearch').addEventListener('input', ()=> renderItemsList());
+bindSearch('itemSearch', renderItemsList);
 $('itemSectorFilter').addEventListener('change', ()=> renderItemsList());
 
 // ---- PDF export (via browser print) ----
@@ -5901,12 +5910,41 @@ function renderWhSyncLine(){
 }
 
 const WH_KEYS = ['whCatalog','whBalances','whOrder','whCount'];
+// المزامنة كانت شغالة في شاشة المخازن بس، فشاشة المبيعات والقوائم المالية
+// كانوا بيفضلوا على البيانات القديمة لحد ما تعمل reload. (الشاشات الجديدة —
+// جيفز والمرتبات وبونص اكسا — عندها nkCloudPullAll الخاصة بيها.)
+const SYNC_KEYS_BY_MOD = {
+  wh:    ['whCatalog','whBalances','whOrder','whCount'],
+  fin:   ['finData'],
+  sales: ['classificationDiff','itemOverrideDiff','sectorsList','sectorSheets'],
+};
+function syncKeysFor(mod){ return SYNC_KEYS_BY_MOD[mod] || []; }
 const WH_SETTERS = {
   whCatalog:  v=>{ whCatalog  = v; },
   whBalances: v=>{ whBalances = v; },
   whOrder:    v=>{ whOrder    = v; },
   whCount:    v=>{ whCount    = v; },
 };
+const SYNC_SETTERS = Object.assign({}, WH_SETTERS, {
+  finData: v=>{ finData = v; },
+  sectorsList: v=>{ if(Array.isArray(v)) SECTORS = v; },
+  sectorSheets: v=>{ sectorSheet = v || {}; setBaseline('sectorSheets', v || {}); },
+  classificationDiff: v=>{
+    setBaseline('classificationDiff', v || {});
+    classification = migrateClassification(mergeWithSeed(seedClassificationMap(), v || {}));
+  },
+  itemOverrideDiff: v=>{
+    setBaseline('itemOverrideDiff', v || {});
+    itemOverride = mergeWithSeed(ITEM_SECTOR_SEED, v || {});
+  },
+});
+function renderActiveKeepScroll(){
+  if(activeModule === 'wh'){ whRenderKeepScroll(); return; }
+  keepScroll(()=>{
+    if(activeModule === 'fin' && typeof renderFin === 'function') renderFin();
+    else if(activeModule === 'sales' && typeof renderReport === 'function') renderReport();
+  });
+}
 
 // إعادة جلب بيانات المخازن من السيرفر من غير reload للصفحة كلها.
 // الأربع مفاتيح بتتجاب **مع بعض** مش واحد ورا التاني (كانت ٤ طلبات متسلسلة).
@@ -5951,17 +5989,41 @@ function whUserTyping(){
 
 // إعادة الرسم بتبني الجدول من الأول، والمستخدم كان بيرجع لأول الصفحة كل مرة
 // المزامنة تجيب جديد. بنحفظ مكان السحب (الصفحة وجوه الجدول) ونرجّعه.
-function whRenderKeepScroll(){
-  const wrapBefore = document.querySelector('#whArea .tbl-wrap');
-  const inner = wrapBefore ? wrapBefore.scrollTop : 0;
+// بيشغّل إعادة الرسم وبيرجّع المستخدم لنفس المكان — رأسيًا في الصفحة وجوه
+// الجدول ومكان مؤشر الكتابة كمان.
+function keepScroll(fn){
+  const wraps = [...document.querySelectorAll('.tbl-wrap')].map(w => w.scrollTop);
   const page = window.scrollY;
-  renderWh();
-  const wrapAfter = document.querySelector('#whArea .tbl-wrap');
-  if(wrapAfter && inner) wrapAfter.scrollTop = inner;
+  const act = document.activeElement;
+  const actId = act && act.id ? act.id : null;
+  const selS = act && act.selectionStart, selE = act && act.selectionEnd;
+  fn();
+  const after = [...document.querySelectorAll('.tbl-wrap')];
+  after.forEach((w, i)=>{ if(wraps[i]) w.scrollTop = wraps[i]; });
   if(page) window.scrollTo(0, page);
+  if(actId && document.activeElement !== act){
+    const el = document.getElementById(actId);
+    if(el && typeof el.focus === 'function'){
+      el.focus({preventScroll: true});
+      try{ if(selS != null && el.setSelectionRange) el.setSelectionRange(selS, selE); }catch(e){}
+    }
+  }
 }
+// البحث كان بيعيد رسم الشاشة كلها مع كل حرف: الصفحة تنطّ لفوق والكتابة
+// تتقطع. دلوقتي بنستنى ٢٠٠ مللي بعد آخر حرف وبنحافظ على المكان.
+function bindSearch(id, render, ms){
+  const el = $(id);
+  if(!el) return;
+  let t = null;
+  el.addEventListener('input', ()=>{
+    if(t) clearTimeout(t);
+    t = setTimeout(()=>{ t = null; keepScroll(render); }, ms == null ? 200 : ms);
+  });
+}
+function whRenderKeepScroll(){ keepScroll(renderWh); }
 
 // بيرجّع true لو فيه حاجة اتحدّثت فعلًا
+async function pullChanged(){ return whPullChanged(); }
 async function whPullChanged(){
   if(whPolling) return false;
   // whDirty فيه دايمًا المفتاحين whOrder/whCount، المهم هو المخازن اللي
@@ -5983,7 +6045,7 @@ async function whPullChanged(){
     // المستخدم كتب حاجة والطلب كان في السكة؟ منطبّقش نسخة السيرفر دلوقتي —
     // هي متأخرة عن اللي في إيده، وتطبيقها كان هيمسح اللي كتبه قبل ما يترفع.
     if(busy()) return false;
-    const need = WH_KEYS.filter(k => srv[k] != null && localVersions[k] !== srv[k]);
+    const need = syncKeysFor(activeModule).filter(k => srv[k] != null && localVersions[k] !== srv[k]);
     if(!need.length){ whSyncAt = Date.now(); return false; }
     let failed = 0;
     // بنجيب الأول وبنطبّق بعدين: لو المستخدم كتب حاجة والطلبات في السكة
@@ -5996,7 +6058,11 @@ async function whPullChanged(){
       }catch(e){ if(!isMissingKey(e)) failed++; }
     }));
     if(busy()) return false;
-    Object.keys(fetched).forEach(k=>{ WH_SETTERS[k](fetched[k]); localVersions[k] = srv[k]; });
+    Object.keys(fetched).forEach(k=>{
+      const set = SYNC_SETTERS[k];
+      if(set) set(fetched[k]);
+      localVersions[k] = srv[k];
+    });
     if(!failed){
       whUpdateLocalCache(); offlineMode = false; whSyncAt = Date.now();
       localVersions.__at = Date.now();
@@ -6004,7 +6070,7 @@ async function whPullChanged(){
     }
     // المستخدم بيكتب دلوقتي؟ البيانات اتحدّثت في الذاكرة والرندر يستنى الدورة
     // الجاية — أهم حاجة إن اللي بيكتبه ما يضيعش من تحت إيده.
-    if(!whUserTyping()) whRenderKeepScroll();
+    if(!whUserTyping()) renderActiveKeepScroll();
     return true;
   }finally{ whPolling = false; }
 }
@@ -6012,7 +6078,8 @@ async function whPullChanged(){
 function whPollStart(){
   whPollStop();
   whPollTimer = setInterval(()=>{
-    if(document.visibilityState !== 'visible' || activeModule !== 'wh') return;
+    if(document.visibilityState !== 'visible') return;
+    if(!syncKeysFor(activeModule).length) return;
     whPullChanged().catch(()=>{});
   }, WH_POLL_MS);
 }
@@ -6820,9 +6887,10 @@ document.querySelectorAll('#whTabs .tab').forEach(t=>{
     renderWh();
   });
 });
-['whSearch','whStore','whHideZero'].forEach(id=>{
+bindSearch('whSearch', renderWh);
+['whStore','whHideZero'].forEach(id=>{
   const el = $(id);
-  if(el) el.addEventListener(el.tagName === 'INPUT' && el.type === 'text' ? 'input' : 'change', renderWh);
+  if(el) el.addEventListener('change', ()=> keepScroll(renderWh));
 });
 whInitMultiDrop('whGroup', 'كل المجموعات');
 whInitMultiDrop('whSub', 'كل الفرعية');
@@ -7178,17 +7246,6 @@ let finPctBase = 0;   // الأساس اللي بتتحسب عليه نسب ال
 function finLine(label, val, cls, indent){
   return `<tr${cls?` class="${cls}"`:''}><td style="text-align:right;padding-inline-start:${(indent||0)*18}px">${esc(label)}</td>
     <td class="wh-num">${finFmt(val)}</td><td class="wh-num">${finPct(val, finPctBase)}</td></tr>`;
-}
-function finSection(title, items, total, totalLabel){
-  let h = `<tr class="grp-row"><td colspan="3" style="text-align:right">${esc(title)}</td></tr>`;
-  finGroups(items).forEach(g=>{
-    if(!g.code){ h += finLine(g.items[0].name, g.items[0].v, '', 1); return; }
-    h += `<tr class="fin-sub"><td colspan="3" style="text-align:right;padding-inline-start:18px">${esc(g.name)}</td></tr>`;
-    g.items.forEach(x => { h += finLine(x.name, x.v, '', 2); });
-    h += finLine('إجمالي ' + g.name, g.total, 'fin-subtot', 2);
-  });
-  if(totalLabel != null) h += finLine(totalLabel, total, 'total-row', 1);
-  return h;
 }
 function finPeriodLabel(months){
   if(!finPeriodSel) return `كل الشهور (${months.length})`;
@@ -7772,19 +7829,9 @@ if($('finExcelBtn')){
   });
 }
 
-function showModule(mod){
-  activeModule = mod;
-  $('salesApp').style.display = mod === 'sales' ? '' : 'none';
-  $('whApp').style.display = mod === 'wh' ? '' : 'none';
-  if($('finApp')) $('finApp').style.display = mod === 'fin' ? '' : 'none';
-  ['it','gv','qp','fp','ax'].forEach(m=>{
-    const el = $(m + 'App'); if(!el) return;
-    el.style.display = mod === m ? '' : 'none';
-    if(mod === m && typeof window['render' + m.toUpperCase()] === 'function') window['render' + m.toUpperCase()]();
-  });
-  if(mod !== 'wh' && typeof whPollStop === 'function') whPollStop();
-  // كروت الرفع بتتطوي على الموبايل (العنوان بيفضل زرار يفتحها).
-// على الشاشة الكبيرة كله مفتوح زي ما هو.
+// كروت الرفع بتتطوي على الموبايل (العنوان بيفضل زرار يفتحها).
+// (كانت متحشورة جوه showModule من v84، يعني مكانتش بتشتغل غير لما تفتح
+//  قسم — فأول ما تفتح التطبيق كروت الرفع تفضل مفتوحة والشاشة مزدحمة.)
 function setupFoldableCards(){
   const small = window.matchMedia('(max-width: 760px)').matches;
   // أول استخدام (مفيش بيانات أصلًا) لازم كارت الرفع يفضل مفتوح — لو طويناه
@@ -7814,9 +7861,20 @@ function setupFoldableCards(){
     card.classList.toggle('folded', small);
   });
 }
-setupFoldableCards();
 
-document.querySelectorAll('.mod-btn').forEach(b=>{
+function showModule(mod){
+  activeModule = mod;
+  $('salesApp').style.display = mod === 'sales' ? '' : 'none';
+  $('whApp').style.display = mod === 'wh' ? '' : 'none';
+  if($('finApp')) $('finApp').style.display = mod === 'fin' ? '' : 'none';
+  ['it','gv','qp','fp','ax'].forEach(m=>{
+    const el = $(m + 'App'); if(!el) return;
+    el.style.display = mod === m ? '' : 'none';
+    if(mod === m && typeof window['render' + m.toUpperCase()] === 'function') window['render' + m.toUpperCase()]();
+  });
+  if(!syncKeysFor(mod).length && typeof whPollStop === 'function') whPollStop();
+  setupFoldableCards();
+  document.querySelectorAll('.mod-btn').forEach(b=>{
     const on = b.dataset.mod === mod;
     b.classList.toggle('active', on);
     b.setAttribute('aria-expanded', on ? 'true' : 'false');
