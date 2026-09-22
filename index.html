@@ -27,6 +27,11 @@
     --grid:#c4cbe0;           /* خطوط الجدول */
   }
   *{box-sizing:border-box}
+  /* الصفحة نفسها ما تتزحلقش يمين وشمال أبدًا: الجداول وشريط الأقسام عندهم
+     سكرول خاص بيهم. من غير ده، أول ما تدوس زرار قسم المتصفح كان بيزحلق
+     الصفحة كلها عشان يوري الزرار، فالشاشة تبان "مكسورة". clip مش hidden
+     عشان الشرائط الملزوقة (sticky) تفضل شغالة. */
+  html{overflow-x:clip}
   /* أريال في كل حاجة — عربي وأرقام. الاحتياطي بيمشي على نفس المقاسات تقريبًا
      لو الجهاز مفيهوش أريال. */
   body{background:var(--bg);color:var(--text);
@@ -187,6 +192,9 @@
   /* صف أفقي صغير من أيقونات مضغوطة — تدوس على أي واحدة يفتح قائمة/قسم
      تحتها (accordion)، مش بلاطات كبيرة زحمة. ده أقرب لشكل تطبيقات
      الحسابات (Dexef وأشباهه): شريط علوي مضغوط، مش شبكة أيقونات كبيرة. */
+  /* شريط الأقسام: على الشاشة الكبيرة بيتوزّع على سطر أو اتنين، وعلى الموبايل
+     بقى سطر واحد بيتزحلق بالصباع. سبع أقسام كانوا بياخدوا ٣-٤ سطور قبل أي
+     محتوى — يعني تفتح التطبيق وما تشوفش حاجة غير الأيقونات. */
   .mod-bar{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 14px}
   .mod-btn{display:flex;align-items:center;gap:6px;background:var(--panel);color:var(--text);
     border:1px solid var(--border);border-radius:10px;padding:7px 11px;font-size:12px;
@@ -199,6 +207,8 @@
   .mod-btn .mod-sub{display:none}
   .mod-btn .mod-car{flex:none;font-size:10px;opacity:.6;transition:transform .15s}
   .mod-btn.active .mod-car{transform:rotate(180deg);opacity:.9}
+  .mod-btn:hover{border-color:#b9cdf5}
+  .mod-btn.active:hover{border-color:var(--accent)}
   .nk-exp{margin-top:14px;padding:10px;border-radius:12px;background:var(--panel2);border:1px solid var(--border)}
   .nk-exp-lbl{font-size:12px;color:var(--muted);margin-bottom:8px}
   .nk-exp-lbl .pill{margin:0}
@@ -280,10 +290,19 @@
     /* تنبيه الأصناف اللي محتواها مش معروف + سطر آخر مزامنة بيفضلوا ظاهرين
        حتى والكارت متطوي — دول حاجات محتاج تشوفها من غير ما تفتح حاجة. */
     .card.folded > #whUnknownBox, .card.folded > #whSyncLine{display:block !important}
+    /* والكارت متطوي: سطور الحالة تتلمّ في سطرين بالكتير بدل ما تاخد نص
+       الشاشة قبل ما تشوف الجدول. */
+    .card.folded > #whSyncLine{display:-webkit-box !important;-webkit-line-clamp:2;
+      -webkit-box-orient:vertical;overflow:hidden;font-size:11.5px;line-height:1.45}
   }
 
   @media (max-width: 640px){
     :root{--gut:10px}
+    .mod-bar{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;
+      scroll-snap-type:x proximity;gap:7px;margin:10px 0 12px;padding-bottom:4px}
+    .mod-bar::-webkit-scrollbar{height:0}
+    .mod-btn{flex:0 0 auto;scroll-snap-align:start;padding:9px 13px;min-height:42px}
+    .mod-btn .mod-car{display:none}
     h1{font-size:17px}
     h2{font-size:14px}
     .sub{font-size:12px}
@@ -293,15 +312,30 @@
     input[type=file], input[type=month], input[type=text], select{
       width:100%;
     }
-    button{width:100%;padding:11px}
+    /* الأزرار كانت كلها width:100% فكل زرار بياخد سطر لوحده والشاشة تطول
+       جدًا. بقت تتقاسم السطر مع بعضها مع ارتفاع مريح للمس (44px). */
+    button{flex:1 1 auto;min-width:0;min-height:44px;padding:11px 12px}
+    .row{flex-wrap:wrap}
+    button.wide{flex:1 1 100%}
     .flex-between{flex-direction:column;align-items:stretch}
     .flex-between .row{width:100%}
     .flex-between .row button{width:auto;flex:1}
     #monthsPills{gap:6px}
     .tabs{gap:6px}
-    .tab{flex:none;white-space:nowrap;text-align:center;padding:8px 12px;font-size:12px}
-    table{font-size:11px}
-    th,td{padding:5px 4px}
+    .tab{flex:none;white-space:nowrap;text-align:center;padding:9px 13px;font-size:12.5px;min-height:38px}
+    /* شريط التبويبات بيفضل ملزوق فوق وإنت بتنزل في جدول طويل، فما تتوهش */
+    .tabs{position:sticky;top:52px;z-index:30;background:var(--bg);
+      padding:6px 0;margin-bottom:10px}
+    table{font-size:11.5px}
+    th,td{padding:6px 5px}
+    /* أول عمود (اسم الصنف/البند) بيفضل ثابت وإنت بتزحلق الجدول يمين وشمال —
+       من غيره بتتوه وما تعرفش السطر ده بتاع إيه. */
+    .tbl-wrap table td:first-child, .tbl-wrap table th:first-child{
+      position:sticky;right:0;z-index:2;background:var(--panel)}
+    .tbl-wrap table thead th:first-child{z-index:3;background:var(--thead)}
+    .tbl-wrap table tr:nth-child(even) td:first-child{background:var(--row-alt)}
+    .tbl-wrap table tr.grp-row td:first-child{background:var(--grp-bg)}
+    .tbl-wrap table tr.total-row td:first-child{background:var(--tot-bg)}
     .tbl-wrap{max-height:65vh}
     #unmatchedList .row{flex-direction:column;align-items:stretch;gap:4px}
     #unmatchedList .row span{min-width:auto}
@@ -313,6 +347,15 @@
     #whToolbar input[type=text], #whToolbar #whCount{flex:1 1 100%}
     #whToolbar .msdrop, #whToolbar .msdrop-btn, #whToolbar select{width:100%}
     #whToolbar label.chk{justify-content:flex-start}
+    /* صف الفلاتر: قايمتين جنب بعض، وسطر للمخزن وسطر للشيك بوكس — بدل
+       أربع صفوف كل واحد بعرض الشاشة كله (كان بياخد نص الشاشة قبل الجدول). */
+    #whFilterRow{gap:8px}
+    #whFilterRow .msdrop{flex:1 1 calc(50% - 4px);min-width:0}
+    #whFilterRow .msdrop-btn{width:100%;min-width:0;min-height:40px;padding:9px 10px;
+      font-size:12.5px;text-align:center}
+    #whFilterRow #whStoreWrap{flex:1 1 calc(50% - 4px);min-width:0}
+    #whFilterRow #whStoreWrap select{flex:1;min-width:0}
+    #whFilterRow > label.chk:last-child{flex:1 1 calc(50% - 4px);font-size:12px}
     /* أزرار التصدير الثلاثة في سطر واحد بدل ٣ سطور */
     #whToolbar button{flex:1 1 calc(33.333% - 6px);width:auto;padding:10px 4px;font-size:12.5px}
     /* الشرح الطويل فوق الجدول: أصغر عشان ما ياخدش نص الشاشة */
@@ -746,7 +789,7 @@
       <input type="text" id="whSearch" placeholder="🔍 بحث باسم الصنف..." style="min-width:190px;flex:1">
       <span class="badge" id="whCount"></span>
     </div>
-    <div class="row" style="margin-bottom:12px;gap:8px;flex-wrap:wrap">
+    <div class="row" id="whFilterRow" style="margin-bottom:12px;gap:8px;flex-wrap:wrap">
       <div class="msdrop">
         <button type="button" class="msdrop-btn" id="whGroupBtn">كل المجموعات</button>
         <div class="msdrop-panel" id="whGroupPanel" hidden></div>
@@ -1027,7 +1070,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v137';
+const APP_VERSION = 'v138';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -7890,7 +7933,14 @@ function showModule(mod){
     const on = b.dataset.mod === mod;
     b.classList.toggle('active', on);
     b.setAttribute('aria-expanded', on ? 'true' : 'false');
+    // نزحلق القسم المفتوح جوه الشريط بنفسنا (الشريط سطر واحد على الموبايل)
+    if(on && b.parentElement && b.parentElement.scrollWidth > b.parentElement.clientWidth){
+      try{ b.scrollIntoView({block:'nearest', inline:'center', behavior:'smooth'}); }catch(e){}
+    }
   });
+  // المتصفح بيزحلق الصفحة نفسها أفقيًا عشان يوري الزرار اللي اتضغط. الصفحة
+  // مالهاش سكرول أفقي أصلًا (الجداول والشريط عندهم بتاعهم)، فبنرجّعها لمكانها.
+  if(window.scrollX !== 0) window.scrollTo(0, window.scrollY);
   try{ localStorage.setItem('activeModule', mod || ''); }catch(e){}
   $('modHint').style.display = mod ? 'none' : '';
   if(mod === 'wh'){
