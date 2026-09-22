@@ -314,8 +314,15 @@
     }
     /* الأزرار كانت كلها width:100% فكل زرار بياخد سطر لوحده والشاشة تطول
        جدًا. بقت تتقاسم السطر مع بعضها مع ارتفاع مريح للمس (44px). */
-    button{flex:1 1 auto;min-width:0;min-height:44px;padding:11px 12px}
+    /* min-width:0 كان بيخلي ستة أزرار في صف واحد يتزنقوا فوق بعض والنص
+       يتقص. fit-content معناها الزرار ما يصغرش عن نصه أبدًا — بدل ما يتقص
+       بينزل السطر اللي بعده (لأن .row بتلف). */
+    button{flex:1 1 auto;min-width:fit-content;min-height:44px;padding:11px 12px}
     .row{flex-wrap:wrap}
+    /* مربعات الاختيار ١٦px صغيرة على اللمس. لازم نفس تخصيص القاعدة
+       الأصلية (label.chk input) عشان تغلبها. */
+    input[type=checkbox], label.chk input[type=checkbox]{width:21px;height:21px;flex:none}
+    label.chk{min-height:40px}
     button.wide{flex:1 1 100%}
     .flex-between{flex-direction:column;align-items:stretch}
     .flex-between .row{width:100%}
@@ -881,7 +888,7 @@
 <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin:22px 0 8px;padding:8px;
   font-size:11px;color:var(--muted)">
   <span id="nkSyncIcon" title="حالة المزامنة" style="cursor:pointer;font-size:16px" onclick="document.getElementById('nkSyncPanel').style.display = document.getElementById('nkSyncPanel').style.display === 'none' ? 'block' : 'none';">⏳</span>
-  <span id="nkSyncIconLbl">مزامنة</span>
+  <span>مزامنة</span>
   <span style="opacity:.4">|</span>
   <span title="نسخة احتياطية / إعدادات" style="cursor:pointer;font-size:16px" onclick="document.getElementById('nkSyncPanel').style.display = document.getElementById('nkSyncPanel').style.display === 'none' ? 'block' : 'none';">⚙️</span>
 </div>
@@ -1070,7 +1077,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v138';
+const APP_VERSION = 'v139';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -6078,8 +6085,10 @@ function bindSearch(id, render, ms){
 function whRenderKeepScroll(){ keepScroll(renderWh); }
 
 // بيرجّع true لو فيه حاجة اتحدّثت فعلًا
-async function pullChanged(){ return whPullChanged(); }
-async function whPullChanged(){
+// المزامنة مابقتش لشاشة المخازن بس — بتشتغل لأي شاشة ليها مفاتيح في
+// SYNC_KEYS_BY_MOD. (whPullChanged اسم قديم متسايب عشان النداءات القديمة.)
+async function whPullChanged(){ return pullChanged(); }
+async function pullChanged(){
   if(whPolling) return false;
   // whDirty فيه دايمًا المفتاحين whOrder/whCount، المهم هو المخازن اللي
   // جواهم — دي اللي معناها "فيه تعديل لسه ما اترفعش".
@@ -9036,15 +9045,19 @@ function gvArchiveOld(){
 }
 
 /* ---------- الواجهة ---------- */
-function renderGV(){
-  const el = $('gvApp'); if(!el) return;
-  try{ nkPreserve(el, ()=> renderGV_impl(el)); }
+// نفس قالب "ارسم الشاشة، ولو حصل خطأ وريه للمستخدم بدل ما الشاشة تفضل
+// فاضية" كان مكرر بالحرف في شاشتين والتلاتة التانيين مكانش عندهم حماية
+// أصلًا. بقى في مكان واحد وكل الشاشات الخمسة بتستخدمه.
+function nkSafeRender(appId, label, impl){
+  const el = $(appId); if(!el) return;
+  try{ nkPreserve(el, ()=> impl(el)); }
   catch(e){
-    console.error('renderGV crashed', e);
+    console.error(appId + ' crashed', e);
     el.innerHTML = `<div class="card"><div class="msg err">حصل خطأ وإحنا بنعرض الشاشة: ${esc(e.message)}
-      <br>جرّب تدوس على قسم "جيفز" تاني، ولو تكرر قولّي بالظبط إنت كنت بتعمل إيه.</div></div>`;
+      <br>جرّب تدوس على قسم "${esc(label)}" تاني، ولو تكرر قولّي بالظبط إنت كنت بتعمل إيه.</div></div>`;
   }
 }
+function renderGV(){ nkSafeRender('gvApp', 'جيفز', renderGV_impl); }
 function renderGV_impl(el){
   const tab = (GV.tab === 'items' ? 'orders' : (GV.tab || 'orders'));
   el.innerHTML = `
@@ -9061,15 +9074,7 @@ function renderGV_impl(el){
 }
 
 /* ---------- 📦 الأصناف — دليل موحّد لوحده، مرجع لكل الأقسام ---------- */
-function renderIT(){
-  const el = $('itApp'); if(!el) return;
-  try{ nkPreserve(el, ()=> renderIT_impl(el)); }
-  catch(e){
-    console.error('renderIT crashed', e);
-    el.innerHTML = `<div class="card"><div class="msg err">حصل خطأ وإحنا بنعرض الشاشة: ${esc(e.message)}
-      <br>جرّب تدوس على قسم "الأصناف" تاني، ولو تكرر قولّي بالظبط إنت كنت بتعمل إيه.</div></div>`;
-  }
-}
+function renderIT(){ nkSafeRender('itApp', 'الأصناف', renderIT_impl); }
 /* ==================== دليل الأصناف الموحّد ====================
    الأصناف كانت متفرقة في أربع أماكن ومحدش بيعرف إن اللي في المخازن هو نفسه
    اللي في المبيعات: دليل المخازن (whCatalog)، أرصدة المخازن (whBalances)،
@@ -9719,7 +9724,6 @@ const QP_SEND_COLS = ['م','اسم الموظف','الفرع','المرتب ال
 const qpSendColsOn = ()=> QP.sendCols && QP.sendCols.length === QP_SEND_COLS.length ? QP.sendCols : QP_SEND_COLS.map(()=> true);
 // فلتر فرع للتصدير: '' يعني كل الفروع
 const qpBranchRows = (c)=> QP.expBranch ? c.rows.filter(r=> (r.branch || '') === QP.expBranch) : c.rows;
-const qpBranchTotal = (rows, k)=> rows.reduce((a, r)=> a + (typeof r[k] === 'number' ? r[k] : nkN(r[k])), 0);
 function qpBlocks(which){
   const out = [];
   const mk = (h)=>{
@@ -9812,10 +9816,7 @@ function qpImport(wb){
   return {emps, filled};
 }
 
-function renderQP(){
-  const el = $('qpApp'); if(!el) return;
-  nkPreserve(el, ()=> renderQP_impl(el));
-}
+function renderQP(){ nkSafeRender('qpApp', 'مرتبات القرشي', renderQP_impl); }
 function renderQP_impl(el){
   const c = qpCalc(QP.half);
   let body = '';
@@ -10074,10 +10075,7 @@ function fpImport(wb){
   return {emps};
 }
 
-function renderFP(){
-  const el = $('fpApp'); if(!el) return;
-  nkPreserve(el, ()=> renderFP_impl(el));
-}
+function renderFP(){ nkSafeRender('fpApp', 'مرتبات المصنع', renderFP_impl); }
 function renderFP_impl(el){
   const c = fpCalc();
   const tab = FP.tab || 'pay';
@@ -10361,10 +10359,7 @@ function axImport(wb){
   return (rows ? rows.length : 0) + dists.reduce((a, d)=> a + d.rows.length, 0);
 }
 
-function renderAX(){
-  const el = $('axApp'); if(!el) return;
-  nkPreserve(el, ()=> renderAX_impl(el));
-}
+function renderAX(){ nkSafeRender('axApp', 'بونص اكسا', renderAX_impl); }
 function renderAX_impl(el){
   const c = axCalc();
   const vis = axVisible();
