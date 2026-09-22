@@ -218,6 +218,41 @@
   .mod-bar.picked .mod-btn.active .mod-txt{align-items:flex-start;width:auto}
   .mod-bar.picked .mod-btn.active .mod-txt b{font-size:13px;white-space:nowrap}
   .mod-bar.picked .mod-btn.active .mod-car{display:inline;font-size:11px}
+
+  /* ===== شاشات الموبايل: كل سطر بيبقى كارت بدل جدول عرضه ١٢٦٠ بكسل =====
+     الجداول دي (المرتبات وطلبيات جيفز) فيها ١٨-٢١ عمود. على موبايل عرضه
+     ٣٩٠ كنت بتشوف ٤ أعمدة وباقي الخانات — اللي إنت بتكتب فيها أصلًا —
+     بره الشاشة. الكارت بيحط كل بيانات الموظف/الصنف قدامك من غير سحب أفقي. */
+  .nk-rc{border:1px solid var(--border);border-radius:14px;background:var(--panel);
+    margin-bottom:10px;overflow:hidden}
+  .nk-rc-head{display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:var(--panel2);cursor:pointer;user-select:none}
+  .nk-rc-n{flex:none;min-width:22px;height:22px;border-radius:50%;background:var(--accent);
+    color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .nk-rc-t{flex:1;min-width:0;font-weight:700;font-size:13.5px;line-height:1.3;
+    overflow:hidden;text-overflow:ellipsis}
+  .nk-rc-t small{display:block;font-weight:400;font-size:11.5px;color:var(--muted)}
+  .nk-rc-v{flex:none;font-weight:800;font-size:14px;color:var(--accent2);white-space:nowrap}
+  .nk-rc-x{flex:none;background:none;border:0;color:var(--muted);font-size:15px;padding:2px 4px;cursor:pointer}
+  .nk-rc-b{padding:10px 12px}
+  .nk-rc.closed .nk-rc-b{display:none}
+  .nk-rc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .nk-rc-grid.one{grid-template-columns:1fr}
+  .nk-rc-f{min-width:0}
+  .nk-rc-f>span{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}
+  .nk-rc-f input,.nk-rc-f select{width:100%;padding:7px 8px;font-size:14px}
+  .nk-rc-sum{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:9px;
+    border-top:1px dashed var(--border)}
+  .nk-rc-sum b{background:var(--panel2);border-radius:8px;padding:3px 8px;font-size:11.5px;
+    font-weight:600;color:var(--muted);white-space:nowrap}
+  .nk-rc-sum b i{font-style:normal;font-weight:800;color:var(--text)}
+  .nk-rc-sum b.hi i{color:var(--accent2)}
+  .nk-tot{display:flex;flex-wrap:wrap;gap:8px;padding:12px;border-radius:14px;
+    background:var(--accent);color:#fff;margin-top:4px}
+  .nk-tot b{background:rgba(255,255,255,.16);border-radius:9px;padding:5px 9px;font-size:12px;
+    font-weight:600;white-space:nowrap}
+  .nk-tot b i{font-style:normal;font-weight:800}
+  .nk-rc-sug{position:relative}
   .mod-btn:hover{border-color:#b9cdf5}
   .mod-btn.active:hover{border-color:var(--accent)}
   .nk-exp{margin-top:14px;padding:10px;border-radius:12px;background:var(--panel2);border:1px solid var(--border)}
@@ -318,6 +353,9 @@
     :root{--gut:10px}
     /* الأقسام في ٣ أعمدة: كلهم قدامك مرة واحدة من غير زحلقة. */
     .mod-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0 10px}
+    /* خانات رفع الملفات لها عرض ثابت في الـinline styles (150-230px) —
+       على الموبايل الاسم بيتقص والزرار بيتزنق. خليها على عرض الشاشة. */
+    input[type=file]{max-width:100% !important;width:100%;box-sizing:border-box}
     .mod-btn{flex:none;min-width:0;padding:7px 5px;min-height:48px;
       flex-direction:column;gap:2px;text-align:center;line-height:1.15}
     .mod-btn .mod-ico{font-size:17px}
@@ -1129,7 +1167,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v148';
+const APP_VERSION = 'v149';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4969,6 +5007,14 @@ const PDF_STYLE = `
   th,td{overflow:hidden}
   /* عمود الاسم بالنسبة مش بالبكسل — عشان يفضل متزن مع أي مقاس خط */
   td:nth-child(2),th:nth-child(2){width:21%;text-align:right}
+  /* ⚠️ بلوكات المرتبات/جيفز: الأعمدة كانت بتتقسم بالتساوي (table-layout:fixed)،
+     فمع ١٤ عمود كل عمود بيبقى ٥٥ بكسل والعربي بيتكسر في نص الكلمة —
+     «صافي المرتب» كانت بتطلع «صف ي لمرت ب» و«الإسكندرية» «لالسرائ دوة»،
+     لأن كسر الكلمة العربية بيبوّظ شكل الحروف المتصلة. دلوقتي العمود بياخد
+     عرضه من محتواه، والكسر بيحصل عند المسافات بس. */
+  .blk table{table-layout:auto}
+  .blk th, .blk td{word-break:keep-all;overflow-wrap:normal;hyphens:none}
+  .blk td:nth-child(2), .blk th:nth-child(2){width:auto}
   /* جداول القوائم المالية بتحدد عروضها بنفسها بـcolgroup */
   table.fin-tbl{table-layout:auto}
   table.fin-tbl td:nth-child(2), table.fin-tbl th:nth-child(2){width:auto}
@@ -8961,11 +9007,21 @@ async function nkExport(kind, blocks, title, subtitle){
       return;
     }
     const wide = Math.max.apply(null, blocks.map(b=> b.head.length));
-    const html = nkBlocksHtml(blocks);
+    // ورقة أعرض كل ما الأعمدة تزيد. الـPDF بيصغّر الصورة على مقاس الورقة،
+    // فالعرض الزيادة معناه خط أصغر شوية بس كلمات كاملة — بدل أعمدة ضيقة
+    // بتكسر العربي في نص الكلمة.
+    const wideW = (n)=> Math.max(1080, 130 * n);
     if(kind === 'pdf'){
-      await renderPdfFromHtml(html, {subtitle: subtitle || title, orient: wide >= 9 ? 'l' : 'p',
-        wideCols: wide, fileName: safeFileName(title) + '.pdf'});
-    }else{
+      const oldW = PDF_RENDER_W;
+      PDF_RENDER_W = Math.max(PDF_RENDER_W, wideW(wide));
+      try{
+        await renderPdfFromHtml(nkBlocksHtml(blocks), {subtitle: subtitle || title,
+          orient: wide >= 9 ? 'l' : 'p', wideCols: wide, fileName: safeFileName(title) + '.pdf'});
+      }finally{ PDF_RENDER_W = oldW; }
+      return;
+    }
+    const html = nkBlocksHtml(blocks);
+    {
       // 'share' = نفس الصورة بالظبط، بس بتفتح شاشة الإرسال (واتساب/أي حاجة)
       // على الموبايل على طول. لو الجهاز مش بيدعم الإرسال المباشر (الكمبيوتر
       // غالبًا) بتتحفظ الصورة وبنقول للمستخدم يبعتها بنفسه.
@@ -8980,7 +9036,11 @@ async function nkImage(bodyHtml, subtitle, fileName, mode){
       <div style="font-size:14.5px;color:#444;margin-top:4px">${esc(subtitle)} — تاريخ التقرير ${esc(reportDateText())}</div></div>
     <img src="${LOGO_HEAD}" style="height:46px;width:auto;display:block" alt=""></div>`;
   const old = PDF_RENDER_W;
-  PDF_RENDER_W = 760;
+  // ٧٦٠ كويسة لجدول ٥-٦ أعمدة. كشف المرتبات ١٤ عمود محتاج أوسع، وإلا
+  // العناوين العربية بتتكسر في نص الكلمة وتبقى مش مقروءة في الواتساب.
+  const nCols = Math.max(0, ...(bodyHtml.match(/<thead><tr>[\s\S]*?<\/tr>/g) || [])
+    .map(h=> (h.match(/<th[ >]/g) || []).length));
+  PDF_RENDER_W = nCols > 8 ? Math.min(1500, 760 + (nCols - 8) * 75) : 760;
   try{
     const res = await renderReportCanvas(`<div class="blk">${headerHtml}</div>` + bodyHtml);
     const blob = await new Promise(r => res.canvas.toBlob(r, 'image/png'));
@@ -9027,6 +9087,48 @@ document.addEventListener('click', async (e)=>{
   catch(err){ alert('حصل خطأ في التصدير: ' + (err && err.message ? err.message : err)); }
   finally{ b.disabled = false; b.textContent = label; }
 });
+// الموبايل مش مجرد شاشة أصغر — الجداول العريضة لازم تتقلب كروت. الحد ده
+// بيتقاس مرة واحدة كل رسمة، والشاشة بتترسم من أول لو المقاس عدّى الحد
+// (تدوير الموبايل أو فتح التطبيق على تابلت).
+function nkMobile(){
+  try{ return window.matchMedia('(max-width: 760px)').matches; }
+  catch(e){ return (window.innerWidth || 1024) <= 760; }
+}
+let nkWasMobile = nkMobile();
+window.addEventListener('resize', ()=>{
+  const now = nkMobile();
+  if(now === nkWasMobile) return;
+  nkWasMobile = now;
+  const m = typeof activeModule !== 'undefined' ? activeModule : '';
+  const fn = m && window['render' + m.toUpperCase()];
+  if(typeof fn === 'function') fn();
+});
+
+// كارت سطر واحد: العنوان + الرقم المهم على اليمين، والخانات جوه، وملخص
+// محسوب تحت. كل الـinputs بتستخدم نفس data-nk بتاع الجدول، فكل الهاندلرز
+// اللي موجودة بتشتغل زي ما هي من غير أي تغيير.
+function nkRowCard(o){
+  const f = (o.fields || []).filter(Boolean).map(x=>
+    `<label class="nk-rc-f"><span>${esc(x[0])}</span>${x[1]}</label>`).join('');
+  const sum = (o.sums || []).filter(Boolean).map(x=>
+    `<b${x[2] ? ' class="hi"' : ''}>${esc(x[0])} <i>${x[1]}</i></b>`).join('');
+  return `<div class="nk-rc${o.closed ? ' closed' : ''}"${o.attr || ''}>
+    <div class="nk-rc-head"${o.foldAttr || ''}>
+      ${o.n != null ? `<span class="nk-rc-n">${o.n}</span>` : ''}
+      <span class="nk-rc-t">${esc(o.title)}${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</span>
+      ${o.value != null ? `<span class="nk-rc-v">${o.value}</span>` : ''}
+      ${o.del || ''}
+    </div>
+    <div class="nk-rc-b">
+      ${f ? `<div class="nk-rc-grid${o.one ? ' one' : ''}">${f}</div>` : ''}
+      ${o.extra || ''}
+      ${sum ? `<div class="nk-rc-sum">${sum}</div>` : ''}
+    </div>
+  </div>`;
+}
+const nkTotBar = (items)=> `<div class="nk-tot">${items.filter(Boolean)
+  .map(x=> `<b>${esc(x[0])} <i>${x[1]}</i></b>`).join('')}</div>`;
+
 const nkInp = (val, path, attrs)=>
   `<input ${attrs || 'type="number" step="any"'} data-nk="${path}" value="${esc(val == null ? '' : val)}" style="width:100%;min-width:64px;padding:5px 6px">`;
 
@@ -9710,6 +9812,18 @@ function gvItemsHtml(){
       الأعمدة المطلوبة: <b>الكود CODE</b> و<b>اسم الصنف</b> (لازم)، وياريت <b>عدد القطع بالكرتونة</b> و<b>وزن القطعة</b> و<b>سعر القطعة</b>.</div>
     <div id="gvItemsMsg" style="margin-top:6px"></div>
     <div class="row" style="margin-top:8px"><input type="text" id="gvItemSearch" placeholder="🔍 دوّر بالاسم أو الكود" value="${esc(GV.q || '')}" style="min-width:240px;flex:1"></div>
+    ${nkMobile() ? `<div style="margin-top:10px">${filtered.slice(0, 200).map(({x, i})=> nkRowCard({
+      n: i + 1, title: x.name || 'صنف جديد', sub: x.code ? 'كود ' + x.code : 'من غير كود',
+      del: `<button class="nk-rc-x" data-gvidel="${i}">🗑</button>`,
+      fields: [
+        ['الكود', nkInp(x.code, 'gv.item.' + i + '.code', 'type="text"')],
+        ['اسم الصنف', nkInp(x.name, 'gv.item.' + i + '.name', 'type="text"')],
+        ['وزن القطعة (كجم)', nkInp(x.weight, 'gv.item.' + i + '.weight')],
+        ['محتوى الكرتونة', nkInp(x.pcs, 'gv.item.' + i + '.pcs')],
+        ['سعر القطعة $', nkInp(x.price, 'gv.item.' + i + '.price')],
+      ],
+    })).join('')}${filtered.length > 200
+      ? `<div class="sub">بيعرض أول ٢٠٠ صنف — دوّر بالاسم أو الكود عشان توصل للباقي.</div>` : ''}</div>` : `
     <div class="tbl-wrap" style="margin-top:10px;max-height:480px"><table><thead><tr>
       <th>م</th><th>الكود</th><th>اسم الصنف</th><th>وزن القطعة (كجم)</th><th>محتوى الكرتونة</th><th>سعر القطعة $</th><th></th>
     </tr></thead><tbody>${filtered.map(({x, i})=> `<tr><td>${i + 1}</td>
@@ -9718,7 +9832,7 @@ function gvItemsHtml(){
       <td style="min-width:100px">${nkInp(x.weight, 'gv.item.' + i + '.weight')}</td>
       <td style="min-width:90px">${nkInp(x.pcs, 'gv.item.' + i + '.pcs')}</td>
       <td style="min-width:100px">${nkInp(x.price, 'gv.item.' + i + '.price')}</td>
-      <td><button class="ghost" data-gvidel="${i}">✕</button></td></tr>`).join('')}</tbody></table></div>
+      <td><button class="ghost" data-gvidel="${i}">✕</button></td></tr>`).join('')}</tbody></table></div>`}
     ${nkBar('gvI')}
   </div>`;
 }
@@ -9728,6 +9842,7 @@ NK_EXPORTERS['gvI'] = ()=> ({blocks: [{title:'دليل أصناف جيفيز', h
 
 function gvOrdersHtml(){
   const o = gvOrder(); const c = gvCalc(o);
+  const MOB = nkMobile();
   const list = GV.orders.map((x, i)=>{
     const cc = gvCalc(x);
     return `<tr><td>${i + 1}</td><td style="text-align:right">طلبية ${esc(x.no)}</td><td>${esc(nkDateAr(x.date))}</td>
@@ -9735,8 +9850,42 @@ function gvOrdersHtml(){
       <td><button class="${i === GV.cur ? 'secondary' : 'ghost'}" data-gvopen="${i}">${i === GV.cur ? '● مفتوحة' : 'فتح'}</button></td>
       <td><button class="ghost" data-gvdelorder="${i}">🗑</button></td></tr>`;
   }).join('');
+  // قايمة الطلبيات ككروت على الموبايل
+  const listCards = GV.orders.map((x, i)=>{
+    const cc = gvCalc(x);
+    return `<div class="nk-rc"><div class="nk-rc-head">
+      <span class="nk-rc-n">${i + 1}</span>
+      <span class="nk-rc-t">طلبية ${esc(x.no)}<small>${esc(nkDateAr(x.date))} · ${(x.rows||[]).length} صنف · ${nkF(cc.t.w, 0)} كجم</small></span>
+      <button class="${i === GV.cur ? 'secondary' : 'ghost'}" data-gvopen="${i}"
+        style="padding:5px 11px;font-size:12px">${i === GV.cur ? '● مفتوحة' : 'فتح'}</button>
+      <button class="nk-rc-x" data-gvdelorder="${i}">🗑</button>
+    </div></div>`;
+  }).join('');
+  // سطور الطلبية ككروت — الاسم والكمية هما اللي بتكتبهم، والباقي محسوب
+  let rowCards = '';
+  if(MOB) c.rows.forEach((r, i)=>{
+    rowCards += nkRowCard({
+      n: i + 1, title: r.name || 'صنف جديد',
+      sub: r.code ? 'كود ' + r.code : (r.name && !r.found ? '⚠️ مش في الدليل' : 'اكتب اسم الصنف'),
+      value: r.totalW ? nkF(r.totalW, 2) + ' كجم' : null,
+      del: `<button class="nk-rc-x" data-gvdel="${i}">🗑</button>`,
+      one: true,
+      fields: [
+        ['اسم الصنف', `<span class="nk-rc-sug">${nkInp(o.rows[i].name, 'gv.row.' + i + '.name',
+          'type="text" autocomplete="off" data-gvq="' + i + '" placeholder="اكتب جزء من الاسم أو الكود"')}`
+          + `<div class="gv-sug" data-sug="${i}" style="display:none"></div></span>`],
+        ['الكمية (قطعة)', nkInp(o.rows[i].qty, 'gv.row.' + i + '.qty')],
+      ],
+      sums: [
+        ['ق/كرتونة', nkF(r.pcs, 0)], ['الكراتين', nkF(r.cartons, 2)],
+        ['وزن القطعة', nkF(r.weight, 4)], ['إجمالي الوزن', nkF(r.totalW, 2), true],
+      ],
+    });
+  });
+  if(MOB) rowCards += nkTotBar([['الكمية', nkF(c.t.qty, 2)], ['الكراتين', nkF(c.t.cart, 2)],
+    ['إجمالي الوزن', nkF(c.t.w, 2) + ' كجم']]);
   let rowsH = '';
-  c.rows.forEach((r, i)=>{
+  if(!MOB) c.rows.forEach((r, i)=>{
     rowsH += `<tr><td>${i + 1}</td>
       <td style="text-align:right;min-width:210px;position:relative">
         ${nkInp(o.rows[i].name, 'gv.row.' + i + '.name', 'type="text" autocomplete="off" data-gvq="' + i + '" placeholder="اكتب جزء من الاسم أو الكود"')}
@@ -9753,9 +9902,10 @@ function gvOrdersHtml(){
   <div class="card">
     <div class="flex-between"><h2 style="margin:0">🧾 الطلبيات</h2><div class="row"><input type="file" id="gvOrderFile" accept=".xlsx,.xls" style="max-width:190px"><button class="secondary" id="gvSaveOrder">💾 حفظ</button></div></div>
     <div class="sub" style="margin-top:4px">عندك طلبية قديمة؟ ارفع ملفها وهيتضم صنف صنف على الطلبية المفتوحة (بيربط كل صنف بالدليل تلقائيًا).</div>
-    <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr>
+    ${MOB ? `<div style="margin-top:12px">${listCards}</div>`
+      : `<div class="tbl-wrap" style="margin-top:12px"><table><thead><tr>
       <th>م</th><th>رقم الطلبية</th><th>التاريخ</th><th>عدد الأصناف</th><th>الوزن (كجم)</th><th></th><th></th>
-    </tr></thead><tbody>${list}</tbody></table></div>
+    </tr></thead><tbody>${list}</tbody></table></div>`}
     <div class="flex-between" style="margin-top:10px">
       <span class="sub">عدد الطلبيات المحفوظة: <b>${GV.orders.length}</b> (الحد الأمن ${GV_KEEP_ORDERS})</span>
       <div class="row">
@@ -9774,6 +9924,7 @@ function gvOrdersHtml(){
       </div>
     </div>
 
+    ${MOB ? `<div style="margin-top:10px">${rowCards}</div>` : `
     <div class="tbl-wrap" style="margin-top:10px;overflow:visible;max-height:none"><table><thead><tr>
       <th>م</th><th>اسم الصنف</th><th>الكود</th><th>الكمية (قطعة)</th><th>ق/كرتونة</th><th>الكراتين</th>
       <th>وزن القطعة</th><th>إجمالي الوزن</th><th></th>
@@ -9781,7 +9932,7 @@ function gvOrdersHtml(){
       <tr class="total-row"><td></td><td style="text-align:right">الإجمالي</td><td></td>
         <td class="wh-num">${nkF(c.t.qty, 2)}</td><td></td><td class="wh-num">${nkF(c.t.cart, 2)}</td>
         <td></td><td class="wh-num">${nkF(c.t.w, 2)}</td><td></td></tr>
-    </tbody></table></div>
+    </tbody></table></div>`}
     <div class="row" style="margin-top:8px"><button id="gvAddRow">+ سطر صنف</button></div>
     ${nkBar('gvOrd')}
   </div>`;
@@ -9803,10 +9954,22 @@ function gvReceiveHtml(){
       <div class="row"><label>الطلبية <select id="gvRecvOrder">${opts}</select></label>
       <button class="secondary" id="gvSaveRecv">💾 حفظ</button></div></div>
     <div class="sub" style="margin-top:6px">اكتب المستلم بالقطعة أو بالكرتونة — الخانة التانية تتحسب لوحدها تلقائي، والمتبقي بيتحدّث فورًا.</div>
+    ${nkMobile() ? `<div style="margin-top:10px">${rc.rows.map((r, i)=> nkRowCard({
+      n: i + 1, title: r.name,
+      sub: `المطلوب ${nkF(r.qty, 0)} قطعة · ${nkF(r.cartonsReq, 2)} كرتونة`,
+      value: `<span style="color:${r.remain < 0 ? 'var(--danger)' : (r.remain > 0 ? '#a67c00' : 'var(--accent2)')}">${nkF(r.remain, 0)}</span>`,
+      fields: [
+        ['المستلم (قطعة)',  nkInp(r.rec.pieces, 'gvr.' + i + '.pieces', 'type="number" step="any" placeholder="بالقطعة"')],
+        ['المستلم (كرتونة)', nkInp(nkR(r.receivedCartons, 3), 'gvr.' + i + '.cartons', 'type="number" step="any" placeholder="بالكرتونة"')],
+      ],
+      extra: `<div style="margin-top:8px"><label class="nk-rc-f"><span>ملاحظات</span>${
+        nkInp(r.note, 'gvr.' + i + '.note', 'type="text" placeholder="ملاحظات"')}</label></div>`,
+      sums: [['المتبقي (قطعة)', nkF(r.remain, 0), true], ['المتبقي (كرتونة)', nkF(r.remainCartons, 2)]],
+    })).join('') || '<div class="sub">الطلبية دي مفيهاش أصناف لسه.</div>'}</div>` : `
     <div class="tbl-wrap" style="margin-top:10px;overflow:visible;max-height:none"><table><thead><tr>
       <th>م</th><th>اسم الصنف</th><th>المطلوب (قطعة)</th><th>المطلوب (كرتونة)</th>
       <th>المستلم (قطعة)</th><th>المستلم (كرتونة)</th><th>المتبقي (قطعة)</th><th>المتبقي (كرتونة)</th><th>ملاحظات</th>
-    </tr></thead><tbody>${rows || '<tr><td colspan="9" class="sub" style="text-align:center;padding:14px">الطلبية دي مفيهاش أصناف لسه.</td></tr>'}</tbody></table></div>
+    </tr></thead><tbody>${rows || '<tr><td colspan="9" class="sub" style="text-align:center;padding:14px">الطلبية دي مفيهاش أصناف لسه.</td></tr>'}</tbody></table></div>`}
     ${nkBar('gvRcv')}
   </div>`;
 }
@@ -9836,6 +9999,16 @@ function gvPricingHtml(){
         <span class="pill">تكلفة إضافية/كجم: <b>${nkF(pc.perKg, 3)}</b></span>
       </div>
     </div>
+    ${nkMobile() ? `<div style="margin-top:12px">${pc.rows.map((r, i)=> nkRowCard({
+      n: i + 1, title: r.name, sub: `${nkF(r.qty, 2)} قطعة · ${nkF(r.priceUsd, 4)} $`,
+      value: nkF(r.perPiece, 2) + ' ج',
+      sums: [
+        ['قيمة الصنف', nkF(r.valueEgp, 2)], ['نصيبه من المصاريف', nkF(r.share, 2)],
+        ['التكلفة الإجمالية', nkF(r.totalEgp, 2)], ['تكلفة القطعة', nkF(r.perPiece, 4), true],
+      ],
+    })).join('') || '<div class="sub">الطلبية دي مفيهاش أصناف لسه.</div>'}
+    ${nkTotBar([['قيمة الأصناف', nkF(pc.t.valueEgp, 2)], ['المصاريف', nkF(pc.t.share, 2)],
+      ['التكلفة الإجمالية', nkF(pc.t.totalEgp, 2)]])}</div>` : `
     <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr>
       <th>م</th><th>اسم الصنف</th><th>الكمية</th><th>سعر القطعة $</th><th>قيمة الصنف بالجنيه</th>
       <th>نصيبه من المصاريف</th><th>التكلفة الإجمالية</th><th>تكلفة القطعة (جنيه)</th>
@@ -9846,7 +10019,7 @@ function gvPricingHtml(){
       <tr class="total-row"><td></td><td style="text-align:right">الإجمالي</td><td></td><td></td>
         <td class="wh-num">${nkF(pc.t.valueEgp, 2)}</td><td class="wh-num">${nkF(pc.t.share, 2)}</td>
         <td class="wh-num">${nkF(pc.t.totalEgp, 2)}</td><td></td></tr>
-    </tbody></table></div>
+    </tbody></table></div>`}
     ${nkBar('gvPrc')}
   </div>`;
 }
@@ -10164,8 +10337,45 @@ function qpImport(wb){
 function renderQP(){ nkSafeRender('qpApp', 'مرتبات القرشي', renderQP_impl); }
 function renderQP_impl(el){
   const c = qpCalc(QP.half);
+  const MOB = nkMobile();
+  // على الموبايل: كارت لكل موظف بدل جدول ٢١ عمود
+  let cards = '';
+  if(MOB){
+    c.rows.forEach((r, i)=>{
+      const p = 'qp.' + i + '.';
+      const shut = !!(QP.shut || {})[r.name];
+      cards += nkRowCard({
+        n: i + 1, title: r.name, sub: r.branch || 'من غير فرع',
+        value: nkF(r.net, 0), closed: shut,
+        foldAttr: ` data-qpfold="${esc(r.name)}"`,
+        fields: [
+          ['غياب بإذن (أيام)',   nkInp(r.d.absExc, p + 'absExc')],
+          ['غياب بدون إذن (أيام)', nkInp(r.d.absNo, p + 'absNo')],
+          ['تأخيرات (ساعات)',    nkInp(r.d.late,  p + 'late')],
+          ['إضافي (ساعات)',      nkInp(r.d.extra, p + 'extra')],
+          ['جزاءات (أيام)',      nkInp(r.d.pen,   p + 'pen')],
+          ['سلف',                nkInp(r.d.adv,   p + 'adv')],
+          ['تأمينات',            nkInp(r.d.ins,   p + 'ins')],
+          ['حوافز',              nkInp(r.d.inc,   p + 'inc')],
+        ],
+        sums: [
+          ['الراتب', nkF(r.salary, 0)], ['راتب النصف', nkF(r.half, 0)],
+          ['اليوم', nkF(r.day, 2)], ['الساعة', nkF(r.hour, 2)],
+          r.dExc  ? ['خصم بإذن', nkF(r.dExc, 0)] : null,
+          r.dNo   ? ['خصم بدون إذن', nkF(r.dNo, 0)] : null,
+          r.dLate ? ['خصم تأخير', nkF(r.dLate, 0)] : null,
+          r.vExt  ? ['مبلغ إضافي', nkF(r.vExt, 0)] : null,
+          r.dPen  ? ['خصم جزاءات', nkF(r.dPen, 0)] : null,
+          ['الصافي', nkF(r.net, 0), true],
+        ],
+      });
+    });
+    cards += nkTotBar([['الراتب', nkF(c.t.salary, 0)], ['راتب النصف', nkF(c.t.half, 0)],
+      ['السلف', nkF(c.t.adv, 0)], ['التأمينات', nkF(c.t.ins, 0)], ['الحوافز', nkF(c.t.inc, 0)],
+      ['صافي المدفوع', nkF(c.t.net, 0)]]);
+  }
   let body = '';
-  c.rows.forEach((r, i)=>{
+  if(!MOB) c.rows.forEach((r, i)=>{
     const p = 'qp.' + i + '.';
     body += `<tr><td>${i + 1}</td><td style="text-align:right;min-width:170px">${esc(r.name)}</td>
       <td>${esc(r.branch)}</td><td class="wh-num">${nkF(r.salary, 0)}</td><td class="wh-num">${nkF(r.half, 0)}</td>
@@ -10191,6 +10401,11 @@ function renderQP_impl(el){
       </div>
     </div>
     <div class="sub" style="margin-top:6px">راتب النصف = الراتب ÷ 2 (لو الموظف في النصفين) · راتب اليوم = راتب النصف ÷ 15 · راتب الساعة = راتب اليوم ÷ 9 · الإضافي × 1.5 · الصافي بيتقرّب لأقرب 5.</div>
+    ${MOB ? `<div class="row" style="margin-top:10px;gap:8px">
+      <button class="btn sm" id="qpFoldAll">🗜️ اطوي الكل</button>
+      <button class="btn sm" id="qpOpenAll">🗃️ افتح الكل</button>
+      <span class="sub" style="margin:0">دوس على اسم الموظف عشان تفتحه أو تقفله.</span>
+    </div><div style="margin-top:10px">${cards}</div>` : `
     <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr>
       <th>م</th><th>الموظف</th><th>الفرع</th><th>الراتب</th><th>راتب النصف</th><th>راتب اليوم</th><th>راتب الساعة</th>
       <th>غياب بإذن</th><th>غياب بدون إذن</th><th>تأخيرات (س)</th><th>إضافي (س)</th><th>جزاءات (أيام)</th>
@@ -10204,7 +10419,7 @@ function renderQP_impl(el){
         <td class="wh-num">${nkF(c.t.dExc, 0)}</td><td class="wh-num">${nkF(c.t.dNo, 0)}</td>
         <td class="wh-num">${nkF(c.t.dLate, 0)}</td><td class="wh-num">${nkF(c.t.vExt, 0)}</td>
         <td class="wh-num">${nkF(c.t.dPen, 0)}</td><td class="wh-num">${nkF(c.t.net, 0)}</td></tr>
-    </tbody></table></div>
+    </tbody></table></div>`}
     <div class="card" style="background:var(--panel2);margin-top:12px">
       <div class="flex-between">
         <b>⚙️ أعمدة الكشف</b>
@@ -10231,6 +10446,22 @@ function renderQP_impl(el){
         <button class="secondary" id="qpAdd">+ موظف</button>
       </div></div>
     <div class="sub" style="margin-top:6px">ارفع شيت المرتبات — بيقرا "بيانات الموظفين" (الفرع والراتب والنصفين)، ولو فيه كشوف النصفين بيقرا منها الغياب والتأخيرات والإضافي والسلف كمان.</div>
+    ${MOB ? `<div style="margin-top:10px">${QP.emps.map((e, i)=> nkRowCard({
+      n: i + 1, title: e.name || 'موظف جديد', sub: e.branch || 'من غير فرع',
+      value: nkF(e.salary, 0),
+      del: `<button class="nk-rc-x" data-qpdel="${i}">🗑</button>`,
+      fields: [
+        ['اسم الموظف', nkInp(e.name, 'qpe.' + i + '.name', 'type="text"')],
+        ['الفرع', nkInp(e.branch, 'qpe.' + i + '.branch', 'type="text"')],
+        ['الراتب الشهري', nkInp(e.salary, 'qpe.' + i + '.salary')],
+      ],
+      extra: `<div class="row" style="margin-top:9px;gap:14px">
+        <label class="chk" style="display:flex;gap:6px;align-items:center">
+          <input type="checkbox" data-qpc="${i}.h1" ${e.h1 !== false ? 'checked' : ''}> النصف الأول</label>
+        <label class="chk" style="display:flex;gap:6px;align-items:center">
+          <input type="checkbox" data-qpc="${i}.h2" ${e.h2 !== false ? 'checked' : ''}> النصف الثاني</label>
+      </div>`,
+    })).join('')}</div>` : `
     <div class="tbl-wrap" style="margin-top:10px;max-height:420px"><table><thead><tr>
       <th>م</th><th>اسم الموظف</th><th>الفرع</th><th>الراتب الشهري</th><th>النصف الأول</th><th>النصف الثاني</th><th></th>
     </tr></thead><tbody>${QP.emps.map((e, i)=> `<tr><td>${i + 1}</td>
@@ -10239,7 +10470,7 @@ function renderQP_impl(el){
       <td>${nkInp(e.salary, 'qpe.' + i + '.salary')}</td>
       <td><input type="checkbox" data-qpc="${i}.h1" ${e.h1 !== false ? 'checked' : ''}></td>
       <td><input type="checkbox" data-qpc="${i}.h2" ${e.h2 !== false ? 'checked' : ''}></td>
-      <td><button class="ghost" data-qpdel="${i}">✕</button></td></tr>`).join('')}</tbody></table></div>
+      <td><button class="ghost" data-qpdel="${i}">✕</button></td></tr>`).join('')}</tbody></table></div>`}
   </div>`;
 
   $('qpMonth').onchange = (e)=>{ QP.month = e.target.value; qpSave(); renderQP(); };
@@ -10271,6 +10502,19 @@ function renderQP_impl(el){
   };
   if($('qpSnAll'))  $('qpSnAll').onclick  = ()=> qpSetCols(true);
   if($('qpSnNone')) $('qpSnNone').onclick = ()=> qpSetCols(false);
+  // طيّ/فتح كارت الموظف — بيتحفظ عشان يفضل زي ما سبته بعد أي إعادة رسم
+  el.querySelectorAll('[data-qpfold]').forEach(h=> h.onclick = (ev)=>{
+    if(ev.target.closest('input, select, button')) return;
+    QP.shut = QP.shut || {};
+    const k = h.dataset.qpfold;
+    if(QP.shut[k]) delete QP.shut[k]; else QP.shut[k] = 1;
+    qpSave();
+    h.parentElement.classList.toggle('closed', !!QP.shut[k]);
+  });
+  if($('qpFoldAll')) $('qpFoldAll').onclick = ()=>{
+    QP.shut = {}; qpCalc(QP.half).rows.forEach(r=> QP.shut[r.name] = 1); qpSave(); renderQP();
+  };
+  if($('qpOpenAll')) $('qpOpenAll').onclick = ()=>{ QP.shut = {}; qpSave(); renderQP(); };
   $('qpAdd').onclick = ()=>{ QP.emps.push({name:'موظف جديد', branch:'', salary:0, h1:true, h2:true}); qpSave(); renderQP(); };
   el.querySelectorAll('[data-qpdel]').forEach(b=> b.onclick = ()=>{ QP.emps.splice(+b.dataset.qpdel, 1); qpSave(); renderQP(); });
   el.querySelectorAll('[data-qpc]').forEach(cb=> cb.onchange = ()=>{
@@ -10432,8 +10676,43 @@ function renderFP(){ nkSafeRender('fpApp', 'مرتبات المصنع', renderFP
 function renderFP_impl(el){
   const c = fpCalc();
   const tab = FP.tab || 'pay';
+  const MOB = nkMobile();
+  // على الموبايل: كارت لكل عامل بدل جدول ١٨ عمود
+  let cards = '';
+  if(MOB){
+    c.rows.forEach((r, i)=>{
+      const p = 'fpp.' + i + '.';
+      const shut = !!(FP.shut || {})[r.name];
+      cards += nkRowCard({
+        n: i + 1, title: r.name,
+        sub: [r.job, r.place].filter(Boolean).join(' · ') || '—',
+        value: nkF(r.net, 0), closed: shut,
+        foldAttr: ` data-fpfold="${esc(r.name)}"`,
+        fields: [
+          ['غياب بإذن (أيام)',     nkInp(r.p.absExc, p + 'absExc')],
+          ['غياب بدون إذن (أيام)', nkInp(r.p.absNo,  p + 'absNo')],
+          ['تأخيرات (ساعات)',      nkInp(r.p.late,   p + 'late')],
+          ['إضافي (ساعات)',        nkInp(r.p.extra,  p + 'extra')],
+          ['جزاءات (أيام)',        nkInp(r.p.pen,    p + 'pen')],
+          ['سلف',                  nkInp(r.p.adv,    p + 'adv')],
+          ['تأمينات',              nkInp(r.p.ins,    p + 'ins')],
+          ['حوافز',                nkInp(r.p.inc,    p + 'inc')],
+        ],
+        sums: [
+          ['الراتب', nkF(r.salary, 0)], ['أيام الفترة', r.days],
+          ['المستحق', nkF(r.due, 0)],
+          r.absDed ? ['خصم الغياب', nkF(r.absDed, 0)] : null,
+          r.totalDed ? ['إجمالي الخصومات', nkF(r.totalDed, 0)] : null,
+          ['الصافي', nkF(r.net, 0), true],
+        ],
+      });
+    });
+    cards += nkTotBar([['الراتب', nkF(c.t.salary, 0)], ['المستحق', nkF(c.t.due, 0)],
+      ['السلف', nkF(c.t.adv, 0)], ['التأمينات', nkF(c.t.ins, 0)], ['الحوافز', nkF(c.t.inc, 0)],
+      ['إجمالي الخصومات', nkF(c.t.totalDed, 0)], ['صافي المدفوع', nkF(c.t.net, 0)]]);
+  }
   let pay = '';
-  c.rows.forEach((r, i)=>{
+  if(!MOB) c.rows.forEach((r, i)=>{
     const p = 'fpp.' + i + '.';
     pay += `<tr><td>${i + 1}</td><td style="text-align:right;min-width:170px">${esc(r.name)}</td>
       <td>${esc(r.job)}</td><td>${esc(r.place)}</td>
@@ -10473,6 +10752,11 @@ function renderFP_impl(el){
   <div class="card" style="display:${tab === 'pay' ? '' : 'none'}">
     <div class="flex-between"><h2 style="margin:0">كشف المرتبات — ${esc(FP_PERIODS[FP.period])}</h2>
       <span class="badge">${esc(fpPeriodLbl())}</span></div>
+    ${MOB ? `<div class="row" style="margin-top:10px;gap:8px">
+      <button class="btn sm" id="fpFoldAll">🗜️ اطوي الكل</button>
+      <button class="btn sm" id="fpOpenAll">🗃️ افتح الكل</button>
+      <span class="sub" style="margin:0">دوس على اسم العامل عشان تفتحه أو تقفله.</span>
+    </div><div style="margin-top:10px">${cards}</div>` : `
     <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr>
       <th>م</th><th>الموظف</th><th>الوظيفة</th><th>المكان</th><th>الراتب</th><th>أيام الفترة</th>
       <th>غياب بإذن</th><th>غياب بدون إذن</th><th>تأخيرات (س)</th><th>إضافي (س)</th><th>جزاءات (أيام)</th>
@@ -10485,7 +10769,7 @@ function renderFP_impl(el){
         <td class="wh-num">${nkF(c.t.due, 0)}</td>
         <td class="wh-num">${nkF(c.t.absDed, 0)}</td><td class="wh-num">${nkF(c.t.totalDed, 0)}</td>
         <td class="wh-num">${nkF(c.t.net, 0)}</td></tr>
-    </tbody></table></div>
+    </tbody></table></div>`}
     <div class="card" style="background:var(--panel2);margin-top:12px">
       <b>⚙️ تخصيص التصدير</b>
       <div class="row" style="margin-top:8px">
@@ -10511,6 +10795,24 @@ function renderFP_impl(el){
         <button class="secondary" id="fpAdd">+ موظف</button>
       </div></div>
     <div class="sub" style="margin-top:6px">ارفع شيت المصنع — بيقرا الإعدادات (بداية ونهاية الشهر) وبيانات الموظفين (الاسم/الوظيفة/المكان/الراتب).</div>
+    ${MOB ? `<div style="margin-top:10px">${FP.emps.map((e, i)=> nkRowCard({
+      n: i + 1, title: e.name || 'موظف جديد',
+      sub: [e.job, e.place].filter(Boolean).join(' · ') || '—',
+      value: nkF(e.salary, 0),
+      del: `<button class="nk-rc-x" data-fpdel="${i}">🗑</button>`,
+      fields: [
+        ['اسم الموظف', nkInp(e.name, 'fpe.' + i + '.name', 'type="text"')],
+        ['الوظيفة', nkInp(e.job, 'fpe.' + i + '.job', 'type="text"')],
+        ['المكان / القسم', nkInp(e.place, 'fpe.' + i + '.place', 'type="text"')],
+        ['الراتب الشهري', nkInp(e.salary, 'fpe.' + i + '.salary')],
+      ],
+      extra: `<div class="row" style="margin-top:9px;gap:14px">
+        <label class="chk" style="display:flex;gap:6px;align-items:center">
+          <input type="radio" name="fpm${i}" data-fpm="${i}.both" ${fpBoth(e) ? 'checked' : ''}> بيقبض نصفين</label>
+        <label class="chk" style="display:flex;gap:6px;align-items:center">
+          <input type="radio" name="fpm${i}" data-fpm="${i}.one" ${fpBoth(e) ? '' : 'checked'}> النصف التاني بس</label>
+      </div>`,
+    })).join('')}</div>` : `
     <div class="tbl-wrap" style="margin-top:10px;max-height:460px"><table><thead><tr>
       <th>م</th><th>اسم الموظف</th><th>الوظيفة</th><th>المكان / القسم</th><th>الراتب الشهري</th><th>نصفين</th><th>النصف التاني بس</th><th></th>
     </tr></thead><tbody>${FP.emps.map((e, i)=> `<tr><td>${i + 1}</td>
@@ -10520,7 +10822,7 @@ function renderFP_impl(el){
       <td>${nkInp(e.salary, 'fpe.' + i + '.salary')}</td>
       <td><input type="radio" name="fpm${i}" data-fpm="${i}.both" ${fpBoth(e) ? 'checked' : ''}></td>
       <td><input type="radio" name="fpm${i}" data-fpm="${i}.one" ${fpBoth(e) ? '' : 'checked'}></td>
-      <td><button class="ghost" data-fpdel="${i}">✕</button></td></tr>`).join('')}</tbody></table></div>
+      <td><button class="ghost" data-fpdel="${i}">✕</button></td></tr>`).join('')}</tbody></table></div>`}
     ${nkBar('fpE')}
   </div>`;
 
@@ -10548,6 +10850,19 @@ function renderFP_impl(el){
     };
     rd.readAsArrayBuffer(f);
   };
+  // طيّ/فتح كارت العامل على الموبايل
+  el.querySelectorAll('[data-fpfold]').forEach(h=> h.onclick = (ev)=>{
+    if(ev.target.closest('input, select, button')) return;
+    FP.shut = FP.shut || {};
+    const k = h.dataset.fpfold;
+    if(FP.shut[k]) delete FP.shut[k]; else FP.shut[k] = 1;
+    fpSave();
+    h.parentElement.classList.toggle('closed', !!FP.shut[k]);
+  });
+  if($('fpFoldAll')) $('fpFoldAll').onclick = ()=>{
+    FP.shut = {}; fpCalc().rows.forEach(r=> FP.shut[r.name] = 1); fpSave(); renderFP();
+  };
+  if($('fpOpenAll')) $('fpOpenAll').onclick = ()=>{ FP.shut = {}; fpSave(); renderFP(); };
   const add = $('fpAdd'); if(add) add.onclick = ()=>{ FP.emps.push({name:'موظف جديد', job:'', place:'', salary:0, pay2:true}); fpSave(); renderFP(); };
   el.querySelectorAll('[data-fpdel]').forEach(b=> b.onclick = ()=>{ FP.emps.splice(+b.dataset.fpdel, 1); fpSave(); renderFP(); });
   el.querySelectorAll('[data-fpm]').forEach(r=> r.onchange = ()=>{
