@@ -780,7 +780,11 @@
         <div class="row">
           <input type="file" id="whCatFile" accept=".xls,.xlsx">
           <button class="secondary" id="whCatBtn" disabled>حدّث الدليل</button>
+          <button class="ghost" id="whCatTemplate">⬇️ نموذج</button>
         </div>
+        <label class="chk" style="gap:6px;margin-top:8px">
+          <input type="checkbox" id="whCatReplace"> استبدل الدليل كله (امسح الأصناف اللي مش في الملف)
+        </label>
       </div>
       <div class="sub" style="margin-top:6px">
         شيت <b>data</b>: اسم الصنف · المجموعة الرئيسية · المجموعة الفرعية · محتوي اللفه · اللون.
@@ -1099,7 +1103,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v143';
+const APP_VERSION = 'v144';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -6885,6 +6889,21 @@ function bindWhFamButtons(){
 // ---- الرفع ----
 $('whFile').addEventListener('change', ()=>{ $('whProcessBtn').disabled = !$('whFile').files.length; });
 $('whCatFile').addEventListener('change', ()=>{ $('whCatBtn').disabled = !$('whCatFile').files.length; });
+// نموذج فاضي بنفس الأعمدة بالظبط — تنزّله وتعبيه وترفعه زي ما هو
+if($('whCatTemplate')) $('whCatTemplate').addEventListener('click', ()=>{
+  const cur = Object.keys(whCatalog || {}).slice(0, 3).map(nm=>{
+    const c = whCatalog[nm] || {};
+    return [nm, c.main || '', c.sub || '', c.roll || '', c.color || '', c.base || ''];
+  });
+  const aoa = [['اسم الصنف','المجموعة الرئيسية','المجموعة الفرعية','محتوي اللفه','اللون','الصنف']]
+    .concat(cur.length ? cur : [['قطاع كرافت ابيض 6 متر','قطاعات كرافت لاين','كرافت ابيض',6,'ابيض','قطاع كرافت 6 متر']]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:38},{wch:22},{wch:20},{wch:12},{wch:12},{wch:30}];
+  const wb = XLSX.utils.book_new();
+  wb.Workbook = {Views:[{RTL:true}]};
+  XLSX.utils.book_append_sheet(wb, ws, 'data');
+  XLSX.writeFile(wb, 'نموذج-دليل-الأصناف.xlsx');
+});
 
 $('whCatBtn').addEventListener('click', async ()=>{
   const f = $('whCatFile').files[0];
@@ -6900,12 +6919,32 @@ $('whCatBtn').addEventListener('click', async ()=>{
       const old = whCatalog[k];
       if(old && old.unit) cat[k].unit = old.unit;
     });
-    whCatalog = cat;
-    whCatDirty = {};   // رفعة دليل كاملة = كتابة كاملة مش دمج
+    // الافتراضي **تحديث** مش استبدال: أي صنف مش في الملف بيفضل زي ما هو.
+    // (قبل كده أي رفعة كانت بتمسح كل صنف مش في الملف — فلو رفعت شيت فيه
+    //  التعديلات بس كنت بتفقد باقي الدليل.)
+    const replaceAll = !!($('whCatReplace') && $('whCatReplace').checked);
+    const before = Object.keys(whCatalog || {});
+    const added = Object.keys(cat).filter(k => !whCatalog[k]).length;
+    const changed = Object.keys(cat).filter(k => whCatalog[k]
+      && JSON.stringify(whCatalog[k]) !== JSON.stringify(cat[k])).length;
+    const untouched = before.filter(k => !cat[k]);
+    if(replaceAll && untouched.length &&
+       !confirm(`الملف فيه ${n} صنف. الاستبدال هيمسح ${untouched.length} صنف موجودين دلوقتي ومش في الملف. تكمل؟`)){
+      $('whCatMsg').innerHTML = '<div class="msg warn">اتلغى. شيل علامة "استبدل الدليل كله" عشان تحدّث من غير مسح.</div>';
+      return;
+    }
+    if(replaceAll){
+      whCatalog = cat;
+      whCatDirty = {};   // استبدال كامل = كتابة كاملة مش دمج
+    }else{
+      Object.keys(cat).forEach(k=>{ whCatalog[k] = cat[k]; whMarkCatDirty(k); });
+    }
     try{ await saveWhCatalog(); }
     catch(e){ scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف'); }
     whUpdateLocalCache();
-    $('whCatMsg').innerHTML = `<div class="msg ok">الدليل اتحدّث: ${n} صنف في ${whGroups().length} مجموعة رئيسية.</div>`;
+    $('whCatMsg').innerHTML = `<div class="msg ok">الدليل اتحدّث: <b>${added}</b> صنف جديد · <b>${changed}</b> اتعدّل`
+      + (replaceAll ? ` · <b>${untouched.length}</b> اتمسح` : ` · <b>${untouched.length}</b> فضلوا زي ما هم`)
+      + ` — الإجمالي ${Object.keys(whCatalog).length} صنف في ${whGroups().length} مجموعة رئيسية.</div>`;
     renderWh();
   }catch(e){
     $('whCatMsg').innerHTML = `<div class="msg err">${esc(e.message)}</div>`;
