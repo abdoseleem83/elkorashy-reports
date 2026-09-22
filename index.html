@@ -223,7 +223,12 @@
   .nk-exp{margin-top:14px;padding:10px;border-radius:12px;background:var(--panel2);border:1px solid var(--border)}
   .nk-exp-lbl{font-size:12px;color:var(--muted);margin-bottom:8px}
   .nk-exp-lbl .pill{margin:0}
-  .nk-exp-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  /* بقى فيه زرار رابع (إرسال) — الشبكة بتتقسم لوحدها حسب عرض الشاشة بدل
+     ٣ أعمدة ثابتة كانت بتسيب الزرار الرابع لوحده في سطر */
+  .nk-exp-btns{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px}
+  .nk-x.nk-send{background:linear-gradient(180deg,#25D366,#12A150);border-color:transparent;
+    color:#fff;font-weight:700}
+  .nk-x.nk-send:active{background:#0E8A44;color:#fff}
   .nk-x{display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 4px;
     border-radius:10px;background:var(--panel);border:1px solid var(--border);color:var(--text);
     font-size:12.5px;font-weight:600}
@@ -1103,7 +1108,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v144';
+const APP_VERSION = 'v145';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1171,6 +1176,21 @@ let indexedMonths = []; // كل الشهور اللي الفهرس بيقول إ
 let deletedMonths = []; // شهور المستخدم مسحها بنفسه — دي بس اللي تخرج من الفهرس
 
 const $ = (id) => document.getElementById(id);
+// ⚠️ ربط الأحداث في أول السكريبت بيتعمل على عشرات العناصر بالشكل ده:
+//     $('someBtn').addEventListener(...)
+// لو عنصر واحد بس اتشال من الـHTML (أو المتصفح لسه محمّل نسخة قديمة منه)،
+// السطر ده بيرمي TypeError — **وتنفيذ السكريبت كله بيقف عنده**. الدوال اللي
+// فوق بتفضل معرّفة (لأن تعريف الدوال بيترفع لفوق)، لكن المتغيّرات اللي بعده
+// (زي QP بتاعة المرتبات) مابتتعرّفش أبدًا — فالمستخدم بيدوس على قسم المرتبات
+// ويشوف «Cannot access 'QP' before initialization» وهي مش المشكلة الحقيقية.
+// $on بترجّع عنصر وهمي (مش في الصفحة) لو العنصر مش موجود: الربط بيعدّي بسلام،
+// وبنكتب تحذير في الكونسول، وباقي التطبيق بيكمّل شغل.
+const $on = (id) => {
+  const el = document.getElementById(id);
+  if(el) return el;
+  console.warn('العنصر «' + id + '» مش موجود في الصفحة — اتخطّينا ربط الحدث بتاعه');
+  return document.createElement('div');
+};
 
 // أسماء العملاء والأصناف جاية من ملف إكسل خارجي — لازم تتهرّب قبل ما تتحط في HTML
 // عشان اسم فيه < أو " ميكسرش الجدول أو يحقن كود.
@@ -1940,7 +1960,7 @@ function renderArchivePanel(){
     });
   });
 }
-$('archiveBtn').addEventListener('click', ()=>{
+$on('archiveBtn').addEventListener('click', ()=>{
   $('customersPanel').style.display = 'none';
   $('sectorsPanel').style.display = 'none';
   $('itemsPanel').style.display = 'none';
@@ -1948,7 +1968,7 @@ $('archiveBtn').addEventListener('click', ()=>{
   $('archivePanel').style.display = 'block';
   renderArchivePanel();
 });
-$('closeArchiveBtn').addEventListener('click', ()=> $('archivePanel').style.display='none');
+$on('closeArchiveBtn').addEventListener('click', ()=> $('archivePanel').style.display='none');
 
 // الشهور بتتحفظ كل واحد في مفتاح لوحده (month:YYYY-MM) مع مفتاح فهرس بأسماء الشهور،
 // بدل مفتاح عملاق واحد كان بيوصل لملايين الحروف ويفشل الطلب كله.
@@ -2282,11 +2302,11 @@ function itemEffectiveSectors(item, entry){
   return out;
 }
 
-$('fileInput').addEventListener('change', ()=>{
+$on('fileInput').addEventListener('change', ()=>{
   $('processBtn').disabled = !$('fileInput').files.length;
 });
 
-$('processBtn').addEventListener('click', async ()=>{
+$on('processBtn').addEventListener('click', async ()=>{
   const file = $('fileInput').files[0];
   const fallbackMonth = $('monthInput').value || null;
   if(!file) return;
@@ -2369,7 +2389,7 @@ function showUnmatched(list){
     </div>`).join('');
 }
 
-$('saveClassifBtn').addEventListener('click', async ()=>{
+$on('saveClassifBtn').addEventListener('click', async ()=>{
   const sels = Array.from(document.querySelectorAll('.classifSelect'));
   const blank = sels.filter(sel => !sel.value);
   if(blank.length){
@@ -2392,7 +2412,7 @@ $('saveClassifBtn').addEventListener('click', async ()=>{
   $('unmatchedCard').style.display = 'none';
 });
 
-$('confirmCommitBtn').addEventListener('click', async ()=>{
+$on('confirmCommitBtn').addEventListener('click', async ()=>{
   if(!pendingByMonth) return;
   flushSaves();
   const allCustomers = new Set();
@@ -3724,20 +3744,20 @@ function bindSortHeaders(){
 }
 
 bindSearch('reportSearch', ()=>{ reportView.search = $('reportSearch').value; renderReport(); });
-$('reportClassFilter').addEventListener('change', (e)=>{ reportView.cls = e.target.value; renderReport(); });
-$('reportAggWholesale').addEventListener('change', (e)=>{ reportView.aggWholesale = e.target.checked; renderReport(); });
-$('reportGrowthCols').addEventListener('change', (e)=>{ reportView.growthCols = e.target.checked; renderReport(); });
-$('reportShowClass').addEventListener('change', (e)=>{ reportView.showClass = e.target.checked; renderReport(); });
-$('reportRanks').addEventListener('change', (e)=>{ reportView.ranks = e.target.checked; renderReport(); });
-$('reportMetric').addEventListener('change', (e)=>{
+$on('reportClassFilter').addEventListener('change', (e)=>{ reportView.cls = e.target.value; renderReport(); });
+$on('reportAggWholesale').addEventListener('change', (e)=>{ reportView.aggWholesale = e.target.checked; renderReport(); });
+$on('reportGrowthCols').addEventListener('change', (e)=>{ reportView.growthCols = e.target.checked; renderReport(); });
+$on('reportShowClass').addEventListener('change', (e)=>{ reportView.showClass = e.target.checked; renderReport(); });
+$on('reportRanks').addEventListener('change', (e)=>{ reportView.ranks = e.target.checked; renderReport(); });
+$on('reportMetric').addEventListener('change', (e)=>{
   // الاختيار بيتسجّل للتبويب اللي إنت فيه بس
   if(activeTab === 'items') reportView.itemsMetric = e.target.value;
   else reportView.metric = e.target.value;
   renderReport();
 });
-$('itemsSheet').addEventListener('change', ()=> renderReport());
-$('itemsByCode').addEventListener('change', (e)=>{ reportView.itemsByCode = e.target.checked; renderReport(); });
-$('reportMonthsBtn').addEventListener('click', ()=>{
+$on('itemsSheet').addEventListener('change', ()=> renderReport());
+$on('itemsByCode').addEventListener('change', (e)=>{ reportView.itemsByCode = e.target.checked; renderReport(); });
+$on('reportMonthsBtn').addEventListener('click', ()=>{
   const panel = $('reportMonthsPanel');
   const showing = panel.style.display !== 'none';
   panel.style.display = showing ? 'none' : 'flex';
@@ -4099,7 +4119,7 @@ function generateExcel(includeMonthly, includeSector, opts){
 }
 
 // زرار الإكسل بيفتح نفس لوحة التصدير بتاعة الـPDF عشان الاختيارات تبقى واحدة
-$('exportBtn').addEventListener('click', ()=> openExportPanel());
+$on('exportBtn').addEventListener('click', ()=> openExportPanel());
 
 // ---- دمج عميل في عميل تاني ----
 // لما اسم العميل يتغيّر في برنامج المحاسبة، بيظهر كعميل جديد وتاريخه بيتقسم
@@ -4244,7 +4264,7 @@ function renderCustomersList(){
   });
 }
 
-$('manageCustomersBtn').addEventListener('click', ()=>{
+$on('manageCustomersBtn').addEventListener('click', ()=>{
   $('customersPanel').style.display = 'block';
   $('sectorsPanel').style.display = 'none';
   $('itemsPanel').style.display = 'none';
@@ -4252,9 +4272,9 @@ $('manageCustomersBtn').addEventListener('click', ()=>{
   $('archivePanel').style.display = 'none';
   renderCustomersList();
 });
-$('closeCustomersBtn').addEventListener('click', ()=> $('customersPanel').style.display='none');
+$on('closeCustomersBtn').addEventListener('click', ()=> $('customersPanel').style.display='none');
 bindSearch('custSearch', renderCustomersList);
-$('custClassFilter').addEventListener('change', ()=> renderCustomersList());
+$on('custClassFilter').addEventListener('change', ()=> renderCustomersList());
 
 // ---- Sectors panel ----
 // ---- استرجاع قطاعات ضاعت من القايمة ----
@@ -4456,7 +4476,7 @@ function renderOwnSectorsList(){
     });
   });
 }
-$('tokenBtn').addEventListener('click', ()=>{
+$on('tokenBtn').addEventListener('click', ()=>{
   const cur = SHARED_TOKEN ? '(متسجّلة على الجهاز ده)' : '(مش متسجّلة)';
   const t = prompt('كلمة سر التطبيق ' + cur + ':\n\n'
     + 'لازم تكون نفس اللي في SHARED_TOKEN جوه Code.gs على Apps Script.\n'
@@ -4467,7 +4487,7 @@ $('tokenBtn').addEventListener('click', ()=>{
   location.reload();
 });
 
-$('backupBtn').addEventListener('click', ()=>{
+$on('backupBtn').addEventListener('click', ()=>{
   const data = JSON.stringify(settingsBackupObject(), null, 1);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([data], {type:'application/json'}));
@@ -4475,8 +4495,8 @@ $('backupBtn').addEventListener('click', ()=>{
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(()=> URL.revokeObjectURL(a.href), 2000);
 });
-$('restoreBtn').addEventListener('click', ()=> $('restoreFile').click());
-$('restoreFile').addEventListener('change', async (e)=>{
+$on('restoreBtn').addEventListener('click', ()=> $('restoreFile').click());
+$on('restoreFile').addEventListener('change', async (e)=>{
   const f = e.target.files[0];
   if(!f) return;
   e.target.value = '';
@@ -4496,7 +4516,7 @@ $('restoreFile').addEventListener('change', async (e)=>{
   }
 });
 
-$('addSectorBtn').addEventListener('click', async ()=>{
+$on('addSectorBtn').addEventListener('click', async ()=>{
   const name = normName($('newSectorName').value);
   if(!name) return;
   if(SECTORS.includes(name)){ alert('القطاع ده موجود بالفعل'); return; }
@@ -4517,7 +4537,7 @@ $('addSectorBtn').addEventListener('click', async ()=>{
   $('newSectorName').value = '';
   renderOwnSectorsList();
 });
-$('manageSectorsBtn').addEventListener('click', ()=>{
+$on('manageSectorsBtn').addEventListener('click', ()=>{
   $('sectorsPanel').style.display = 'block';
   $('customersPanel').style.display = 'none';
   $('itemsPanel').style.display = 'none';
@@ -4525,7 +4545,7 @@ $('manageSectorsBtn').addEventListener('click', ()=>{
   $('archivePanel').style.display = 'none';
   renderOwnSectorsList();
 });
-$('closeSectorsBtn').addEventListener('click', ()=> $('sectorsPanel').style.display='none');
+$on('closeSectorsBtn').addEventListener('click', ()=> $('sectorsPanel').style.display='none');
 
 // ---- Items panel ----
 // القطاع الفعلي لصنف بعد ترحيل المخازن — بيرجع {sectors:{قطاع:مبلغ}, forcedBy:[مخازن]}
@@ -4634,7 +4654,7 @@ function renderItemsList(){
   });
 }
 
-$('manageItemsBtn').addEventListener('click', ()=>{
+$on('manageItemsBtn').addEventListener('click', ()=>{
   $('itemsPanel').style.display = 'block';
   $('customersPanel').style.display = 'none';
   $('sectorsPanel').style.display = 'none';
@@ -4642,14 +4662,14 @@ $('manageItemsBtn').addEventListener('click', ()=>{
   $('archivePanel').style.display = 'none';
   renderItemsList();
 });
-$('closeItemsBtn').addEventListener('click', ()=> $('itemsPanel').style.display='none');
+$on('closeItemsBtn').addEventListener('click', ()=> $('itemsPanel').style.display='none');
 // ---- تصنيف جماعي ----
 // توزيع مئات الأصناف على التفنيطات (ابواب 70/80/90...) واحد واحد مش عملي.
 // دي بتحوّل كل الأصناف الظاهرة بعد البحث/الفلتر لقطاع واحد دفعة واحدة.
 let bulkVisibleItems = [];
 
 
-$('bulkApplyBtn').addEventListener('click', async ()=>{
+$on('bulkApplyBtn').addEventListener('click', async ()=>{
   const target = $('bulkSector').value;
   if(!target){ alert('اختار القطاع اللي هتحوّلهم ليه.'); return; }
   const items = bulkVisibleItems.filter(it => itemOverride[it] !== target);
@@ -4678,7 +4698,7 @@ $('bulkApplyBtn').addEventListener('click', async ()=>{
 });
 
 bindSearch('itemSearch', renderItemsList);
-$('itemSectorFilter').addEventListener('change', ()=> renderItemsList());
+$on('itemSectorFilter').addEventListener('change', ()=> renderItemsList());
 
 // ---- PDF export (via browser print) ----
 // ---- تعريف مجموعات التقرير ----
@@ -4777,22 +4797,22 @@ function openExportPanel(){
   updateGrowthHint();
   $('pdfPanel').scrollIntoView({behavior:'smooth', block:'nearest'});
 }
-$('exportPdfBtn').addEventListener('click', ()=> openExportPanel());
-$('closePdfBtn').addEventListener('click', ()=> $('pdfPanel').style.display='none');
-$('pdfMonthsAll').addEventListener('click', ()=>{
+$on('exportPdfBtn').addEventListener('click', ()=> openExportPanel());
+$on('closePdfBtn').addEventListener('click', ()=> $('pdfPanel').style.display='none');
+$on('pdfMonthsAll').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfMonthChk').forEach(el=> el.checked = true);
   pdfMonthsChoice = null; // الكل
   updateGrowthHint();
 });
-$('pdfMonthsNone').addEventListener('click', ()=>{
+$on('pdfMonthsNone').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfMonthChk').forEach(el=> el.checked = false);
   pdfMonthsChoice = [];
 });
-$('pdfGroupsAll').addEventListener('click', ()=>{
+$on('pdfGroupsAll').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfGroupChk').forEach(el=> el.checked = true);
   pdfGroupsChoice = null;
 });
-$('pdfGroupsNone').addEventListener('click', ()=>{
+$on('pdfGroupsNone').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfGroupChk').forEach(el=> el.checked = false);
   pdfGroupsChoice = [];
 });
@@ -5373,22 +5393,22 @@ async function generatePdf(includeMonthly, includeSector, opts){
   }
 }
 
-$('pdfGenerateBtn').addEventListener('click', ()=>{
+$on('pdfGenerateBtn').addEventListener('click', ()=>{
   generatePdf($('pdfMonthly').checked, $('pdfSector').checked, {});
 });
 // لو المستخدم فتح تبويب النمو وغيّر الفترتين، اللوحة لازم توضّح الجديد
-$('pdfGrowth').addEventListener('change', updateGrowthHint);
-$('exportTitle').addEventListener('input', (e)=>{ exportTitle = e.target.value; });
-$('exportTitleReset').addEventListener('click', ()=>{
+$on('pdfGrowth').addEventListener('change', updateGrowthHint);
+$on('exportTitle').addEventListener('input', (e)=>{ exportTitle = e.target.value; });
+$on('exportTitleReset').addEventListener('click', ()=>{
   exportTitle = '';
   $('exportTitle').value = '';
 });
-$('pdfAllBtn').addEventListener('click', ()=> generatePdf(true, true, {allGroups:true}));
-$('xlsGenerateBtn').addEventListener('click', ()=>{
+$on('pdfAllBtn').addEventListener('click', ()=> generatePdf(true, true, {allGroups:true}));
+$on('xlsGenerateBtn').addEventListener('click', ()=>{
   try{ generateExcel($('pdfMonthly').checked, $('pdfSector').checked, {}); }
   catch(e){ alert('حصل خطأ في تصدير الإكسل: ' + e.message); }
 });
-$('xlsAllBtn').addEventListener('click', ()=>{
+$on('xlsAllBtn').addEventListener('click', ()=>{
   try{ generateExcel(true, true, {allGroups:true}); }
   catch(e){ alert('حصل خطأ في تصدير الإكسل: ' + e.message); }
 });
@@ -6887,8 +6907,8 @@ function bindWhFamButtons(){
 }
 
 // ---- الرفع ----
-$('whFile').addEventListener('change', ()=>{ $('whProcessBtn').disabled = !$('whFile').files.length; });
-$('whCatFile').addEventListener('change', ()=>{ $('whCatBtn').disabled = !$('whCatFile').files.length; });
+$on('whFile').addEventListener('change', ()=>{ $('whProcessBtn').disabled = !$('whFile').files.length; });
+$on('whCatFile').addEventListener('change', ()=>{ $('whCatBtn').disabled = !$('whCatFile').files.length; });
 // نموذج فاضي بنفس الأعمدة بالظبط — تنزّله وتعبيه وترفعه زي ما هو
 if($('whCatTemplate')) $('whCatTemplate').addEventListener('click', ()=>{
   const cur = Object.keys(whCatalog || {}).slice(0, 3).map(nm=>{
@@ -6905,7 +6925,7 @@ if($('whCatTemplate')) $('whCatTemplate').addEventListener('click', ()=>{
   XLSX.writeFile(wb, 'نموذج-دليل-الأصناف.xlsx');
 });
 
-$('whCatBtn').addEventListener('click', async ()=>{
+$on('whCatBtn').addEventListener('click', async ()=>{
   const f = $('whCatFile').files[0];
   if(!f) return;
   $('whCatMsg').innerHTML = '<div class="msg warn">بيقرا الملف...</div>';
@@ -6951,7 +6971,7 @@ $('whCatBtn').addEventListener('click', async ()=>{
   }
 });
 
-$('whCatAddBtn').addEventListener('click', async ()=>{
+$on('whCatAddBtn').addEventListener('click', async ()=>{
   const name = normName($('whCatNewName').value);
   const main = $('whCatNewMain').value.trim();
   const sub = $('whCatNewSub').value.trim();
@@ -6977,7 +6997,7 @@ $('whCatAddBtn').addEventListener('click', async ()=>{
   btn.disabled = false; btn.textContent = 'حفظ الصنف';
 });
 
-$('whProcessBtn').addEventListener('click', async ()=>{
+$on('whProcessBtn').addEventListener('click', async ()=>{
   const f = $('whFile').files[0];
   const store = $('whUploadStore').value;
   if(!f) return;
@@ -8203,7 +8223,7 @@ async function whDownloadImage(bodyHtml, subtitle, fileName, share){
   } finally { PDF_RENDER_W = old; whReportMode = false; }
 }
 
-$('whImgBtn').addEventListener('click', async ()=>{
+$on('whImgBtn').addEventListener('click', async ()=>{
   if(!Object.keys(whCatalog).length){ alert('ارفع دليل الأصناف الأول.'); return; }
   if(exportBusy){ alert('فيه تصدير شغال دلوقتي — استنى لحد ما يخلص.'); return; }
   const store = $('whStore').value;
@@ -8410,7 +8430,7 @@ if($('whPdfOrient')){
     try{ localStorage.setItem('whPdfOrient', whPdfOrient); }catch(e){}
   });
 }
-$('whExcelBtn').addEventListener('click', ()=>{
+$on('whExcelBtn').addEventListener('click', ()=>{
   if(!Object.keys(whCatalog).length){ alert('ارفع دليل الأصناف الأول.'); return; }
   const {aoa, title, sheet} = whExportAoa();
   if(aoa.length < 2){ alert('مفيش بيانات في الجدول ده.'); return; }
@@ -8425,7 +8445,7 @@ $('whExcelBtn').addEventListener('click', ()=>{
   XLSX.writeFile(wb, safeFileName(title) + '.xlsx');
 });
 
-$('whPdfBtn').addEventListener('click', async ()=>{
+$on('whPdfBtn').addEventListener('click', async ()=>{
   if(!Object.keys(whCatalog).length){ alert('ارفع دليل الأصناف الأول.'); return; }
   const {aoa, title, kinds, numFrom, noGrand, pdfBody, nameCol} = whExportAoa();
   if(aoa.length < 2){ alert('مفيش بيانات في الجدول ده.'); return; }
@@ -8593,7 +8613,7 @@ window.addEventListener('online', ()=>{
   if(failedMonths.length) retryFailedMonths().catch(()=>{});
   flushSaves();
 });
-$('updateBtn').addEventListener('click', async ()=>{
+$on('updateBtn').addEventListener('click', async ()=>{
   // "تحديث" اليدوي = هات كل حاجة من السيرفر تاني، مش اللي اتغيّر بس
   try{ localStorage.setItem('forceFullSync','1'); }catch(e){}
   $('updateBtn').textContent = 'بيدور على تحديث...';
@@ -8619,7 +8639,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
   deferredInstallPrompt = e;
   $('installBanner').style.display = 'block';
 });
-$('installBtn').addEventListener('click', async () => {
+$on('installBtn').addEventListener('click', async () => {
   if(!deferredInstallPrompt) return;
   deferredInstallPrompt.prompt();
   await deferredInstallPrompt.userChoice;
@@ -8912,11 +8932,14 @@ async function nkExport(kind, blocks, title, subtitle){
       await renderPdfFromHtml(html, {subtitle: subtitle || title, orient: wide >= 9 ? 'l' : 'p',
         wideCols: wide, fileName: safeFileName(title) + '.pdf'});
     }else{
-      await nkImage(html, subtitle || title, title);
+      // 'share' = نفس الصورة بالظبط، بس بتفتح شاشة الإرسال (واتساب/أي حاجة)
+      // على الموبايل على طول. لو الجهاز مش بيدعم الإرسال المباشر (الكمبيوتر
+      // غالبًا) بتتحفظ الصورة وبنقول للمستخدم يبعتها بنفسه.
+      await nkImage(html, subtitle || title, title, kind === 'share' ? 'share' : '');
     }
   }finally{ exportTitle = oldTitle; }
 }
-async function nkImage(bodyHtml, subtitle, fileName){
+async function nkImage(bodyHtml, subtitle, fileName, mode){
   const headerHtml = `<div style="border-bottom:2px solid #1b3a8f;padding:0 0 8px;margin-bottom:10px;
       display:flex;align-items:center;justify-content:space-between;gap:16px">
     <div><div style="font-size:20px;font-weight:700">${esc(reportTitle())}</div>
@@ -8939,6 +8962,11 @@ async function nkImage(bodyHtml, subtitle, fileName){
     const a = document.createElement('a');
     a.href = url; a.download = fn; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=> URL.revokeObjectURL(url), 4000);
+    if(mode === 'share'){
+      alert('الجهاز ده مش بيدعم الإرسال المباشر (غالبًا كمبيوتر).\n'
+          + 'الصورة اتحفظت في التنزيلات باسم: ' + fn + '\n'
+          + 'ابعتها من واتساب عادي. من الموبايل زرار «📤 إرسال» بيفتح واتساب على طول.');
+    }
   }finally{ PDF_RENDER_W = old; }
 }
 // شريط أزرار التصدير الموحّد
@@ -8946,6 +8974,7 @@ function nkBar(prefix, extra){
   return `<div class="nk-exp">
     ${extra ? `<div class="nk-exp-lbl">${extra}</div>` : ''}
     <div class="nk-exp-btns">
+      <button class="nk-x nk-send" data-nkx="${prefix}:share"><span>📤</span>إرسال</button>
       <button class="nk-x" data-nkx="${prefix}:xlsx"><span>⬇️</span>إكسل</button>
       <button class="nk-x" data-nkx="${prefix}:pdf"><span>📄</span>PDF</button>
       <button class="nk-x" data-nkx="${prefix}:img"><span>🖼️</span>صورة</button>
@@ -9185,8 +9214,28 @@ function nkSafeRender(appId, label, impl){
   try{ nkPreserve(el, ()=> { impl(el); if(typeof setupFoldableCards === 'function') setupFoldableCards(); }); }
   catch(e){
     console.error(appId + ' crashed', e);
-    el.innerHTML = `<div class="card"><div class="msg err">حصل خطأ وإحنا بنعرض الشاشة: ${esc(e.message)}
-      <br>جرّب تدوس على قسم "${esc(label)}" تاني، ولو تكرر قولّي بالظبط إنت كنت بتعمل إيه.</div></div>`;
+    // ⚠️ «Cannot access 'X' before initialization» معناها إن تحميل الصفحة
+    // نفسه وقف في النص (غالبًا نسخة قديمة متخزّنة في المتصفح مع نسخة جديدة
+    // من الملف)، مش إن القسم ده فيه مشكلة. بنقول للمستخدم الحل الحقيقي
+    // بدل رسالة تقنية مالهاش معنى.
+    const مش_محمّل = /before initialization|is not defined/i.test(e.message || '');
+    el.innerHTML = مش_محمّل
+      ? `<div class="card"><div class="msg err"><b>الصفحة ما حمّلتش كاملة.</b>
+          <br>ده بيحصل لما المتصفح لسه ماسك نسخة قديمة من التطبيق.
+          <br><button class="btn" id="nkHardReload" style="margin-top:8px">🔄 حدّث التطبيق دلوقتي</button>
+          <div class="sub" style="margin-top:6px">التفاصيل التقنية: ${esc(e.message)}</div></div></div>`
+      : `<div class="card"><div class="msg err">حصل خطأ وإحنا بنعرض الشاشة: ${esc(e.message)}
+          <br>جرّب تدوس على قسم "${esc(label)}" تاني، ولو تكرر قولّي بالظبط إنت كنت بتعمل إيه.</div></div>`;
+    const rb = document.getElementById('nkHardReload');
+    if(rb) rb.onclick = async ()=>{
+      rb.disabled = true; rb.textContent = 'بيحدّث...';
+      try{
+        if('caches' in window){ const ks = await caches.keys(); await Promise.all(ks.map(k=> caches.delete(k))); }
+        if(navigator.serviceWorker){ const rs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(rs.map(r=> r.unregister())); }
+      }catch(err){}
+      location.reload(true);
+    };
   }
 }
 function renderGV(){ nkSafeRender('gvApp', 'جيفز', renderGV_impl); }
@@ -9862,6 +9911,15 @@ const QP_HALF_LBL = (h)=> h === 1 ? 'النصف الأول (1-15)' : 'النصف
 // كشف الإرسال: أعمدته وترتيبها اللي المستخدم يختارها من تاب "تخصيص التصدير"
 const QP_SEND_COLS = ['م','اسم الموظف','الفرع','المرتب الكامل','المستحق (النص)','خصم غياب','خصم تأخيرات','إضافي','خصم جزاءات','سلف','تأمينات','إجمالي الخصومات','حوافز','صافي المرتب'];
 const qpSendColsOn = ()=> QP.sendCols && QP.sendCols.length === QP_SEND_COLS.length ? QP.sendCols : QP_SEND_COLS.map(()=> true);
+// ⚠️ كشف المرتبات نفسه فيه ٢٢ عمود — لما بيتطبع كلهم مع بعض العناوين بتتلخبط
+// وتبقى مش مقروءة. بقى ليه نفس اختيار الأعمدة زي كشف الإرسال بالظبط، وفيه
+// «المختصر» اللي بيسيب الأعمدة المهمة بس.
+const QP_SHEET_COLS = ['م','الموظف','الفرع','الراتب الشهري','راتب النصف','راتب اليوم','راتب الساعة',
+  'غياب بإذن (أيام)','غياب بدون إذن (أيام)','تأخيرات (ساعات)','إضافي (ساعات)','جزاءات (أيام)','سلف',
+  'خصم غياب بإذن','خصم غياب بدون إذن','خصم تأخيرات','مبلغ إضافي','خصم جزاءات','سلف مخصومة','تأمينات','حوافز','صافي الراتب'];
+// المختصر: م / الموظف / الفرع / الراتب / راتب النصف / خصم التأخيرات / مبلغ إضافي / تأمينات / حوافز / الصافي
+const QP_SHEET_SHORT = [0,1,2,3,4,15,16,19,20,21];
+const qpSheetColsOn = ()=> QP.sheetCols && QP.sheetCols.length === QP_SHEET_COLS.length ? QP.sheetCols : QP_SHEET_COLS.map(()=> true);
 // فلتر فرع للتصدير: '' يعني كل الفروع
 const qpBranchRows = (c)=> QP.expBranch ? c.rows.filter(r=> (r.branch || '') === QP.expBranch) : c.rows;
 function qpBlocks(which){
@@ -9869,15 +9927,16 @@ function qpBlocks(which){
   const mk = (h)=>{
     const c = qpCalc(h);
     const rr = qpBranchRows(c);
-    const head = ['م','الموظف','الفرع','الراتب الشهري','راتب النصف','راتب اليوم','راتب الساعة',
-      'غياب بإذن (أيام)','غياب بدون إذن (أيام)','تأخيرات (ساعات)','إضافي (ساعات)','جزاءات (أيام)','سلف',
-      'خصم غياب بإذن','خصم غياب بدون إذن','خصم تأخيرات','مبلغ إضافي','خصم جزاءات','سلف مخصومة','تأمينات','حوافز','صافي الراتب'];
-    const rows = rr.map((r, i)=> [i+1, r.name, r.branch, r.salary, r.half, r.day, r.hour,
+    const on = qpSheetColsOn();
+    const head = QP_SHEET_COLS.filter((_, k)=> on[k]);
+    const full = rr.map((r, i)=> [i+1, r.name, r.branch, r.salary, r.half, r.day, r.hour,
       nkN(r.d.absExc), nkN(r.d.absNo), nkN(r.d.late), nkN(r.d.extra), nkN(r.d.pen), nkN(r.d.adv),
       r.dExc, r.dNo, r.dLate, r.vExt, r.dPen, r.adv, r.ins, r.inc, r.net]);
+    const rows = full.map(row=> row.filter((_, k)=> on[k]));
     const tt = (k)=> rr.reduce((a, r)=> a + (r[k] || 0), 0);
-    const tot = ['', 'الإجمالي', '', tt('salary'), tt('half'), '', '', '', '', '', '', '', '',
+    const fullTot = ['', 'الإجمالي', '', tt('salary'), tt('half'), '', '', '', '', '', '', '', '',
       tt('dExc'), tt('dNo'), tt('dLate'), tt('vExt'), tt('dPen'), tt('adv'), tt('ins'), tt('inc'), tt('net')];
+    const tot = fullTot.filter((_, k)=> on[k]);
     tot.__cls = 'total-row'; rows.push(tot);
     const lbl = QP_HALF_LBL(h) + (QP.expBranch ? ' — فرع ' + QP.expBranch : '');
     return {title: 'كشف مرتبات ' + lbl, head, rows};
@@ -9898,8 +9957,9 @@ function qpBlocks(which){
     const lbl = QP_HALF_LBL(h) + (QP.expBranch ? ' — فرع ' + QP.expBranch : '');
     return {title: 'كشف الإرسال - ' + lbl, head, rows};
   };
-  if(which === 'half') { out.push(mk(QP.half), send(QP.half)); return out; }
-  if(which === 'send') { out.push(send(QP.half)); return out; }
+  if(which === 'half')  { out.push(mk(QP.half), send(QP.half)); return out; }
+  if(which === 'sheet') { out.push(mk(QP.half)); return out; }
+  if(which === 'send')  { out.push(send(QP.half)); return out; }
   const a = qpCalc(1), b = qpCalc(2);
   const line = (lbl, k)=> [lbl, a.t[k], b.t[k], a.t[k] + b.t[k]];
   out.push({title: 'الملخص الشهري', head: ['البيان','النصف الأول','النصف الثاني','الإجمالي الشهري'], rows: [
@@ -9910,7 +9970,15 @@ function qpBlocks(which){
   ]});
   return out;
 }
+const qpExpSuffix = ()=> (QP.expBranch ? ' — فرع ' + QP.expBranch : '');
 NK_EXPORTERS['qpH'] = ()=> ({blocks: qpBlocks('half'), title: `مرتبات القرشي ${QP.month} — ${QP_HALF_LBL(QP.half)}`, subtitle: QP_HALF_LBL(QP.half) + ' — ' + QP.month});
+// كل كشف لوحده — عشان تبعت اللي انت عايزه بس
+NK_EXPORTERS['qpSheet'] = ()=> ({blocks: qpBlocks('sheet'),
+  title: `كشف مرتبات القرشي ${QP.month} — ${QP_HALF_LBL(QP.half)}` + qpExpSuffix(),
+  subtitle: QP_HALF_LBL(QP.half) + ' — ' + QP.month + qpExpSuffix()});
+NK_EXPORTERS['qpSend'] = ()=> ({blocks: qpBlocks('send'),
+  title: `كشف الإرسال ${QP.month} — ${QP_HALF_LBL(QP.half)}` + qpExpSuffix(),
+  subtitle: 'كشف الإرسال — ' + QP_HALF_LBL(QP.half) + ' — ' + QP.month + qpExpSuffix()});
 NK_EXPORTERS['qpS'] = ()=> ({blocks: qpBlocks('sum'),  title: `ملخص مرتبات القرشي ${QP.month}`, subtitle: 'ملخص شهر ' + QP.month});
 
 // ---- استيراد شيت مرتبات القرشي ----
@@ -10008,14 +10076,32 @@ function renderQP_impl(el){
           ${[...new Set(QP.emps.map(e=> e.branch).filter(Boolean))].map(b=> `<option value="${esc(b)}" ${QP.expBranch === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}
         </select></label>
       </div>
-      <div class="sub" style="margin-top:8px">أعمدة كشف الإرسال:</div>
+      <div class="flex-between" style="margin-top:12px">
+        <div class="sub" style="margin:0"><b>أعمدة كشف المرتبات</b> — شيل اللي مش محتاجه عشان الكشف يطلع مقروء</div>
+        <div class="row" style="gap:6px">
+          <button class="btn sm" id="qpShAll">✅ الكل</button>
+          <button class="btn sm" id="qpShShort">⭐ المختصر</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:10px">
+        ${QP_SHEET_COLS.map((c, k)=> `<label class="chk" style="display:flex;gap:5px;align-items:center;font-size:12.5px">
+          <input type="checkbox" data-qpscol="${k}" ${qpSheetColsOn()[k] ? 'checked' : ''}> ${esc(c)}</label>`).join('')}
+      </div>
+
+      <div class="flex-between" style="margin-top:14px">
+        <div class="sub" style="margin:0"><b>أعمدة كشف الإرسال</b></div>
+        <div class="row" style="gap:6px"><button class="btn sm" id="qpSnAll">✅ الكل</button></div>
+      </div>
       <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:10px">
         ${QP_SEND_COLS.map((c, k)=> `<label class="chk" style="display:flex;gap:5px;align-items:center;font-size:12.5px">
           <input type="checkbox" data-qpcol="${k}" ${qpSendColsOn()[k] ? 'checked' : ''}> ${esc(c)}</label>`).join('')}
       </div>
     </div>
-    ${nkBar('qpH', '<span class="pill">الكشف + كشف الإرسال' + (QP.expBranch ? ' — فرع ' + esc(QP.expBranch) : '') + '</span>')}
-    ${nkBar('qpS', '<span class="pill">الملخص الشهري</span>')}
+    <div class="sub" style="margin:14px 0 6px">📤 «إرسال» بيفتح واتساب على طول من الموبايل بصورة الكشف.</div>
+    ${nkBar('qpSheet', '<span class="pill">📋 كشف المرتبات' + (QP.expBranch ? ' — فرع ' + esc(QP.expBranch) : '') + '</span>')}
+    ${nkBar('qpSend', '<span class="pill">📨 كشف الإرسال' + (QP.expBranch ? ' — فرع ' + esc(QP.expBranch) : '') + '</span>')}
+    ${nkBar('qpH', '<span class="pill">📑 الاتنين مع بعض</span>')}
+    ${nkBar('qpS', '<span class="pill">📅 الملخص الشهري</span>')}
   </div>
 
   <div class="card">
@@ -10058,6 +10144,18 @@ function renderQP_impl(el){
     on[+cb.dataset.qpcol] = cb.checked;
     QP.sendCols = on; qpSave(); renderQP();
   });
+  el.querySelectorAll('[data-qpscol]').forEach(cb=> cb.onchange = ()=>{
+    const on = qpSheetColsOn().slice();
+    on[+cb.dataset.qpscol] = cb.checked;
+    QP.sheetCols = on; qpSave(); renderQP();
+  });
+  const qpSetSheetCols = (keep)=>{
+    QP.sheetCols = QP_SHEET_COLS.map((_, k)=> !keep || keep.indexOf(k) >= 0);
+    qpSave(); renderQP();
+  };
+  if($('qpShAll'))   $('qpShAll').onclick   = ()=> qpSetSheetCols(null);
+  if($('qpShShort')) $('qpShShort').onclick = ()=> qpSetSheetCols(QP_SHEET_SHORT);
+  if($('qpSnAll'))   $('qpSnAll').onclick   = ()=>{ QP.sendCols = QP_SEND_COLS.map(()=> true); qpSave(); renderQP(); };
   $('qpAdd').onclick = ()=>{ QP.emps.push({name:'موظف جديد', branch:'', salary:0, h1:true, h2:true}); qpSave(); renderQP(); };
   el.querySelectorAll('[data-qpdel]').forEach(b=> b.onclick = ()=>{ QP.emps.splice(+b.dataset.qpdel, 1); qpSave(); renderQP(); });
   el.querySelectorAll('[data-qpc]').forEach(cb=> cb.onchange = ()=>{
