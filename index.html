@@ -11149,10 +11149,52 @@ function renderAX(){ nkSafeRender('axApp', 'بونص اكسا', renderAX_impl); 
 function renderAX_impl(el){
   const c = axCalc();
   const vis = axVisible();
+  const MOB = nkMobile();
   let rows = '';
   const types = axAllTypes();
   const q = normName(AX.q || '');
-  c.rows.forEach((r, k)=>{
+  // على الموبايل: كارت لكل نوع بونص بدل جدول بيتسحب يمين وشمال
+  let cards = '';
+  if(MOB) c.rows.forEach((r, k)=>{
+    const i = vis[k].i;
+    const t = AX.rows[i].type;
+    const mine = (AX.items || []).filter(it=> axTypeOf(it) === t);
+    const open = !!AX.open[t];
+    const list = open ? mine.filter(it=> !q || normName(it.name + ' ' + it.code).indexOf(q) >= 0)
+      .sort((a, b)=> b.net - a.net) : [];
+    const items = open ? `<div style="margin-top:10px;border-top:1px dashed var(--border);padding-top:9px">
+      ${list.map(it=>{
+        const key = axItemKey(it);
+        const moved = (AX.itemType || {})[key];
+        return `<div style="padding:7px 0;border-bottom:1px solid var(--border)${moved ? ';background:#fff8e6' : ''}">
+          <div style="font-size:12.5px;font-weight:600">${esc(itMaster(it.name))}</div>
+          <div class="sub" style="font-size:10.5px">${esc(it.code || '')}${
+            itCatOf(it.name) ? '' : ' · ⚠️ مش في شيت الأصناف'}${
+            moved ? ` · ↳ اتنقل من «${esc(it.cat)}»` : ''} · صافي ${nkF(it.net, 0)}</div>
+          <select data-axtype="${esc(key)}" style="width:100%;margin-top:5px;font-size:12.5px;padding:6px">
+            ${types.map(x=>`<option value="${esc(x)}"${x === axTypeOf(it) ? ' selected' : ''}>${esc(x)}</option>`).join('')}
+          </select></div>`;
+      }).join('') || `<div class="sub">مفيش صنف مطابق للبحث.</div>`}</div>` : '';
+    cards += nkRowCard({
+      n: k + 1, title: t || 'من غير نوع',
+      sub: mine.length ? mine.length + ' صنف' : 'مفيش أصناف',
+      value: nkF(r.bonus, 2),
+      del: `<button class="nk-rc-x" data-axdel="${i}">🗑</button>`,
+      fields: [
+        ['صافي المشتريات', nkInp(AX.rows[i].net, 'ax.' + i + '.net')],
+        ['نسبة البونص', nkInp(AX.rows[i].rate, 'ax.' + i + '.rate')],
+        ['النوع', nkInp(AX.rows[i].type, 'ax.' + i + '.type', 'type="text"')],
+        ['رقم اكسا', nkInp(AX.rows[i].axa, 'ax.' + i + '.axa')],
+      ],
+      extra: (mine.length ? `<div style="margin-top:9px"><button class="ghost" data-axopen="${esc(t)}"
+        style="padding:5px 11px;font-size:12px">${open ? '▾ اقفل' : '◂'} ${mine.length} صنف</button></div>` : '') + items,
+      sums: [['البونص المحسوب', nkF(r.bonus, 2)],
+        ['الفرق', `<span style="color:${Math.abs(r.diff) < 1 ? 'var(--accent2)' : 'var(--danger)'}">${nkF(r.diff, 2)}</span>`, true]],
+    });
+  });
+  if(MOB) cards += nkTotBar([['صافي المشتريات', nkF(c.t.net, 0)], ['البونص', nkF(c.t.bonus, 2)],
+    ['اكسا', nkF(c.t.axa, 2)], ['الفرق', nkF(c.t.diff, 2)]]);
+  if(!MOB) c.rows.forEach((r, k)=>{
     const i = vis[k].i;
     const mine = (AX.items || []).filter(it=> axTypeOf(it) === AX.rows[i].type);
     const open = !!AX.open[AX.rows[i].type];
@@ -11198,6 +11240,18 @@ function renderAX_impl(el){
         <div class="row"><button class="secondary" data-axdadd="${di}">+ سطر</button>
           <button class="ghost" data-axddel="${di}">حذف الجدول</button></div>
       </div>
+      ${MOB ? `<div style="margin-top:8px">${dc.rows.map((r, ri)=> nkRowCard({
+        n: ri + 1, title: d.rows[ri].type || 'من غير نوع', sub: d.rows[ri].period || '',
+        value: nkF(r.bonus, 2),
+        del: `<button class="nk-rc-x" data-axrdel="${di}.${ri}">🗑</button>`,
+        fields: [
+          ['الفترة', nkInp(d.rows[ri].period, 'axd.' + di + '.' + ri + '.period', 'type="text"')],
+          ['النوع',  nkInp(d.rows[ri].type,   'axd.' + di + '.' + ri + '.type', 'type="text"')],
+          ['المبلغ', nkInp(d.rows[ri].amount, 'axd.' + di + '.' + ri + '.amount')],
+          ['النسبة', nkInp(d.rows[ri].rate,   'axd.' + di + '.' + ri + '.rate')],
+        ],
+        sums: [['البونص', nkF(r.bonus, 2), true]],
+      })).join('')}${nkTotBar([['المبلغ', nkF(dc.t.amount, 2)], ['البونص', nkF(dc.t.bonus, 2)]])}</div>` : `
       <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr>
         <th>الفترة</th><th>النوع</th><th>المبلغ</th><th>النسبة</th><th>البونص</th><th></th></tr></thead><tbody>
       ${dc.rows.map((r, ri)=> `<tr>
@@ -11209,7 +11263,7 @@ function renderAX_impl(el){
         <td><button class="ghost" data-axrdel="${di}.${ri}">✕</button></td></tr>`).join('')}
         <tr class="total-row"><td style="text-align:right">الإجمالي</td><td></td>
           <td class="wh-num">${nkF(dc.t.amount, 2)}</td><td></td><td class="wh-num">${nkF(dc.t.bonus, 2)}</td><td></td></tr>
-      </tbody></table></div></div>`;
+      </tbody></table></div>`}</div>`;
   });
   el.innerHTML = `
   <div class="card">
@@ -11230,13 +11284,14 @@ function renderAX_impl(el){
         ${axPeriods().map(p=> `<option value="${esc(p)}" ${AX.sel === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}
       </select></label>` : ''}
     </div>
+    ${MOB ? `<div style="margin-top:10px">${cards}</div>` : `
     <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr>
       <th>النوع</th><th>صافي المشتريات</th><th>النسبة (0.05 = 5%)</th><th>قيمة البونص</th><th>من كشف اكسا</th><th>الفرق</th><th></th>
     </tr></thead><tbody>${rows}
       <tr class="total-row"><td style="text-align:right">الإجمالي</td>
         <td class="wh-num">${nkF(c.t.net, 2)}</td><td></td><td class="wh-num">${nkF(c.t.bonus, 2)}</td>
         <td class="wh-num">${nkF(c.t.axa, 2)}</td><td class="wh-num">${nkF(c.t.diff, 2)}</td><td></td></tr>
-    </tbody></table></div>
+    </tbody></table></div>`}
     ${nkBar('ax')}
   </div>
   <div class="card">
