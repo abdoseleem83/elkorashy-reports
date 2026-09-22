@@ -413,6 +413,9 @@
 </div>
 <!-- التطبيق قسمين: المبيعات والمخازن. كل واحد بشاشاته وتقاريره. -->
 <div class="mod-bar">
+  <button class="mod-btn" data-mod="it" aria-expanded="false" aria-controls="itApp">
+    <span class="mod-ico">📦</span><span class="mod-txt"><b>الأصناف</b><span class="mod-sub">دليل موحّد لكل الأقسام</span></span><span class="mod-car">▾</span>
+  </button>
   <button class="mod-btn" data-mod="sales" aria-expanded="false" aria-controls="salesApp">
     <span class="mod-ico">📊</span><span class="mod-txt"><b>المبيعات</b><span class="mod-sub">مقارنات وقطاعات ونمو</span></span><span class="mod-car">▾</span>
   </button>
@@ -423,9 +426,6 @@
     <span class="mod-ico">🏬</span><span class="mod-txt"><b>المخازن</b><span class="mod-sub">أرصدة ونواقص وجرد</span></span><span class="mod-car">▾</span>
   </button>
 
-  <button class="mod-btn" data-mod="it" aria-expanded="false" aria-controls="itApp">
-    <span class="mod-ico">📦</span><span class="mod-txt"><b>الأصناف</b><span class="mod-sub">دليل موحّد لكل الأقسام</span></span><span class="mod-car">▾</span>
-  </button>
   <button class="mod-btn" data-mod="gv" aria-expanded="false" aria-controls="gvApp">
     <span class="mod-ico">🚢</span><span class="mod-txt"><b>طلبيات جيفز</b><span class="mod-sub">طلبيات واستلام وتسعير</span></span><span class="mod-car">▾</span>
   </button>
@@ -1129,7 +1129,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v147';
+const APP_VERSION = 'v148';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1469,7 +1469,7 @@ async function loadStorage(){
     // بيانات المخازن بتترجع من الكاش دايمًا — حتى لو مفيش شهور مبيعات محفوظة.
     // قبل كده كانت جوه شرط الشهور، فمستخدم المخازن بس كان يلاقي الشاشة فاضية
     // لو قراءة السيرفر فشلت.
-    [['cache:whCatalog', v=>whCatalog=v], ['cache:whBalances', v=>whBalances=v],
+    [['cache:whCatalog', v=>{ whCatalog=v; itCatBump(); }], ['cache:whBalances', v=>whBalances=v],
      ['cache:whOrder', v=>whOrder=v], ['cache:whCount', v=>whCount=v],
      ['cache:finData', v=>finData=v]].forEach(([k,set])=>{
       const raw = localStorage.getItem(k);
@@ -1740,7 +1740,7 @@ async function loadStorage(){
 
   // ---- بيانات المخازن ----
   for(const [key, setter] of [
-    ['whCatalog',  (v)=>{ whCatalog  = v; }],
+    ['whCatalog',  (v)=>{ whCatalog  = v; itCatBump(); }],
     ['whBalances', (v)=>{ whBalances = v; }],
     ['whOrder',    (v)=>{ whOrder    = v; }],
     ['whCount',    (v)=>{ whCount    = v; }],
@@ -2267,8 +2267,18 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
           headerNames: header.map(h => normName(h)).filter(Boolean)};
 }
 
+// القطاع بالترتيب: اللي إنت صنّفته بإيدك ← المجموعة الرئيسية من **شيت
+// الأصناف** ← تخمين من اسم الصنف. قبل كده الشيت مكانش بيتقرا خالص، فصنف
+// جديد كان بيروح بالتخمين حتى لو مجموعته مكتوبة في الشيت.
 function itemSector(itemName){
   if(itemOverride[itemName]) return itemOverride[itemName];
+  const c = typeof itCatOf === 'function' ? itCatOf(itemName) : null;
+  if(c && c.main){
+    if(SECTORS.indexOf(c.main) >= 0) return c.main;
+    const g = guessSector(c.main);
+    if(g && g !== 'اكسسوارات') return g;
+    if(/اكسسوار/.test(c.main)) return 'اكسسوارات';
+  }
   return guessSector(itemName);
 }
 
@@ -5525,7 +5535,7 @@ async function saveWhCatalog(){
       // (مثلًا اترجّع من نسخة احتياطية أو اتضاف وإحنا أوفلاين) بيفضل مكانه
       // بدل ما يختفي من غير ما حد ياخد باله.
       const srvCat = JSON.parse(r.value) || {};
-      whCatalog = Object.assign({}, whCatalog, srvCat);
+      whCatalog = Object.assign({}, whCatalog, srvCat); itCatBump();
       serverHasMerge = true;
       whCatDirty = {};
       bumpVersion('whCatalog');
@@ -6050,7 +6060,7 @@ const SYNC_KEYS_BY_MOD = {
 };
 function syncKeysFor(mod){ return SYNC_KEYS_BY_MOD[mod] || []; }
 const WH_SETTERS = {
-  whCatalog:  v=>{ whCatalog  = v; },
+  whCatalog:  v=>{ whCatalog  = v; itCatBump(); },
   whBalances: v=>{ whBalances = v; },
   whOrder:    v=>{ whOrder    = v; },
   whCount:    v=>{ whCount    = v; },
@@ -6952,40 +6962,21 @@ $on('whCatBtn').addEventListener('click', async ()=>{
   $('whCatMsg').innerHTML = '<div class="msg warn">بيقرا الملف...</div>';
   try{
     const wb = XLSX.read(await f.arrayBuffer(), {type:'array'});
-    const cat = parseWhCatalog(wb);
-    const n = Object.keys(cat).length;
-    if(!n) throw new Error('الملف مفيهوش أصناف.');
-    // وحدات الطلب اللي المستخدم اختارها مش في ملف الدليل — منضيّعهاش
-    Object.keys(cat).forEach(k=>{
-      const old = whCatalog[k];
-      if(old && old.unit) cat[k].unit = old.unit;
-    });
     // الافتراضي **تحديث** مش استبدال: أي صنف مش في الملف بيفضل زي ما هو.
-    // (قبل كده أي رفعة كانت بتمسح كل صنف مش في الملف — فلو رفعت شيت فيه
-    //  التعديلات بس كنت بتفقد باقي الدليل.)
     const replaceAll = !!($('whCatReplace') && $('whCatReplace').checked);
-    const before = Object.keys(whCatalog || {});
-    const added = Object.keys(cat).filter(k => !whCatalog[k]).length;
-    const changed = Object.keys(cat).filter(k => whCatalog[k]
-      && JSON.stringify(whCatalog[k]) !== JSON.stringify(cat[k])).length;
-    const untouched = before.filter(k => !cat[k]);
-    if(replaceAll && untouched.length &&
-       !confirm(`الملف فيه ${n} صنف. الاستبدال هيمسح ${untouched.length} صنف موجودين دلوقتي ومش في الملف. تكمل؟`)){
-      $('whCatMsg').innerHTML = '<div class="msg warn">اتلغى. شيل علامة "استبدل الدليل كله" عشان تحدّث من غير مسح.</div>';
-      return;
-    }
     if(replaceAll){
-      whCatalog = cat;
-      whCatDirty = {};   // استبدال كامل = كتابة كاملة مش دمج
-    }else{
-      Object.keys(cat).forEach(k=>{ whCatalog[k] = cat[k]; whMarkCatDirty(k); });
+      const cat = parseWhCatalog(wb);
+      const gone = Object.keys(whCatalog || {}).filter(k=> !cat[k]).length;
+      if(gone && !confirm(`الاستبدال هيمسح ${gone} صنف موجودين دلوقتي ومش في الملف. تكمل؟`)){
+        $('whCatMsg').innerHTML = '<div class="msg warn">اتلغى. شيل علامة "استبدل الدليل كله" عشان تحدّث من غير مسح.</div>';
+        return;
+      }
     }
-    try{ await saveWhCatalog(); }
-    catch(e){ scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف'); }
-    whUpdateLocalCache();
-    $('whCatMsg').innerHTML = `<div class="msg ok">الدليل اتحدّث: <b>${added}</b> صنف جديد · <b>${changed}</b> اتعدّل`
-      + (replaceAll ? ` · <b>${untouched.length}</b> اتمسح` : ` · <b>${untouched.length}</b> فضلوا زي ما هم`)
-      + ` — الإجمالي ${Object.keys(whCatalog).length} صنف في ${whGroups().length} مجموعة رئيسية.</div>`;
+    // نفس الكود اللي بيشتغل من شاشة الأصناف بالظبط — مصدر واحد للحقيقة
+    const r = await itApplyCatalogWb(wb, replaceAll);
+    $('whCatMsg').innerHTML = `<div class="msg ok">الدليل اتحدّث: <b>${r.added}</b> صنف جديد · <b>${r.changed}</b> اتعدّل`
+      + (replaceAll ? ` · <b>${r.untouched}</b> اتمسح` : ` · <b>${r.untouched}</b> فضلوا زي ما هم`)
+      + ` — الإجمالي ${r.total} صنف في ${whGroups().length} مجموعة رئيسية.</div>`;
     renderWh();
   }catch(e){
     $('whCatMsg').innerHTML = `<div class="msg err">${esc(e.message)}</div>`;
@@ -7002,7 +6993,7 @@ $on('whCatAddBtn').addEventListener('click', async ()=>{
   if(!name){ msg.innerHTML = '<div class="msg warn">لازم تكتب اسم الصنف الأول.</div>'; return; }
   if(whCatalog[name]){ msg.innerHTML = '<div class="msg warn">الصنف ده موجود في الدليل فعلًا — عدّله من قايمة الأصناف الناقصة لو ناقصه بيانات.</div>'; return; }
   whCatalog[name] = {main, sub, roll, color};
-  whMarkCatDirty(name);
+  whMarkCatDirty(name); itCatBump();
   const btn = $('whCatAddBtn'); btn.disabled = true; btn.textContent = 'بيحفظ...';
   msg.innerHTML = '<div class="msg warn">بيحفظ...</div>';
   try{
@@ -8796,7 +8787,17 @@ function nkGet(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.pa
 const nkLocalWriteAt = {};
 const nkLastPushed = {};        // آخر نسخة نجح رفعها لكل مفتاح
 const NK_PUSH_GUARD_MS = 8000;  // مدة الحماية من سحب نسخة قديمة
-function nkSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} nkLocalWriteAt[k] = Date.now(); nkCloudPush(k); }
+// كل حفظ بياخد رقم نسخة (_rev) بوقت الحفظ. ده اللي بيخلّي السحب من
+// السيرفر يعرف إن اللي جاي أقدم من اللي عندنا فيسيبه. من غيره كان السيرفر
+// (Google Sheets بيرجّع نسخة قديمة لثواني بعد الكتابة) يرجّعلنا اللي كنا
+// لسه ماسحينه — فالعلامة اللي شيلتها ترجع لوحدها والشاشة تترسم من أول
+// وتنطّ لفوق كل ٦ ثواني.
+function nkRev(v){ const n = v && Number(v._rev); return isFinite(n) ? n : 0; }
+function nkSet(k, v){
+  try{ if(v && typeof v === 'object') v._rev = Date.now(); }catch(e){}
+  try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){}
+  nkLocalWriteAt[k] = Date.now(); nkCloudPush(k);
+}
 
 // ---- مزامنة جيفز/المرتبات/بونص اكسا بين الأجهزة — بنفس التخزين المركزي
 // (Google Sheets عبر Apps Script) اللي بيشتغل بيه المبيعات والمخازن.
@@ -8861,6 +8862,14 @@ async function nkCloudPullAll(silent){
       const r = await window.storage.get(k);
       if(r && r.value != null){
         const local = (function(){ try{ return localStorage.getItem(k); }catch(e){ return null; } })();
+        // النسخة الجاية من السيرفر أقدم من اللي عندنا؟ ما نلمسش حاجة —
+        // ونرفع بتاعتنا تاني عشان السيرفر يلحق.
+        let srvOld = false;
+        try{
+          const sv = JSON.parse(r.value), lv = local ? JSON.parse(local) : null;
+          if(lv && nkRev(sv) < nkRev(lv)) srvOld = true;
+        }catch(e){}
+        if(srvOld){ nkCloudPush(k); continue; }
         if(r.value !== local){
           let toStore = r.value;
           try{ localStorage.setItem(k, toStore); }
@@ -8881,9 +8890,13 @@ async function nkCloudPullAll(silent){
           if(k === 'fpData') FP = nkGet('fpData', FP);
           if(k === 'axData') AX = nkGet('axData', AX);
         if(k === 'itData'){ IT = nkGet('itData', IT); if(!IT.alias) IT.alias = {}; }
+          // القسم المقفول مالوش لزمة يترسم — بيترسم أصلًا أول ما تفتحه.
+          // الرسم وهو مقفول شغل ضايع، والرسم وهو مفتوح بينط بالشاشة.
+          const vis = (id)=>{ const e = document.getElementById(id); return !!(e && e.style.display !== 'none'); };
+          const appOf = {gvData:'gvApp', qpData:'qpApp', fpData:'fpApp', axData:'axApp', itData:'itApp'};
           const fn = window[NK_CLOUD_KEYS[k]];
-          if(typeof fn === 'function') fn();
-          if(k === 'gvData' && typeof window.renderIT === 'function') window.renderIT();
+          if(typeof fn === 'function' && vis(appOf[k])) fn();
+          if(k === 'gvData' && typeof window.renderIT === 'function' && vis('itApp')) window.renderIT();
         }
       }
     }catch(e){
@@ -9310,6 +9323,73 @@ function itCanon(name){
   return cur;
 }
 
+/* ---- شيت الأصناف = المصدر الرسمي لأسماء الأصناف ومجموعاتها ----
+   بيترفع من هنا (شاشة الأصناف)، ومنه بتقرا المبيعات (القطاع) وجيفز (الاسم)
+   وبونص اكسا (النوع). الملف: شيت اسمه data بالأعمدة
+   اسم الصنف · المجموعة الرئيسية · المجموعة الفرعية · محتوي اللفه · اللون · الصنف */
+let itCatVer = 0;                 // بيزيد مع كل تعديل في الدليل عشان الفهرس يتبني تاني
+// الدليل بيتغيّر من أماكن كتير (كاش، سحب من السيرفر، إضافة يدوي). الدالة دي
+// بتتنده من كلها. الـtry عشان ممكن تتنده وإحنا لسه في نص تحميل الصفحة.
+function itCatBump(){ try{ itCatVer++; }catch(e){} }
+let _itCatIdx = null, _itCatIdxAt = -1, _itCatIdxN = -1;
+function itCatIndex(){
+  const n = Object.keys(whCatalog || {}).length;
+  if(_itCatIdx && _itCatIdxAt === itCatVer && _itCatIdxN === n) return _itCatIdx;
+  const idx = new Map();
+  Object.keys(whCatalog || {}).forEach(nm=>{
+    const c = whCatalog[nm] || {};
+    const rec = {name: nm, main: c.main || '', sub: c.sub || '', color: c.color || '',
+                 roll: Number(c.roll) || 0, base: c.base || ''};
+    idx.set(normName(nm), rec);
+    // بصمة الاسم (من غير مسافات وشرط ورموز) عشان اسم مكتوب بشكل مختلف
+    // شوية في المبيعات أو جيفز يلاقي نفسه في الدليل
+    const f = itFingerprint(nm);
+    if(f && !idx.has('#' + f)) idx.set('#' + f, rec);
+  });
+  _itCatIdx = idx; _itCatIdxAt = itCatVer; _itCatIdxN = n;
+  return idx;
+}
+// بيانات الصنف من شيت الأصناف — أو null لو الصنف مش في الشيت
+function itCatOf(name){
+  if(!name) return null;
+  const idx = itCatIndex();
+  const canon = itCanon(name);
+  return idx.get(normName(canon)) || idx.get(normName(name))
+      || idx.get('#' + itFingerprint(canon)) || idx.get('#' + itFingerprint(name)) || null;
+}
+// الاسم الرسمي زي ما هو مكتوب في شيت الأصناف (ولو مش موجود، الاسم زي ما هو)
+function itMaster(name){ const c = itCatOf(name); return c ? c.name : (name || ''); }
+
+// رفع شيت الأصناف: بيحدّث الدليل، وبيصلّح أسامي أصناف جيفز من الشيت.
+async function itApplyCatalogWb(wb, replaceAll){
+  const cat = parseWhCatalog(wb);
+  const n = Object.keys(cat).length;
+  if(!n) throw new Error('الملف مفيهوش أصناف. لازم يكون فيه شيت اسمه data وأول سطر فيه: اسم الصنف · المجموعة الرئيسية · المجموعة الفرعية · محتوي اللفه · اللون · الصنف.');
+  // وحدة الطلب اللي المستخدم اختارها مش في الشيت — منضيّعهاش
+  Object.keys(cat).forEach(k=>{ const old = whCatalog[k]; if(old && old.unit) cat[k].unit = old.unit; });
+  const before = Object.keys(whCatalog || {});
+  const added = Object.keys(cat).filter(k=> !whCatalog[k]).length;
+  const changed = Object.keys(cat).filter(k=> whCatalog[k]
+    && JSON.stringify(whCatalog[k]) !== JSON.stringify(cat[k])).length;
+  const untouched = before.filter(k=> !cat[k]);
+  if(replaceAll){ whCatalog = cat; whCatDirty = {}; }
+  else Object.keys(cat).forEach(k=>{ whCatalog[k] = cat[k]; whMarkCatDirty(k); });
+  itCatBump();
+  // أكواد جيفز موجودة أصلًا — اللي بيتحدّث هو الاسم، من شيت الأصناف
+  let renamed = 0;
+  (GV.items || []).forEach(x=>{
+    if(!x.name) return;
+    const m = itCatOf(x.name);
+    if(m && m.name !== x.name){ x.name = m.name; renamed++; }
+  });
+  if(renamed) nkSet('gvData', GV);
+  try{ await saveWhCatalog(); }
+  catch(e){ scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف'); }
+  whUpdateLocalCache();
+  return {n, added, changed, untouched: untouched.length, renamed,
+          total: Object.keys(whCatalog).length};
+}
+
 // بيجمع كل الأصناف من كل الأقسام في خريطة واحدة
 function itCollect(){
   const map = new Map();   // الاسم الأساسي -> السطر
@@ -9400,8 +9480,26 @@ function itHtml(){
       <div class="tab${tab==='gv'?' active':''}" data-ittab="gv">أصناف جيفز</div>
     </div>
   </div>`;
-  if(tab === 'gv') return head + gvItemsHtml();
-  if(tab === 'dups') return head + itDupsHtml(dups);
+  // رفع شيت الأصناف — مكانه هنا لأن ده مصدر الأسماء لكل الأقسام
+  const up = `
+  <div class="card">
+    <h2 style="margin:0">⬆️ ارفع شيت الأصناف</h2>
+    <div class="sub" style="margin-top:6px">شيت اسمه <b>data</b> بالأعمدة:
+      اسم الصنف · المجموعة الرئيسية · المجموعة الفرعية · محتوي اللفه · اللون · الصنف.
+      منه بتقرا <b>المبيعات</b> (القطاع) و<b>جيفز</b> (اسم الصنف) و<b>بونص اكسا</b> (نوع البونص)
+      و<b>المخازن</b> (المجموعات واللفة).</div>
+    <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">
+      <input type="file" id="itCatFile" accept=".xls,.xlsx" style="max-width:230px">
+      <button class="secondary" id="itCatBtn" disabled>حدّث الأصناف</button>
+      <button class="ghost" id="itCatTemplate">⬇️ نموذج</button>
+    </div>
+    <label class="chk" style="gap:6px;margin-top:8px">
+      <input type="checkbox" id="itCatReplace"${IT.catReplace ? ' checked' : ''}> استبدل الدليل كله (امسح الأصناف اللي مش في الملف)
+    </label>
+    <div id="itCatMsg" style="margin-top:8px">${IT.catMsg || ''}</div>
+  </div>`;
+  if(tab === 'gv') return head + up + gvItemsHtml();
+  if(tab === 'dups') return head + up + itDupsHtml(dups);
 
   const filters = `
   <div class="card">
@@ -9440,7 +9538,7 @@ function itHtml(){
     </tr></thead><tbody>${body || `<tr><td colspan="${9+stores.length}" class="sub">مفيش أصناف مطابقة.</td></tr>`}</tbody></table></div>
     ${rows.length>600?`<div class="sub" style="margin-top:6px">بيعرض أول ٦٠٠ صنف — ضيّق البحث عشان تشوف الباقي.</div>`:''}
   </div>`;
-  return head + filters + table;
+  return head + up + filters + table;
 }
 
 function itDupsHtml(dups){
@@ -9497,6 +9595,45 @@ function renderIT_impl(el){
   const src = $('itSrc');
   if(src) src.onchange = ()=>{ IT.src = src.value; itSave(); renderIT(); };
   const ex = $('itExport'); if(ex) ex.onclick = itExport;
+  // ---- رفع شيت الأصناف ----
+  const cf = $('itCatFile'), cb = $('itCatBtn'), cr = $('itCatReplace');
+  if(cf && cb){
+    cf.onchange = ()=>{ cb.disabled = !cf.files.length; };
+    if(cr) cr.onchange = ()=>{ IT.catReplace = cr.checked; itSave(); };
+    cb.onclick = async ()=>{
+      const f = cf.files[0]; if(!f) return;
+      const msg = $('itCatMsg');
+      const say = (h)=>{ IT.catMsg = h; itSave(); if($('itCatMsg')) $('itCatMsg').innerHTML = h; };
+      say('<div class="msg warn">بيقرا الملف...</div>');
+      cb.disabled = true;
+      try{
+        const wb = XLSX.read(await f.arrayBuffer(), {type:'array'});
+        const replaceAll = !!(cr && cr.checked);
+        // الاستبدال بيمسح — نتأكد الأول، وبنقول بالظبط هيمسح كام
+        if(replaceAll){
+          const cat = parseWhCatalog(wb);
+          const gone = Object.keys(whCatalog || {}).filter(k=> !cat[k]).length;
+          if(gone && !confirm(`الاستبدال هيمسح ${gone} صنف موجودين دلوقتي ومش في الملف. تكمل؟`)){
+            say('<div class="msg warn">اتلغى. شيل علامة «استبدل الدليل كله» عشان تحدّث من غير مسح.</div>');
+            cb.disabled = false; return;
+          }
+        }
+        const r = await itApplyCatalogWb(wb, replaceAll);
+        say(`<div class="msg ok">تم: <b>${r.added}</b> صنف جديد · <b>${r.changed}</b> اتعدّل`
+          + (replaceAll ? ` · <b>${r.untouched}</b> اتمسح` : ` · <b>${r.untouched}</b> فضلوا زي ما هم`)
+          + (r.renamed ? ` · <b>${r.renamed}</b> اسم في جيفز اتصلّح` : '')
+          + ` — الإجمالي ${r.total} صنف.</div>`);
+        renderIT();
+        if(typeof renderWh === 'function' && document.getElementById('whApp')
+           && document.getElementById('whApp').style.display !== 'none'){ try{ renderWh(); }catch(e){} }
+      }catch(e){
+        say(`<div class="msg err">${esc(e.message)}</div>`);
+        cb.disabled = false;
+      }
+    };
+  }
+  const ct = $('itCatTemplate');
+  if(ct) ct.onclick = ()=>{ const b = document.getElementById('whCatTemplate'); if(b) b.click(); };
   el.querySelectorAll('[data-itunmerge]').forEach(btn=> btn.onclick = ()=>{
     const cn = btn.dataset.itunmerge;
     Object.keys(IT.alias).forEach(k=>{ if(IT.alias[k] === cn) delete IT.alias[k]; });
@@ -9933,76 +10070,53 @@ function qpCalc(h){
 const QP_HALF_LBL = (h)=> h === 1 ? 'النصف الأول (1-15)' : 'النصف الثاني (16-آخر الشهر)';
 // كشف الإرسال: أعمدته وترتيبها اللي المستخدم يختارها من تاب "تخصيص التصدير"
 const QP_SEND_COLS = ['م','اسم الموظف','الفرع','المرتب الكامل','المستحق (النص)','خصم غياب','خصم تأخيرات','إضافي','خصم جزاءات','سلف','تأمينات','إجمالي الخصومات','حوافز','صافي المرتب'];
-const qpSendColsOn = ()=> QP.sendCols && QP.sendCols.length === QP_SEND_COLS.length ? QP.sendCols : QP_SEND_COLS.map(()=> true);
-// ⚠️ كشف المرتبات نفسه فيه ٢٢ عمود — لما بيتطبع كلهم مع بعض العناوين بتتلخبط
-// وتبقى مش مقروءة. بقى ليه نفس اختيار الأعمدة زي كشف الإرسال بالظبط، وفيه
-// «المختصر» اللي بيسيب الأعمدة المهمة بس.
-const QP_SHEET_COLS = ['م','الموظف','الفرع','الراتب الشهري','راتب النصف','راتب اليوم','راتب الساعة',
-  'غياب بإذن (أيام)','غياب بدون إذن (أيام)','تأخيرات (ساعات)','إضافي (ساعات)','جزاءات (أيام)','سلف',
-  'خصم غياب بإذن','خصم غياب بدون إذن','خصم تأخيرات','مبلغ إضافي','خصم جزاءات','سلف مخصومة','تأمينات','حوافز','صافي الراتب'];
-// المختصر: م / الموظف / الفرع / الراتب / راتب النصف / خصم التأخيرات / مبلغ إضافي / تأمينات / حوافز / الصافي
-const QP_SHEET_SHORT = [0,1,2,3,4,15,16,19,20,21];
-const qpSheetColsOn = ()=> QP.sheetCols && QP.sheetCols.length === QP_SHEET_COLS.length ? QP.sheetCols : QP_SHEET_COLS.map(()=> true);
-// فلتر فرع للتصدير: '' يعني كل الفروع
-const qpBranchRows = (c)=> QP.expBranch ? c.rows.filter(r=> (r.branch || '') === QP.expBranch) : c.rows;
-function qpBlocks(which){
-  const out = [];
-  const mk = (h)=>{
-    const c = qpCalc(h);
-    const rr = qpBranchRows(c);
-    const on = qpSheetColsOn();
-    const head = QP_SHEET_COLS.filter((_, k)=> on[k]);
-    const full = rr.map((r, i)=> [i+1, r.name, r.branch, r.salary, r.half, r.day, r.hour,
-      nkN(r.d.absExc), nkN(r.d.absNo), nkN(r.d.late), nkN(r.d.extra), nkN(r.d.pen), nkN(r.d.adv),
-      r.dExc, r.dNo, r.dLate, r.vExt, r.dPen, r.adv, r.ins, r.inc, r.net]);
-    const rows = full.map(row=> row.filter((_, k)=> on[k]));
-    const tt = (k)=> rr.reduce((a, r)=> a + (r[k] || 0), 0);
-    const fullTot = ['', 'الإجمالي', '', tt('salary'), tt('half'), '', '', '', '', '', '', '', '',
-      tt('dExc'), tt('dNo'), tt('dLate'), tt('vExt'), tt('dPen'), tt('adv'), tt('ins'), tt('inc'), tt('net')];
-    const tot = fullTot.filter((_, k)=> on[k]);
-    tot.__cls = 'total-row'; rows.push(tot);
-    const lbl = QP_HALF_LBL(h) + (QP.expBranch ? ' — فرع ' + QP.expBranch : '');
-    return {title: 'كشف مرتبات ' + lbl, head, rows};
-  };
-  const send = (h)=>{
-    const c = qpCalc(h);
-    const rr = qpBranchRows(c);
-    const on = qpSendColsOn();
-    const head = QP_SEND_COLS.filter((_, k)=> on[k]);
-    const full = rr.map((r, i)=> [i+1, r.name, r.branch, r.salary, r.half, r.dExc + r.dNo,
-      r.dLate, r.vExt, r.dPen, r.adv, r.ins, r.totalDed, r.inc, r.net]);
-    const rows = full.map(row=> row.filter((_, k)=> on[k]));
-    const tt = (k)=> rr.reduce((a, r)=> a + (r[k] || 0), 0);
-    const fullTot = ['', 'الإجمالي', '', tt('salary'), tt('half'), tt('dExc') + tt('dNo'),
-      tt('dLate'), tt('vExt'), tt('dPen'), tt('adv'), tt('ins'), tt('totalDed'), tt('inc'), tt('net')];
-    const tot = fullTot.filter((_, k)=> on[k]);
-    tot.__cls = 'total-row'; rows.push(tot);
-    const lbl = QP_HALF_LBL(h) + (QP.expBranch ? ' — فرع ' + QP.expBranch : '');
-    return {title: 'كشف الإرسال - ' + lbl, head, rows};
-  };
-  if(which === 'half')  { out.push(mk(QP.half), send(QP.half)); return out; }
-  if(which === 'sheet') { out.push(mk(QP.half)); return out; }
-  if(which === 'send')  { out.push(send(QP.half)); return out; }
-  const a = qpCalc(1), b = qpCalc(2);
-  const line = (lbl, k)=> [lbl, a.t[k], b.t[k], a.t[k] + b.t[k]];
-  out.push({title: 'الملخص الشهري', head: ['البيان','النصف الأول','النصف الثاني','الإجمالي الشهري'], rows: [
-    line('إجمالي الراتب', 'half'), line('خصم غياب بإذن', 'dExc'), line('خصم غياب بدون إذن', 'dNo'),
-    line('خصم التأخيرات', 'dLate'), line('مبلغ الإضافي', 'vExt'), line('خصم الجزاءات', 'dPen'),
-    line('السلف المخصومة', 'adv'), line('التأمينات', 'ins'), line('الحوافز', 'inc'),
-    Object.assign(line('صافي الراتب المدفوع', 'net'), {__cls:'total-row'}),
-  ]});
-  return out;
+// المطلوب من المستخدم بالنص: «كشف كامل باختيار الأعمدة، أو كشف كل فرع على
+// حدة برضه باختيار الأعمدة، وشيل الباقي». فمابقاش فيه غير اختيار أعمدة واحد
+// وزرارين إرسال. (كشف الـ٢٢ عمود والملخص الشهري والاتنين-مع-بعض اتشالوا.)
+function qpSendColsOn(){
+  const c = QP.sendCols;
+  if(!Array.isArray(c)) return QP_SEND_COLS.map(()=> true);
+  // لو الطول اتغيّر (نسخة أقدم من التطبيق) بنكمّل بـ true بدل ما نرمي
+  // اختيار المستخدم كله ونرجّع كل الأعمدة — ده اللي كان بيحسّسك إن العلامة
+  // اللي شيلتها بترجع لوحدها.
+  return QP_SEND_COLS.map((_, k)=> c[k] !== false);
 }
-const qpExpSuffix = ()=> (QP.expBranch ? ' — فرع ' + QP.expBranch : '');
-NK_EXPORTERS['qpH'] = ()=> ({blocks: qpBlocks('half'), title: `مرتبات القرشي ${QP.month} — ${QP_HALF_LBL(QP.half)}`, subtitle: QP_HALF_LBL(QP.half) + ' — ' + QP.month});
-// كل كشف لوحده — عشان تبعت اللي انت عايزه بس
-NK_EXPORTERS['qpSheet'] = ()=> ({blocks: qpBlocks('sheet'),
-  title: `كشف مرتبات القرشي ${QP.month} — ${QP_HALF_LBL(QP.half)}` + qpExpSuffix(),
-  subtitle: QP_HALF_LBL(QP.half) + ' — ' + QP.month + qpExpSuffix()});
-NK_EXPORTERS['qpSend'] = ()=> ({blocks: qpBlocks('send'),
-  title: `كشف الإرسال ${QP.month} — ${QP_HALF_LBL(QP.half)}` + qpExpSuffix(),
-  subtitle: 'كشف الإرسال — ' + QP_HALF_LBL(QP.half) + ' — ' + QP.month + qpExpSuffix()});
-NK_EXPORTERS['qpS'] = ()=> ({blocks: qpBlocks('sum'),  title: `ملخص مرتبات القرشي ${QP.month}`, subtitle: 'ملخص شهر ' + QP.month});
+const qpBranches = ()=> [...new Set(QP.emps.map(e=> (e.branch || '').trim()).filter(Boolean))];
+// بلوك واحد = كشف بالأعمدة اللي إنت مختارها، لمجموعة صفوف معيّنة
+function qpSendBlock(rr, title){
+  const on = qpSendColsOn();
+  const head = QP_SEND_COLS.filter((_, k)=> on[k]);
+  const full = rr.map((r, i)=> [i+1, r.name, r.branch, r.salary, r.half, r.dExc + r.dNo,
+    r.dLate, r.vExt, r.dPen, r.adv, r.ins, r.totalDed, r.inc, r.net]);
+  const rows = full.map(row=> row.filter((_, k)=> on[k]));
+  const tt = (k)=> rr.reduce((a, r)=> a + (r[k] || 0), 0);
+  const fullTot = ['', 'الإجمالي', '', tt('salary'), tt('half'), tt('dExc') + tt('dNo'),
+    tt('dLate'), tt('vExt'), tt('dPen'), tt('adv'), tt('ins'), tt('totalDed'), tt('inc'), tt('net')];
+  const tot = fullTot.filter((_, k)=> on[k]);
+  tot.__cls = 'total-row'; rows.push(tot);
+  return {title, head, rows};
+}
+function qpBlocks(which){
+  const c = qpCalc(QP.half);
+  const lbl = QP_HALF_LBL(QP.half);
+  if(which === 'branches'){
+    const brs = qpBranches();
+    if(!brs.length) return [qpSendBlock(c.rows, 'كشف المرتبات - ' + lbl)];
+    const out = brs.map(b=> qpSendBlock(c.rows.filter(r=> (r.branch || '').trim() === b),
+      'فرع ' + b + ' - ' + lbl)).filter(bl=> bl.rows.length > 1);
+    // الموظفين اللي مالهمش فرع مكتوب مايتسقطوش من الكشف من غير ما حد ياخد باله
+    const none = c.rows.filter(r=> !(r.branch || '').trim());
+    if(none.length) out.push(qpSendBlock(none, 'من غير فرع - ' + lbl));
+    return out;
+  }
+  return [qpSendBlock(c.rows, 'كشف المرتبات الكامل - ' + lbl)];
+}
+NK_EXPORTERS['qpAll'] = ()=> ({blocks: qpBlocks('all'),
+  title: `كشف مرتبات القرشي ${QP.month} — ${QP_HALF_LBL(QP.half)}`,
+  subtitle: QP_HALF_LBL(QP.half) + ' — ' + QP.month});
+NK_EXPORTERS['qpBr'] = ()=> ({blocks: qpBlocks('branches'),
+  title: `كشف مرتبات القرشي حسب الفرع ${QP.month} — ${QP_HALF_LBL(QP.half)}`,
+  subtitle: 'كل فرع على حدة — ' + QP_HALF_LBL(QP.half) + ' — ' + QP.month});
 
 // ---- استيراد شيت مرتبات القرشي ----
 // بيقرا "بيانات الموظفين" (اسم / فرع / راتب / النصف الأول؟ / النصف الثاني؟)
@@ -10092,39 +10206,22 @@ function renderQP_impl(el){
         <td class="wh-num">${nkF(c.t.dPen, 0)}</td><td class="wh-num">${nkF(c.t.net, 0)}</td></tr>
     </tbody></table></div>
     <div class="card" style="background:var(--panel2);margin-top:12px">
-      <b>⚙️ تخصيص التصدير</b>
-      <div class="row" style="margin-top:8px">
-        <label>الفرع <select id="qpExpBranch">
-          <option value="">كل الفروع</option>
-          ${[...new Set(QP.emps.map(e=> e.branch).filter(Boolean))].map(b=> `<option value="${esc(b)}" ${QP.expBranch === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}
-        </select></label>
-      </div>
-      <div class="flex-between" style="margin-top:12px">
-        <div class="sub" style="margin:0"><b>أعمدة كشف المرتبات</b> — شيل اللي مش محتاجه عشان الكشف يطلع مقروء</div>
+      <div class="flex-between">
+        <b>⚙️ أعمدة الكشف</b>
         <div class="row" style="gap:6px">
-          <button class="btn sm" id="qpShAll">✅ الكل</button>
-          <button class="btn sm" id="qpShShort">⭐ المختصر</button>
+          <button class="btn sm" id="qpSnAll">✅ الكل</button>
+          <button class="btn sm" id="qpSnNone">✖️ ولا حاجة</button>
         </div>
       </div>
-      <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:10px">
-        ${QP_SHEET_COLS.map((c, k)=> `<label class="chk" style="display:flex;gap:5px;align-items:center;font-size:12.5px">
-          <input type="checkbox" data-qpscol="${k}" ${qpSheetColsOn()[k] ? 'checked' : ''}> ${esc(c)}</label>`).join('')}
-      </div>
-
-      <div class="flex-between" style="margin-top:14px">
-        <div class="sub" style="margin:0"><b>أعمدة كشف الإرسال</b></div>
-        <div class="row" style="gap:6px"><button class="btn sm" id="qpSnAll">✅ الكل</button></div>
-      </div>
-      <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:10px">
+      <div class="sub" style="margin-top:4px">شيل اللي مش محتاجه — الاختيار ده بيتطبّق على الكشفين.</div>
+      <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:10px">
         ${QP_SEND_COLS.map((c, k)=> `<label class="chk" style="display:flex;gap:5px;align-items:center;font-size:12.5px">
           <input type="checkbox" data-qpcol="${k}" ${qpSendColsOn()[k] ? 'checked' : ''}> ${esc(c)}</label>`).join('')}
       </div>
     </div>
     <div class="sub" style="margin:14px 0 6px">📤 «إرسال» بيفتح واتساب على طول من الموبايل بصورة الكشف.</div>
-    ${nkBar('qpSheet', '<span class="pill">📋 كشف المرتبات' + (QP.expBranch ? ' — فرع ' + esc(QP.expBranch) : '') + '</span>')}
-    ${nkBar('qpSend', '<span class="pill">📨 كشف الإرسال' + (QP.expBranch ? ' — فرع ' + esc(QP.expBranch) : '') + '</span>')}
-    ${nkBar('qpH', '<span class="pill">📑 الاتنين مع بعض</span>')}
-    ${nkBar('qpS', '<span class="pill">📅 الملخص الشهري</span>')}
+    ${nkBar('qpAll', '<span class="pill">📋 كشف كامل — كل الموظفين</span>')}
+    ${nkBar('qpBr', '<span class="pill">🏢 كشف كل فرع على حدة' + (qpBranches().length ? ' (' + qpBranches().length + ' فروع)' : '') + '</span>')}
   </div>
 
   <div class="card">
@@ -10161,24 +10258,19 @@ function renderQP_impl(el){
     };
     rd.readAsArrayBuffer(f);
   };
-  const eb = $('qpExpBranch'); if(eb) eb.onchange = ()=>{ QP.expBranch = eb.value; qpSave(); renderQP(); };
+  // مهم: مفيش renderQP() هنا. الـcheckbox شكله اتغيّر خلاص، وإعادة الرسم
+  // كانت بتنطّ بالشاشة لفوق وتخلّي العلامة تبان كأنها رجعت تاني.
   el.querySelectorAll('[data-qpcol]').forEach(cb=> cb.onchange = ()=>{
     const on = qpSendColsOn().slice();
     on[+cb.dataset.qpcol] = cb.checked;
-    QP.sendCols = on; qpSave(); renderQP();
+    QP.sendCols = on; qpSave();
   });
-  el.querySelectorAll('[data-qpscol]').forEach(cb=> cb.onchange = ()=>{
-    const on = qpSheetColsOn().slice();
-    on[+cb.dataset.qpscol] = cb.checked;
-    QP.sheetCols = on; qpSave(); renderQP();
-  });
-  const qpSetSheetCols = (keep)=>{
-    QP.sheetCols = QP_SHEET_COLS.map((_, k)=> !keep || keep.indexOf(k) >= 0);
-    qpSave(); renderQP();
+  const qpSetCols = (v)=>{
+    QP.sendCols = QP_SEND_COLS.map(()=> v); qpSave();
+    el.querySelectorAll('[data-qpcol]').forEach(cb=> cb.checked = v);
   };
-  if($('qpShAll'))   $('qpShAll').onclick   = ()=> qpSetSheetCols(null);
-  if($('qpShShort')) $('qpShShort').onclick = ()=> qpSetSheetCols(QP_SHEET_SHORT);
-  if($('qpSnAll'))   $('qpSnAll').onclick   = ()=>{ QP.sendCols = QP_SEND_COLS.map(()=> true); qpSave(); renderQP(); };
+  if($('qpSnAll'))  $('qpSnAll').onclick  = ()=> qpSetCols(true);
+  if($('qpSnNone')) $('qpSnNone').onclick = ()=> qpSetCols(false);
   $('qpAdd').onclick = ()=>{ QP.emps.push({name:'موظف جديد', branch:'', salary:0, h1:true, h2:true}); qpSave(); renderQP(); };
   el.querySelectorAll('[data-qpdel]').forEach(b=> b.onclick = ()=>{ QP.emps.splice(+b.dataset.qpdel, 1); qpSave(); renderQP(); });
   el.querySelectorAll('[data-qpc]').forEach(cb=> cb.onchange = ()=>{
@@ -10545,13 +10637,26 @@ const AX_TYPES = ['اكسسوارات عام','اكسسوارات ( بلسيه )
   'كرافت لاين','نيو لاين','كومبن ابيض','كومبن بيج'];
 function axAllTypes(){
   const set = new Set(AX_TYPES);
-  (AX.items || []).forEach(it=> it.cat && set.add(it.cat));
+  (AX.items || []).forEach(it=>{
+    if(it.cat) set.add(it.cat);
+    const t = axTypeOf(it); if(t) set.add(t);   // النوع الجاي من شيت الأصناف
+  });
   (AX.rows  || []).forEach(r => r.type && set.add(r.type));
   return [...set];
 }
 const axItemKey = (it)=> String(it.code || '').trim() || normName(it.name);
-// النوع الفعلي للصنف: اللي إنت حددته له، وإلا مجموعته من الشيت
-const axTypeOf = (it)=> (AX.itemType || {})[axItemKey(it)] || it.cat || '';
+// النوع الفعلي للصنف بالترتيب:
+//   ١) اللي إنت حددته له بإيدك من القايمة المنسدلة
+//   ٢) المجموعة الفرعية بتاعته في **شيت الأصناف** (كومبن ابيض / كرافت بيج...)
+//      — ده اللي خلّى البونص يقرا من شيت الأصناف بدل ما يعتمد على مجموعة
+//      الفاتورة اللي مش دايمًا مظبوطة
+//   ٣) مجموعته زي ما جت في شيت الفواتير
+const axTypeOf = (it)=>{
+  const man = (AX.itemType || {})[axItemKey(it)];
+  if(man) return man;
+  const c = typeof itCatOf === 'function' ? itCatOf(it.name) : null;
+  return (c && c.sub) || it.cat || '';
+};
 // الصفوف بتتبني من الأصناف، مع الحفاظ على النسبة ورقم اكسا اللي إنت كتبتهم
 function axRebuildRows(){
   if(!AX.items || !AX.items.length) return;
@@ -10738,8 +10843,9 @@ function renderAX_impl(el){
           const key = axItemKey(it);
           const moved = (AX.itemType || {})[key];
           return `<tr${moved ? ' style="background:#fff8e6"' : ''}>
-            <td style="text-align:right;min-width:150px">${esc(it.name)}
+            <td style="text-align:right;min-width:150px">${esc(itMaster(it.name))}
               <div class="sub" style="font-size:10.5px">${esc(it.code || '')}${
+                itCatOf(it.name) ? '' : ' · ⚠️ مش في شيت الأصناف'}${
                 moved ? ` · ↳ اتنقل من «${esc(it.cat)}»` : ''}</div></td>
             <td><select data-axtype="${esc(key)}" style="min-width:140px;font-size:12px">
               ${types.map(t=>`<option value="${esc(t)}"${t === axTypeOf(it) ? ' selected' : ''}>${esc(t)}</option>`).join('')}
