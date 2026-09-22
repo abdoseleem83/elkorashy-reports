@@ -917,7 +917,8 @@
   <div class="flex-between">
     <div><b>☁️ المزامنة</b>
       <div id="nkSyncStatus" style="margin-top:3px;font-size:12px">⏳ لسه ما اتزامنش</div>
-      <div id="nkStorageUsage" style="margin-top:3px;font-size:10.5px"></div></div>
+      <div id="nkStorageUsage" style="margin-top:3px;font-size:10.5px"></div>
+      <div id="nkServerMode" style="margin-top:3px;font-size:10.5px"></div></div>
     <button class="secondary" id="nkSyncNowBtn" style="font-size:11px;padding:6px 12px">🔄 زامن دلوقتي</button>
   </div>
   <div class="flex-between" style="margin-top:10px">
@@ -1098,7 +1099,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v142';
+const APP_VERSION = 'v143';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8686,6 +8687,23 @@ function nkStorageUsageKb(){
   }catch(e){}
   return Math.round(total / 1024);
 }
+// بيوريك السيرفر شغال بالنسخة السريعة (merge + union) ولا لسه على القديمة.
+// مفيد بعد أي إعادة نشر لـCode.gs عشان تتأكد إن النشر وصل فعلًا.
+function nkServerModeBadge(){
+  const el = document.getElementById('nkServerMode'); if(!el) return;
+  const m = (typeof serverHasMerge !== 'undefined') ? serverHasMerge : null;
+  const u = (typeof serverHasUnion !== 'undefined') ? serverHasUnion : null;
+  if(m === null && u === null){
+    el.textContent = '⚙️ نوع السيرفر: لسه ما اتجرّبش — اعمل أي حفظ وهيتحدّد.';
+    el.style.color = 'var(--muted)'; return;
+  }
+  if(m === false || u === false){
+    el.textContent = '⚙️ السيرفر على النسخة القديمة (شغال بس أبطأ) — انشر Code.gs الجديد.';
+    el.style.color = '#a67c00'; return;
+  }
+  el.textContent = '⚙️ السيرفر على النسخة السريعة ✅ (دمج ذرّي + رفع أسرع)';
+  el.style.color = 'var(--accent2)';
+}
 function nkStorageBadge(){
   const el = document.getElementById('nkStorageUsage'); if(!el) return;
   const kb = nkStorageUsageKb();
@@ -8710,6 +8728,7 @@ const NK_CLOUD_KEYS = {gvData:'renderGV', qpData:'renderQP', fpData:'renderFP', 
 let nkSyncState = {ok: null, msg: '', at: null};
 function nkSyncBadge(){
   nkStorageBadge();
+  nkServerModeBadge();
   const icon = document.getElementById('nkSyncIcon');
   const el = document.getElementById('nkSyncStatus');
   if(nkSyncState.ok === null){
@@ -10346,6 +10365,54 @@ NK_EXPORTERS['ax'] = ()=> ({blocks: axBlocks(), title: AX.period || 'بونص ا
 // بيقرا: (1) شيت البونص الرئيسي (النوع / صافي المشتريات / قيمة الخصم / اكسا)
 //        (2) جداول بونص الموزعين (شهر / النوع / المبلغ / النسبه / البونص)
 //        (3) لو مفيش، بيجمّع من شيت فواتير اكسا الخام حسب "المجموعه"
+// نِسب البونص حسب نوع المجموعة. الاكسسوارات بكل أنواعها ٥٪ والقطاعات ٢٪.
+// أي مجموعة تانية بتيجي بصفر عشان تحطلها نسبتها بإيدك وتلاحظها.
+const AX_RATES = [
+  [/اكسسوار/, 0.05],
+  [/كرافت/, 0.02],
+  [/نيو\s*لاين/, 0.02],
+  [/كومبن/, 0.02],
+];
+function axRateFor(name){
+  const n = normName(name);
+  for(const [re, r] of AX_RATES) if(re.test(n)) return r;
+  return 0;
+}
+// شيت الفواتير الخام اللي بيصدّره البرنامج: العناوين إنجليزي
+// (Category_Name / tvin / tvout) والمجموعة بتيجي في صف لوحدها والأصناف
+// تحتها. بنجمّع صافي المشتريات (tvin - tvout) لكل مجموعة.
+function axImportRawInvoices(wb){
+  const S = (v)=> String(v == null ? '' : v).trim();
+  for(const sn of wb.SheetNames){
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+    let hi = -1, H = null;
+    for(let i = 0; i < Math.min(aoa.length, 15); i++){
+      const row = (aoa[i] || []).map(S);
+      if(row.indexOf('Category_Name') >= 0 && (row.indexOf('tvin') >= 0 || row.indexOf('tvout') >= 0)){
+        hi = i; H = row; break;
+      }
+    }
+    if(hi < 0) continue;
+    const iCat = H.indexOf('Category_Name'), iItem = H.indexOf('Item_Name'),
+          iIn = H.indexOf('tvin'), iOut = H.indexOf('tvout');
+    const m = new Map();
+    let cat = '';
+    for(let i = hi + 1; i < aoa.length; i++){
+      const r = aoa[i] || [];
+      const c = S(r[iCat]), item = iItem >= 0 ? S(r[iItem]) : '';
+      // صف فيه اسم مجموعة من غير صنف = عنوان مجموعة جديدة
+      if(c && !item){ cat = c; if(!m.has(cat)) m.set(cat, 0); continue; }
+      if(!cat) continue;
+      const vin = iIn >= 0 ? nkN(r[iIn]) : 0, vout = iOut >= 0 ? nkN(r[iOut]) : 0;
+      if(!item && !vin && !vout) continue;
+      m.set(cat, (m.get(cat) || 0) + vin - vout);
+    }
+    const rows = [...m.entries()].filter(([, v])=> v !== 0)
+      .map(([type, net])=> ({type, net, rate: axRateFor(type), axa: 0}));
+    if(rows.length) return rows;
+  }
+  return null;
+}
 function axImport(wb){
   const S = (v)=> String(v == null ? '' : v).trim();
   const isTot = (v)=> /total|الاجمالي|الإجمالي|grand/i.test(S(v));
@@ -10428,7 +10495,7 @@ function axImport(wb){
       }
     });
   });
-  const rows = main || raw;
+  const rows = main || raw || axImportRawInvoices(wb);
   if(!rows && !dists.length) return 0;
   if(rows){
     AX.rows = rows;
