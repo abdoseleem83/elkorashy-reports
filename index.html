@@ -1167,7 +1167,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v149';
+const APP_VERSION = 'v150';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -10942,13 +10942,103 @@ function axCalc(){
     {net:0, bonus:0, axa:0, diff:0});
   return {rows, t};
 }
+/* ================= بونص الموزعين =================
+   كل موزع بيشتري من القرشي، والمشتريات دي بتطلّع بونص من مصدرين:
+     • **اكسا** — على المجموعات اللي اكسا بتوردها (كومبن / كرافت / نيو لاين
+       / اكسسوارات اكسا). المجموعات التانية (ابواب / جيفيز / تصنيع /
+       اكسسوارات خارجيه) مش من اكسا فمالهاش بونص منها.
+     • **القرشي** — على المجموعات اللي القرشي متفق عليها مع المستفيد.
+   والمستفيد مش لازم يكون الموزع نفسه: محمد شبل بياخد بونص على مشتريات
+   الغمري، ومطروح بياخد على مشترياته هو.
+   المصدر: تقرير «حركة مبيعات — إجمالي مجموعات» لكل موزع.            */
+const AX_DIST_SRC = ['اكسا', 'القرشي'];
+// المجموعات اللي اكسا بتوردها — بونص اكسا بيتحسب عليها بس (الافتراضي)
+const AX_AKSA_G = /كومبن|كرافت|نيو\s*لاين|اكسسوارات\s*(pvc|اكسا)/i;
+// الافتراضي لبونص القرشي: كرافت ونيو لاين
+const AX_QP_G   = /كرافت|نيو\s*لاين/i;
+
+// الجداول القديمة كانت {rows:[{period,type,amount,rate}]} — بنحوّلها
+// للشكل الجديد مرة واحدة من غير ما يضيع رقم.
+function axDistFix(d){
+  if(!d.groups){
+    d.groups = (d.rows || []).map(r=> ({name: r.type || '', amount: nkN(r.amount)}));
+    if(d.axRate == null) d.axRate = (d.rows && d.rows[0]) ? nkN(d.rows[0].rate) : 0.01;
+    if(d.period == null) d.period = (d.rows && d.rows[0] && d.rows[0].period) || '';
+    delete d.rows;
+  }
+  if(d.axRate == null) d.axRate = 0.01;
+  if(d.qpRate == null) d.qpRate = 0;
+  d.on = d.on || {};
+  return d;
+}
+// المجموعة دي داخلة في بونص المصدر ده؟ اللي إنت حددته بإيدك بيغلب
+// على الافتراضي.
+function axDistOn(d, name, src){
+  const k = src + '|' + normName(name);
+  if(d.on && d.on[k] !== undefined) return !!d.on[k];
+  const n = normName(name);
+  return src === 'اكسا' ? AX_AKSA_G.test(n) : AX_QP_G.test(n);
+}
 function axDistCalc(d){
-  const rows = (d.rows || []).map(r=>{
-    const amount = nkN(r.amount), rate = nkN(r.rate);
-    return {period: r.period || '', type: r.type || '', amount, rate, bonus: amount * rate};
+  axDistFix(d);
+  const groups = (d.groups || []).map(g=>{
+    const amount = nkN(g.amount);
+    return {name: g.name || '', amount,
+      ax: axDistOn(d, g.name, 'اكسا'), qp: axDistOn(d, g.name, 'القرشي')};
   });
-  const t = rows.reduce((a, r)=> ({amount:a.amount+r.amount, bonus:a.bonus+r.bonus}), {amount:0, bonus:0});
-  return {rows, t};
+  const sum = (f)=> groups.filter(f).reduce((a, g)=> a + g.amount, 0);
+  const axRate = nkN(d.axRate), qpRate = nkN(d.qpRate);
+  const axBase = sum(g=> g.ax), qpBase = sum(g=> g.qp);
+  const axBonus = axBase * axRate, qpBonus = qpBase * qpRate;
+  return {groups, axRate, qpRate, axBase, qpBase, axBonus, qpBonus,
+          total: sum(()=> true), bonus: axBonus + qpBonus};
+}
+// تقرير «حركة مبيعات — إجمالي مجموعات»: أعمدته الكود / المجموعة الفرعية /
+// (مبيعات: كمية، سعر، قيمة) / (مردود مبيعات: كمية، سعر، قيمة).
+// بنقرا سطور المجموعات الفرعية (اللي ليها كود) ونجمّعها على مجموعتها
+// الرئيسية **من شيت الأصناف** — فمش محتاجين نعتمد على سطور الإجمالي
+// اللي في التقرير ولا على ترتيبه.
+function axParseDistSheet(wb){
+  const S = (v)=> String(v == null ? '' : v).trim();
+  for(const sn of wb.SheetNames){
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+    let hi = -1, H = null;
+    for(let i = 0; i < Math.min(aoa.length, 25); i++){
+      const row = (aoa[i] || []).map(S);
+      if(row.some(c=> /المجموعة\s*الفرعية|المجموعه\s*الفرعيه/.test(c))
+         && row.some(c=> /^القيمة$|^القيمه$/.test(c))){ hi = i; H = row; break; }
+    }
+    if(hi < 0) continue;
+    const iSub  = H.findIndex(c=> /المجموعة\s*الفرعية|المجموعه\s*الفرعيه/.test(c));
+    const iCode = H.findIndex(c=> /^الكود$|^الكــود$/.test(c));
+    // «القيمة» بتتكرر: الأولى مبيعات والتانية مردود مبيعات
+    const vals = H.map((c, k)=> /^القيمة$|^القيمه$/.test(c) ? k : -1).filter(k=> k >= 0);
+    if(iSub < 0 || !vals.length) continue;
+    const iVal = vals[0], iRet = vals.length > 1 ? vals[1] : -1;
+    const by = new Map(); const unknown = [];
+    for(let i = hi + 1; i < aoa.length; i++){
+      const r = aoa[i] || [];
+      const sub = S(r[iSub]);
+      if(!sub || /الإجمالي|الاجمالي|الصافي|العدد/.test(sub)) continue;
+      // سطور الإجمالي مالهاش كود — بنتخطاها عشان مانحسبش الرقم مرتين
+      if(iCode >= 0 && !S(r[iCode])) continue;
+      const v = nkN(r[iVal]) - (iRet >= 0 ? nkN(r[iRet]) : 0);
+      if(!v) continue;
+      // المجموعة الرئيسية من شيت الأصناف
+      let main = '';
+      const c = typeof itCatOf === 'function' ? itCatOf(sub) : null;
+      if(c && c.main) main = c.main;
+      if(!main){
+        const hit = Object.keys(whCatalog || {}).find(k=> normName((whCatalog[k] || {}).sub) === normName(sub));
+        if(hit) main = whCatalog[hit].main || '';
+      }
+      if(!main){ main = sub; unknown.push(sub); }
+      by.set(main, (by.get(main) || 0) + v);
+    }
+    if(by.size) return {groups: [...by.entries()].map(([name, amount])=> ({name, amount}))
+      .sort((a, b)=> b.amount - a.amount), unknown: [...new Set(unknown)]};
+  }
+  return null;
 }
 function axBlocks(){
   const c = axCalc();
@@ -10960,10 +11050,21 @@ function axBlocks(){
   const blocks = [main];
   AX.dists.forEach(d=>{
     const dc = axDistCalc(d);
-    const rows = dc.rows.map(r=> [r.period, r.type, nkR(r.amount, 2), nkR(r.rate * 100, 2) + '%', nkR(r.bonus, 2)]);
-    const t = ['الإجمالي', '', nkR(dc.t.amount, 2), '', nkR(dc.t.bonus, 2)];
+    const rows = dc.groups.map(g=> [g.name, nkR(g.amount, 2),
+      g.ax ? '✔' : '—', g.qp ? '✔' : '—',
+      nkR((g.ax ? g.amount * dc.axRate : 0) + (g.qp ? g.amount * dc.qpRate : 0), 2)]);
+    const t = ['الإجمالي', nkR(dc.total, 2), '', '', nkR(dc.bonus, 2)];
     t.__cls = 'total-row'; rows.push(t);
-    blocks.push({title: d.title || 'بونص موزعين', head: ['الفترة','النوع','المبلغ','النسبة %','البونص'], rows});
+    const pct = (r)=> nkR(r * 100, 3) + '%';
+    const sum = [
+      [`أساس بونص اكسا (${pct(dc.axRate)})`, nkR(dc.axBase, 2), '', '', nkR(dc.axBonus, 2)],
+      [`أساس بونص القرشي (${pct(dc.qpRate)})`, nkR(dc.qpBase, 2), '', '', nkR(dc.qpBonus, 2)],
+    ];
+    sum[1].__cls = 'total-row';
+    blocks.push({title: (d.title || 'موزع') + (d.who ? ' — المستفيد: ' + d.who : '')
+        + (d.period ? ' — ' + d.period : ''),
+      head: ['المجموعة','صافي المشتريات','بونص اكسا','بونص القرشي','البونص'],
+      rows: rows.concat(sum)});
   });
   return blocks;
 }
@@ -11151,7 +11252,10 @@ function axImport(wb){
           if(isTot(per) || (!per && !amt)) break;
           rows.push({period: per, type: cTp >= 0 ? S(r[cTp]) : '', amount: amt, rate: nkN(r[cRate])});
         }
-        if(rows.length) dists.push({title: title || ('بونص موزعين ' + (dists.length + 1)), rows});
+        if(rows.length) dists.push({title: title || ('بونص موزعين ' + (dists.length + 1)),
+          groups: rows.map(r=> ({name: r.type, amount: r.amount})),
+          period: (rows[0] && rows[0].period) || '',
+          axRate: nkN(rows[0] && rows[0].rate) || 0.01, qpRate: 0, on: {}});
       }
       // (3) الفواتير الخام
       const cGrp = at(/^المجموعه$|^المجموعة$/), cVal = at(/^القيمه$|^القيمة$/);
@@ -11177,7 +11281,7 @@ function axImport(wb){
   }
   if(dists.length) AX.dists = dists;
   axSave();
-  return (rows ? rows.length : 0) + dists.reduce((a, d)=> a + d.rows.length, 0);
+  return (rows ? rows.length : 0) + dists.reduce((a, d)=> a + (d.groups || []).length, 0);
 }
 
 function renderAX(){ nkSafeRender('axApp', 'بونص اكسا', renderAX_impl); }
@@ -11269,36 +11373,78 @@ function renderAX_impl(el){
   let dists = '';
   AX.dists.forEach((d, di)=>{
     const dc = axDistCalc(d);
-    dists += `<div class="card" style="background:var(--panel2)">
-      <div class="flex-between">
-        <input type="text" data-axdt="${di}" value="${esc(d.title || '')}" style="flex:1;min-width:200px;font-weight:700">
-        <div class="row"><button class="secondary" data-axdadd="${di}">+ سطر</button>
-          <button class="ghost" data-axddel="${di}">حذف الجدول</button></div>
+    const pct = (r)=> nkR(r * 100, 3) + '%';
+    const gRow = (g, gi)=> ({
+      name: g.name, amount: g.amount,
+      axCb: `<input type="checkbox" data-axg="${di}.${gi}.اكسا" ${g.ax ? 'checked' : ''}>`,
+      qpCb: `<input type="checkbox" data-axg="${di}.${gi}.القرشي" ${g.qp ? 'checked' : ''}>`,
+      amtIn: nkInp(g.amount, 'axg.' + di + '.' + gi + '.amount'),
+      nameIn: nkInp(g.name, 'axg.' + di + '.' + gi + '.name', 'type="text"'),
+      bonus: (g.ax ? g.amount * dc.axRate : 0) + (g.qp ? g.amount * dc.qpRate : 0),
+    });
+    const gs = dc.groups.map(gRow);
+    const head = `
+      <div class="flex-between" style="flex-wrap:wrap;gap:8px">
+        <input type="text" data-axdt="${di}" value="${esc(d.title || '')}"
+          placeholder="اسم الموزع" style="flex:1;min-width:180px;font-weight:700">
+        <button class="ghost" data-axddel="${di}">🗑 حذف الموزع</button>
       </div>
-      ${MOB ? `<div style="margin-top:8px">${dc.rows.map((r, ri)=> nkRowCard({
-        n: ri + 1, title: d.rows[ri].type || 'من غير نوع', sub: d.rows[ri].period || '',
-        value: nkF(r.bonus, 2),
-        del: `<button class="nk-rc-x" data-axrdel="${di}.${ri}">🗑</button>`,
-        fields: [
-          ['الفترة', nkInp(d.rows[ri].period, 'axd.' + di + '.' + ri + '.period', 'type="text"')],
-          ['النوع',  nkInp(d.rows[ri].type,   'axd.' + di + '.' + ri + '.type', 'type="text"')],
-          ['المبلغ', nkInp(d.rows[ri].amount, 'axd.' + di + '.' + ri + '.amount')],
-          ['النسبة', nkInp(d.rows[ri].rate,   'axd.' + di + '.' + ri + '.rate')],
-        ],
-        sums: [['البونص', nkF(r.bonus, 2), true]],
-      })).join('')}${nkTotBar([['المبلغ', nkF(dc.t.amount, 2)], ['البونص', nkF(dc.t.bonus, 2)]])}</div>` : `
-      <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr>
-        <th>الفترة</th><th>النوع</th><th>المبلغ</th><th>النسبة</th><th>البونص</th><th></th></tr></thead><tbody>
-      ${dc.rows.map((r, ri)=> `<tr>
-        <td>${nkInp(d.rows[ri].period, 'axd.' + di + '.' + ri + '.period', 'type="text"')}</td>
-        <td>${nkInp(d.rows[ri].type, 'axd.' + di + '.' + ri + '.type', 'type="text"')}</td>
-        <td>${nkInp(d.rows[ri].amount, 'axd.' + di + '.' + ri + '.amount')}</td>
-        <td>${nkInp(d.rows[ri].rate, 'axd.' + di + '.' + ri + '.rate')}</td>
-        <td class="wh-num">${nkF(r.bonus, 2)}</td>
-        <td><button class="ghost" data-axrdel="${di}.${ri}">✕</button></td></tr>`).join('')}
-        <tr class="total-row"><td style="text-align:right">الإجمالي</td><td></td>
-          <td class="wh-num">${nkF(dc.t.amount, 2)}</td><td></td><td class="wh-num">${nkF(dc.t.bonus, 2)}</td><td></td></tr>
-      </tbody></table></div>`}</div>`;
+      <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
+        <label style="flex:1;min-width:150px">المستفيد بالبونص
+          ${nkInp(d.who || '', 'axd.' + di + '.who', 'type="text" placeholder="مثلًا: محمد شبل"')}</label>
+        <label style="flex:1;min-width:130px">الفترة
+          ${nkInp(d.period || '', 'axd.' + di + '.period', 'type="text" placeholder="من 01/07 لـ 22/09"')}</label>
+      </div>
+      <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
+        <label style="flex:1;min-width:130px">نسبة اكسا (0.01 = 1%)
+          ${nkInp(d.axRate, 'axd.' + di + '.axRate')}</label>
+        <label style="flex:1;min-width:130px">نسبة القرشي
+          ${nkInp(d.qpRate, 'axd.' + di + '.qpRate')}</label>
+      </div>
+      <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
+        <input type="file" data-axdfile="${di}" accept=".xls,.xlsx" style="max-width:220px">
+        <button class="secondary" data-axgadd="${di}">+ مجموعة</button>
+      </div>
+      <div class="sub" style="margin-top:6px">ارفع تقرير <b>حركة مبيعات — إجمالي مجموعات</b> بتاع الموزع،
+        أو اكتب إجمالي كل مجموعة بإيدك. العلامات بتحدد المجموعة داخلة في بونص مين.</div>
+      <div data-axdmsg="${di}"></div>`;
+    const tot = `
+      <div class="nk-tot" style="margin-top:10px">
+        <b>صافي المشتريات <i>${nkF(dc.total, 0)}</i></b>
+        <b>أساس اكسا <i>${nkF(dc.axBase, 0)}</i></b>
+        <b>بونص اكسا ${pct(dc.axRate)} <i>${nkF(dc.axBonus, 2)}</i></b>
+        <b>أساس القرشي <i>${nkF(dc.qpBase, 0)}</i></b>
+        <b>بونص القرشي ${pct(dc.qpRate)} <i>${nkF(dc.qpBonus, 2)}</i></b>
+        <b>إجمالي البونص <i>${nkF(dc.bonus, 2)}</i></b>
+      </div>`;
+    const body = MOB
+      ? gs.map((g, gi)=> nkRowCard({
+          n: gi + 1, title: g.name || 'مجموعة',
+          sub: (g.ax ? 'اكسا' : '') + (g.ax && g.qp ? ' + ' : '') + (g.qp ? 'القرشي' : '')
+               || 'مش داخلة في أي بونص',
+          value: nkF(g.bonus, 2),
+          del: `<button class="nk-rc-x" data-axgdel="${di}.${gi}">🗑</button>`,
+          fields: [['المجموعة', g.nameIn], ['صافي المشتريات', g.amtIn]],
+          extra: `<div class="row" style="margin-top:9px;gap:14px">
+            <label class="chk" style="display:flex;gap:6px;align-items:center">${g.axCb} بونص اكسا</label>
+            <label class="chk" style="display:flex;gap:6px;align-items:center">${g.qpCb} بونص القرشي</label>
+          </div>`,
+        })).join('')
+      : `<div class="tbl-wrap" style="margin-top:8px"><table><thead><tr>
+          <th>المجموعة</th><th>صافي المشتريات</th><th>بونص اكسا</th><th>بونص القرشي</th><th>البونص</th><th></th>
+        </tr></thead><tbody>
+        ${gs.map((g, gi)=> `<tr>
+          <td style="min-width:170px">${g.nameIn}</td>
+          <td style="min-width:130px">${g.amtIn}</td>
+          <td>${g.axCb}</td><td>${g.qpCb}</td>
+          <td class="wh-num">${nkF(g.bonus, 2)}</td>
+          <td><button class="ghost" data-axgdel="${di}.${gi}">✕</button></td></tr>`).join('')
+        || `<tr><td colspan="6" class="sub">مفيش مجموعات لسه — ارفع تقرير الموزع أو ضيف مجموعة بإيدك.</td></tr>`}
+        <tr class="total-row"><td style="text-align:right">الإجمالي</td>
+          <td class="wh-num">${nkF(dc.total, 2)}</td><td></td><td></td>
+          <td class="wh-num">${nkF(dc.bonus, 2)}</td><td></td></tr>
+        </tbody></table></div>`;
+    dists += `<div class="card" style="background:var(--panel2)">${head}${body}${tot}</div>`;
   });
   el.innerHTML = `
   <div class="card">
@@ -11331,14 +11477,17 @@ function renderAX_impl(el){
   </div>
   <div class="card">
     <div class="flex-between"><h2 style="margin:0">بونص الموزعين</h2>
-      <button class="secondary" id="axDistAdd">+ جدول موزع</button></div>
+      <button class="secondary" id="axDistAdd">+ موزع</button></div>
     <div style="margin-top:10px">${dists}</div>
   </div>`;
 
   $('axPeriod').onchange = (e)=>{ AX.period = e.target.value; axSave(); };
   if($('axSel')) $('axSel').onchange = (e)=>{ AX.sel = e.target.value; axSave(); renderAX(); };
   $('axAdd').onclick = ()=>{ AX.rows.push({type:'', net:0, rate:0.05, axa:0}); axSave(); renderAX(); };
-  $('axDistAdd').onclick = ()=>{ AX.dists.push({title:'بونص موزع جديد', rows:[{period:'', type:'', amount:0, rate:0.01}]}); axSave(); renderAX(); };
+  $('axDistAdd').onclick = ()=>{
+    AX.dists.push({title:'موزع جديد', who:'', period:'', axRate:0.01, qpRate:0, groups:[], on:{}});
+    axSave(); renderAX();
+  };
   $('axFile').onchange = (e)=>{
     const f = e.target.files && e.target.files[0]; if(!f) return;
     const rd = new FileReader();
@@ -11372,20 +11521,73 @@ function renderAX_impl(el){
     const pos = axq.selectionStart; renderAX();
     const n = $('axSearch'); if(n){ n.focus({preventScroll:true}); try{ n.setSelectionRange(pos, pos); }catch(e){} }
   };
-  el.querySelectorAll('[data-axddel]').forEach(b=> b.onclick = ()=>{ AX.dists.splice(+b.dataset.axddel, 1); axSave(); renderAX(); });
-  el.querySelectorAll('[data-axdadd]').forEach(b=> b.onclick = ()=>{ AX.dists[+b.dataset.axdadd].rows.push({period:'', type:'', amount:0, rate:0.01}); axSave(); renderAX(); });
-  el.querySelectorAll('[data-axrdel]').forEach(b=> b.onclick = ()=>{
-    const [di, ri] = b.dataset.axrdel.split('.'); AX.dists[+di].rows.splice(+ri, 1); axSave(); renderAX();
+  el.querySelectorAll('[data-axddel]').forEach(b=> b.onclick = ()=>{
+    const d = AX.dists[+b.dataset.axddel];
+    if(!confirm(`تحذف «${(d && d.title) || 'الموزع'}» بكل مجموعاته؟`)) return;
+    AX.dists.splice(+b.dataset.axddel, 1); axSave(); renderAX();
   });
-  el.querySelectorAll('[data-axdt]').forEach(inp=> inp.onchange = ()=>{ AX.dists[+inp.dataset.axdt].title = inp.value; axSave(); });
+  el.querySelectorAll('[data-axgadd]').forEach(b=> b.onclick = ()=>{
+    const d = axDistFix(AX.dists[+b.dataset.axgadd]);
+    d.groups.push({name:'', amount:0}); axSave(); renderAX();
+  });
+  el.querySelectorAll('[data-axgdel]').forEach(b=> b.onclick = ()=>{
+    const [di, gi] = b.dataset.axgdel.split('.');
+    axDistFix(AX.dists[+di]).groups.splice(+gi, 1); axSave(); renderAX();
+  });
+  // علامة «داخلة في بونص اكسا / القرشي» — بتتخزن بالاسم عشان تفضل
+  // ثابتة لو رفعت تقرير جديد وترتيب المجموعات اتغيّر
+  el.querySelectorAll('[data-axg]').forEach(cb=> cb.onchange = ()=>{
+    const [di, gi, src] = cb.dataset.axg.split('.');
+    const d = axDistFix(AX.dists[+di]);
+    const g = d.groups[+gi]; if(!g) return;
+    d.on[src + '|' + normName(g.name)] = cb.checked;
+    axSave(); renderAX();
+  });
+  el.querySelectorAll('[data-axdt]').forEach(inp=> inp.onchange = ()=>{ AX.dists[+inp.dataset.axdt].title = inp.value; axSave(); renderAX(); });
+  // رفع تقرير «حركة مبيعات — إجمالي مجموعات» لموزع واحد
+  el.querySelectorAll('[data-axdfile]').forEach(f=> f.onchange = (e)=>{
+    const file = e.target.files && e.target.files[0]; if(!file) return;
+    const di = +f.dataset.axdfile;
+    const box = el.querySelector(`[data-axdmsg="${di}"]`);
+    const say = (h)=>{ if(box) box.innerHTML = h; };
+    say('<div class="msg warn">بيقرا التقرير...</div>');
+    const rd = new FileReader();
+    rd.onload = (ev)=>{
+      try{
+        const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+        const res = axParseDistSheet(wb);
+        if(!res) throw new Error('مش لاقي أعمدة "المجموعة الفرعية" و"القيمة" في الملف.');
+        const d = axDistFix(AX.dists[di]);
+        d.groups = res.groups;
+        axSave(); renderAX();
+        const b2 = el.querySelector(`[data-axdmsg="${di}"]`);
+        if(b2) b2.innerHTML = `<div class="msg ok">اتقرا: <b>${res.groups.length}</b> مجموعة —
+          إجمالي ${nkF(res.groups.reduce((a, g)=> a + g.amount, 0), 0)}.${
+          res.unknown.length ? ` <b>${res.unknown.length}</b> مجموعة فرعية مش في شيت الأصناف
+          (${esc(res.unknown.slice(0, 3).join(' · '))}${res.unknown.length > 3 ? '…' : ''}) —
+          ظهرت باسمها زي ما هي، راجعها.` : ''}</div>`;
+      }catch(err){ say(`<div class="msg err">${esc(err.message)}</div>`); }
+    };
+    rd.readAsArrayBuffer(file);
+  });
   el.querySelectorAll('[data-nk^="ax."]').forEach(inp=> inp.onchange = ()=>{
     const [, i, field] = inp.dataset.nk.split('.');
     AX.rows[+i][field] = field === 'type' ? inp.value : nkN(inp.value);
     axSave(); renderAX();
   });
+  // بيانات الموزع نفسه (المستفيد / الفترة / النسبتين)
   el.querySelectorAll('[data-nk^="axd."]').forEach(inp=> inp.onchange = ()=>{
-    const [, di, ri, field] = inp.dataset.nk.split('.');
-    AX.dists[+di].rows[+ri][field] = (field === 'period' || field === 'type') ? inp.value : nkN(inp.value);
+    const [, di, field] = inp.dataset.nk.split('.');
+    const d = axDistFix(AX.dists[+di]); if(!d) return;
+    d[field] = (field === 'who' || field === 'period') ? inp.value : nkN(inp.value);
+    axSave(); renderAX();
+  });
+  // سطور المجموعات
+  el.querySelectorAll('[data-nk^="axg."]').forEach(inp=> inp.onchange = ()=>{
+    const [, di, gi, field] = inp.dataset.nk.split('.');
+    const d = axDistFix(AX.dists[+di]);
+    const g = d.groups[+gi]; if(!g) return;
+    g[field] = field === 'name' ? inp.value : nkN(inp.value);
     axSave(); renderAX();
   });
 }
