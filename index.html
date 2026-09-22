@@ -207,6 +207,17 @@
   .mod-btn .mod-sub{display:none}
   .mod-btn .mod-car{flex:none;font-size:10px;opacity:.6;transition:transform .15s}
   .mod-btn.active .mod-car{transform:rotate(180deg);opacity:.9}
+  /* أول ما تفتح قسم، باقي الأيقونات بتختفي والقسم المفتوح بيتحوّل لشريط
+     صغير فوق — يعني المحتوى بيبان على طول. دوسة تانية عليه ترجّعهم كلهم. */
+  .mod-bar.picked{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 12px}
+  .mod-bar.picked .mod-btn{display:none}
+  .mod-bar.picked .mod-btn.active{display:flex;flex:0 1 auto;flex-direction:row;
+    align-items:center;gap:8px;min-height:0;padding:7px 14px;text-align:right;
+    border-radius:999px;line-height:1.25}
+  .mod-bar.picked .mod-btn.active .mod-ico{font-size:16px}
+  .mod-bar.picked .mod-btn.active .mod-txt{align-items:flex-start;width:auto}
+  .mod-bar.picked .mod-btn.active .mod-txt b{font-size:13px;white-space:nowrap}
+  .mod-bar.picked .mod-btn.active .mod-car{display:inline;font-size:11px}
   .mod-btn:hover{border-color:#b9cdf5}
   .mod-btn.active:hover{border-color:var(--accent)}
   .nk-exp{margin-top:14px;padding:10px;border-radius:12px;background:var(--panel2);border:1px solid var(--border)}
@@ -280,13 +291,15 @@
      شاشة الموبايل كانت بتبدأ بكارت "رفع الملفات" اللي بياخد الشاشة كلها،
      والتقرير نفسه تحت بعيد. دلوقتي الكارت ده بيتطوي والعنوان بيفضل زرار
      تفتحه بيه وقت ما تحتاج ترفع. */
-  .card.foldable > .flex-between h2{cursor:pointer;user-select:none}
-  .card.foldable > .flex-between h2::after{content:' ▾';font-size:11px;opacity:.7}
-  .card.folded  > .flex-between h2::after{content:' ▸'}
-  @media (max-width: 760px){
+  .card.foldable h2{cursor:pointer;user-select:none}
+  .card.foldable .fold-head h2::after, .card.foldable h2.fold-head::after{content:' ▾';font-size:11px;opacity:.7}
+  .card.folded  .fold-head h2::after, .card.folded  h2.fold-head::after{content:' ▸'}
+  /* الطيّ بيشتغل في كل المقاسات — التطبيق موجّه للموبايل بالأساس */
+  .card.folded > *:not(.fold-head){display:none !important}
+  @media (max-width: 820px){
     .card{padding:13px;margin-bottom:12px;border-radius:10px}
     .sub{margin-bottom:14px}
-    .card.folded > *:not(.flex-between){display:none !important}
+
     /* تنبيه الأصناف اللي محتواها مش معروف + سطر آخر مزامنة بيفضلوا ظاهرين
        حتى والكارت متطوي — دول حاجات محتاج تشوفها من غير ما تفتح حاجة. */
     .card.folded > #whUnknownBox, .card.folded > #whSyncLine{display:block !important}
@@ -296,7 +309,7 @@
       -webkit-box-orient:vertical;overflow:hidden;font-size:11.5px;line-height:1.45}
   }
 
-  @media (max-width: 640px){
+  @media (max-width: 820px){
     :root{--gut:10px}
     /* الأقسام في ٣ أعمدة: كلهم قدامك مرة واحدة من غير زحلقة. */
     .mod-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0 10px}
@@ -306,6 +319,11 @@
     .mod-btn .mod-txt{align-items:center;width:100%}
     .mod-btn .mod-txt b{font-size:11.5px;white-space:normal;word-break:break-word}
     .mod-btn .mod-car{display:none}
+    /* والمطوي: شريط واحد صغير بعرض الشاشة */
+    .mod-bar.picked{display:flex}
+    .mod-bar.picked .mod-btn.active{flex:1 1 100%;justify-content:center;
+      min-height:42px;padding:8px 14px}
+    .mod-bar.picked .mod-btn.active .mod-car{display:inline}
     h1{font-size:17px}
     h2{font-size:14px}
     .sub{font-size:12px}
@@ -1080,7 +1098,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v140';
+const APP_VERSION = 'v141';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -3193,6 +3211,7 @@ function renderReport(){
     : '<div class="sub">مفيش نتائج مطابقة للبحث أو الفلتر.</div>';
   bindSortHeaders();
   renderCharts();
+  if(typeof setupFoldableCards === 'function') setupFoldableCards();
 }
 
 // ---- كروت "أعلى 3" فوق التقرير ----
@@ -6664,6 +6683,7 @@ function renderWh(){
   $('whCount').textContent = view.count || '';
   bindWhInputs();
   if(whTab === 'count') bindWhCountUpload();
+  if(typeof setupFoldableCards === 'function') setupFoldableCards();
 }
 
 function bindWhCountUpload(){
@@ -7584,6 +7604,7 @@ function renderFin(){
   }
   $('finArea').innerHTML = view.html;
   $('finCount').textContent = view.count || '';
+  if(typeof setupFoldableCards === 'function') setupFoldableCards();
 }
 
 // ---- الحفظ والتحميل ----
@@ -7899,33 +7920,58 @@ if($('finExcelBtn')){
 // كروت الرفع بتتطوي على الموبايل (العنوان بيفضل زرار يفتحها).
 // (كانت متحشورة جوه showModule من v84، يعني مكانتش بتشتغل غير لما تفتح
 //  قسم — فأول ما تفتح التطبيق كروت الرفع تفضل مفتوحة والشاشة مزدحمة.)
+// كل كارت عنده عنوان h2 بقى قايمة منسدلة: دوسة على العنوان تقفله ودوسة
+// تانية تفتحه. الحالة بتتحفظ لكل كارت باسم عنوانه، فبتفضل بعد أي تحديث.
+// (قبل كده كان كارتين بس، وعلى الموبايل بس.)
+let cardFold = {};
+try{ cardFold = JSON.parse(localStorage.getItem('cardFold') || '{}') || {}; }catch(e){}
+// عنوان الكارت ممكن يكون مباشر أو متداخل جوه wrapper. بنرجّع العنوان
+// والعنصر اللي هو ابن مباشر للكارت (ده اللي بيفضل ظاهر وقت الطيّ).
+function cardHead(card){
+  const h = card.querySelector('h2');
+  if(!h || h.closest('.card') !== card) return null;
+  let top = h;
+  while(top.parentElement && top.parentElement !== card) top = top.parentElement;
+  return {h, top};
+}
+function cardFoldKey(card){
+  const c = cardHead(card);
+  return c ? normName(c.h.textContent).slice(0, 44) : '';
+}
 function setupFoldableCards(){
-  const small = window.matchMedia('(max-width: 760px)').matches;
-  // أول استخدام (مفيش بيانات أصلًا) لازم كارت الرفع يفضل مفتوح — لو طويناه
-  // المستخدم الجديد مش هيلاقي مكان يرفع منه.
-  const cards = [
-    {id:'salesUploadCard', hasData: ()=> Object.keys(monthsData || {}).length > 0},
-    {id:'whUploadCard',    hasData: ()=> Object.keys(whCatalog  || {}).length > 0},
-  ];
-  cards.forEach(({id, hasData})=>{
-    const card = $(id); if(!card) return;
+  const small = window.matchMedia('(max-width: 820px)').matches;
+  // كروت الرفع بتتطوي لوحدها أول مرة **لو فيه بيانات** — المستخدم الجديد
+  // لازم يلاقي مكان يرفع منه مفتوح.
+  const autoFold = {
+    salesUploadCard: ()=> Object.keys(monthsData || {}).length > 0,
+    whUploadCard:    ()=> Object.keys(whCatalog  || {}).length > 0,
+  };
+  document.querySelectorAll('.card').forEach(card=>{
+    const ch = cardHead(card);
+    if(!ch) return;
+    const h = ch.h;
+    ch.top.classList.add('fold-head');
     card.classList.add('foldable');
+    const key = cardFoldKey(card);
     if(!card.dataset.foldBound){
       card.dataset.foldBound = '1';
-      const h = card.querySelector('.flex-between h2');
-      if(h) h.addEventListener('click', ()=> card.classList.toggle('folded'));
+      h.addEventListener('click', ()=>{
+        card.classList.toggle('folded');
+        if(key){
+          cardFold[key] = card.classList.contains('folded');
+          try{ localStorage.setItem('cardFold', JSON.stringify(cardFold)); }catch(e){}
+        }
+      });
     }
-    // أول مرة بس: بعد كده احترم اختيار المستخدم
-    if(card.dataset.foldInit) return;
-    let data = false;
-    try{ data = hasData(); }catch(e){}
-    if(!data){
-      // لسه مفيش بيانات: سيبه مفتوح ومتقفلش الباب، وجرّب تاني بعد التحميل
-      card.classList.remove('folded');
-      return;
+    if(key && key in cardFold){ card.classList.toggle('folded', !!cardFold[key]); return; }
+    const auto = autoFold[card.id];
+    if(auto && !card.dataset.foldInit){
+      let data = false;
+      try{ data = auto(); }catch(e){}
+      if(!data){ card.classList.remove('folded'); return; }
+      card.dataset.foldInit = '1';
+      card.classList.toggle('folded', small);
     }
-    card.dataset.foldInit = '1';
-    card.classList.toggle('folded', small);
   });
 }
 
@@ -7941,6 +7987,8 @@ function showModule(mod){
   });
   if(!syncKeysFor(mod).length && typeof whPollStop === 'function') whPollStop();
   setupFoldableCards();
+  const bar = document.querySelector('.mod-bar');
+  if(bar) bar.classList.toggle('picked', !!mod);
   document.querySelectorAll('.mod-btn').forEach(b=>{
     const on = b.dataset.mod === mod;
     b.classList.toggle('active', on);
@@ -7976,6 +8024,13 @@ document.querySelectorAll('.mod-btn').forEach(b=>{
   // دوسة تفتح، ودوسة تانية على نفس الأيقونة تقفل
   b.addEventListener('click', ()=> showModule(activeModule === b.dataset.mod ? null : b.dataset.mod));
 });
+// القسم اللي كنت فيه بيتحفظ من زمان بس **مكانش بيتقرا أبدًا** — فكل تحديث
+// للصفحة كان بيرجّعك للشاشة الرئيسية. دلوقتي بترجع مكانك.
+(function restoreModule(){
+  let last = '';
+  try{ last = localStorage.getItem('activeModule') || ''; }catch(e){}
+  if(last && document.querySelector(`.mod-btn[data-mod="${last}"]`)) showModule(last);
+})();
 
 
 // ---- ورقة النواقص كصورة ----
@@ -8641,6 +8696,8 @@ function nkStorageBadge(){
 
 function nkGet(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
 const nkLocalWriteAt = {};
+const nkLastPushed = {};        // آخر نسخة نجح رفعها لكل مفتاح
+const NK_PUSH_GUARD_MS = 8000;  // مدة الحماية من سحب نسخة قديمة
 function nkSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} nkLocalWriteAt[k] = Date.now(); nkCloudPush(k); }
 
 // ---- مزامنة جيفز/المرتبات/بونص اكسا بين الأجهزة — بنفس التخزين المركزي
@@ -8677,7 +8734,13 @@ function nkCloudPush(k){
     nkSyncState = {ok:true, msg:'', at: Date.now()}; nkSyncBadge();
     // خلّصنا رفع النسخة دي فعلًا — لو مفيش حفظ محلي أحدث منها، مبقى محتاجين
     // نحمي منها تاني (كانت بتتحمى لغاية دلوقتي عشان مانديش سحب قديم يمسحها).
-    if(nkLocalWriteAt[k] === myWriteAt) delete nkLocalWriteAt[k];
+    // كنا بنشيل الحماية فورًا بعد ما الرفع ينجح. بس السيرفر (Google Sheets
+    // عبر Apps Script) ممكن يرجّع النسخة القديمة لكام ثانية بعد الكتابة،
+    // والسحب اللي بعدها كان بيرجّع الصف اللي المستخدم مسحه — فيقول "اتمسح"
+    // وهو لسه موجود. دلوقتي بنسيب حماية ٤ ثواني كمان بعد نجاح الرفع، وبنحفظ
+    // آخر نسخة رفعناها عشان نعرف نقارن.
+    nkLastPushed[k] = raw;
+    if(nkLocalWriteAt[k] === myWriteAt) nkLocalWriteAt[k] = Date.now() - (NK_PUSH_GUARD_MS - 4000);
   }).catch((e)=>{
     nkSyncState = {ok:false, msg: (e && e.message) || String(e), at: Date.now()};
     nkSyncBadge();
@@ -8694,7 +8757,7 @@ async function nkCloudPullAll(silent){
     // لو لسه فيه حفظ محلي جاري رفعه (أو اترفع من لحظات) — نتجاهل السحب ده
     // للمفتاح ده تحديدًا، عشان ماندي نسخة قديمة من السيرفر تمسح حذف/تعديل
     // حصل هنا لسه ماوصلش للسيرفر (ده اللي كان بيرجّع أصناف محذوفة تاني).
-    if(nkLocalWriteAt[k] && Date.now() - nkLocalWriteAt[k] < 8000) continue;
+    if(nkLocalWriteAt[k] && Date.now() - nkLocalWriteAt[k] < NK_PUSH_GUARD_MS) continue;
     try{
       const r = await window.storage.get(k);
       if(r && r.value != null){
@@ -8718,6 +8781,7 @@ async function nkCloudPullAll(silent){
           if(k === 'qpData') QP = nkGet('qpData', QP);
           if(k === 'fpData') FP = nkGet('fpData', FP);
           if(k === 'axData') AX = nkGet('axData', AX);
+        if(k === 'itData'){ IT = nkGet('itData', IT); if(!IT.alias) IT.alias = {}; }
           const fn = window[NK_CLOUD_KEYS[k]];
           if(typeof fn === 'function') fn();
           if(k === 'gvData' && typeof window.renderIT === 'function') window.renderIT();
@@ -9053,7 +9117,7 @@ function gvArchiveOld(){
 // أصلًا. بقى في مكان واحد وكل الشاشات الخمسة بتستخدمه.
 function nkSafeRender(appId, label, impl){
   const el = $(appId); if(!el) return;
-  try{ nkPreserve(el, ()=> impl(el)); }
+  try{ nkPreserve(el, ()=> { impl(el); if(typeof setupFoldableCards === 'function') setupFoldableCards(); }); }
   catch(e){
     console.error(appId + ' crashed', e);
     el.innerHTML = `<div class="card"><div class="msg err">حصل خطأ وإحنا بنعرض الشاشة: ${esc(e.message)}
