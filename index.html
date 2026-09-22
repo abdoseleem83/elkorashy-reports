@@ -1098,7 +1098,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v141';
+const APP_VERSION = 'v142';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8802,7 +8802,14 @@ function nkSyncNow(){
     Object.keys(NK_CLOUD_KEYS).forEach(k=> nkCloudPush(k));
   });
 }
-const nkN  = (v)=>{ const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; };
+// مهم: لازم نعدّي على normDigits الأول. الأرقام العربية (٥٠٠٠) كانت
+// بتتشال بالكامل بالـregex فترجع صفر — يعني مرتب مكتوب بكيبورد عربي كان
+// بيتسجّل صفر من غير أي تنبيه. (قسم المبيعات كان بيعالجها من زمان.)
+const nkN  = (v)=>{
+  const t = typeof normDigits === 'function' ? normDigits(v == null ? '' : v) : String(v == null ? '' : v);
+  const n = Number(t.replace(/[^\d.\-]/g, ''));
+  return isFinite(n) ? n : 0;
+};
 const nkR  = (v, d)=>{ const m = Math.pow(10, d || 0); return Math.round(((Number(v)||0) + Number.EPSILON) * m) / m; };
 const nkMR = (v, m)=> Math.round((Number(v)||0) / m) * m;
 const nkF  = (v, d)=> (nkR(v, d == null ? 2 : d)).toLocaleString('en-US', {maximumFractionDigits: d == null ? 2 : d});
@@ -9161,10 +9168,16 @@ function itFingerprint(name){
     .replace(/[ـ\-_/\\.,()\[\]"'،؛:]+/g, ' ')
     .replace(/\s+/g, ' ').trim();
 }
-// الاسم الأساسي للصنف بعد الدمج
+// الاسم الأساسي للصنف بعد الدمج. بنمشي في السلسلة (أ←ب←ج) مع حد أقصى
+// عشان لو حصل ربط دائري بالغلط ما ندخلش في حلقة لا نهائية.
 function itCanon(name){
-  const k = normName(name);
-  return IT.alias[k] || name;
+  let cur = name;
+  for(let i = 0; i < 8; i++){
+    const nxt = IT.alias[normName(cur)];
+    if(!nxt || normName(nxt) === normName(cur)) break;
+    cur = nxt;
+  }
+  return cur;
 }
 
 // بيجمع كل الأصناف من كل الأقسام في خريطة واحدة
@@ -9375,6 +9388,8 @@ function renderIT_impl(el){
     Object.keys(IT.alias).forEach(k=>{
       if(g.some(r => r !== keep && normName(r.name) === normName(IT.alias[k]))) IT.alias[k] = keep.name;
     });
+    // اسم مربوط بنفسه مالوش لازمة (وبيظهر في جدول "الدمج الحالي" كإنه دمج)
+    Object.keys(IT.alias).forEach(k=>{ if(normName(IT.alias[k]) === k) delete IT.alias[k]; });
     itSave(); renderIT();
   });
   if(IT.tab === 'gv') gvWire(el, renderIT);
