@@ -10446,9 +10446,15 @@ function renderQP_impl(el){
         <button class="secondary" id="qpAdd">+ موظف</button>
       </div></div>
     <div class="sub" style="margin-top:6px">ارفع شيت المرتبات — بيقرا "بيانات الموظفين" (الفرع والراتب والنصفين)، ولو فيه كشوف النصفين بيقرا منها الغياب والتأخيرات والإضافي والسلف كمان.</div>
-    ${MOB ? `<div style="margin-top:10px">${QP.emps.map((e, i)=> nkRowCard({
+    ${MOB ? `<div class="sub" style="margin-top:8px">دوس على أي موظف عشان تعدّل بياناته.</div>
+    <div style="margin-top:8px">${QP.emps.map((e, i)=> nkRowCard({
       n: i + 1, title: e.name || 'موظف جديد', sub: e.branch || 'من غير فرع',
       value: nkF(e.salary, 0),
+      // الكارت ده مقفول من الأصل: العنوان فيه الاسم والفرع والراتب — يعني
+      // كل البيانات. فتحه بيبقى للتعديل بس. من غير كده ٦٠ موظف = صفحة
+      // طولها ١٨ ألف بكسل مالهاش لازمة.
+      closed: !(QP.eopen || {})[i],
+      foldAttr: ` data-qpefold="${i}"`,
       del: `<button class="nk-rc-x" data-qpdel="${i}">🗑</button>`,
       fields: [
         ['اسم الموظف', nkInp(e.name, 'qpe.' + i + '.name', 'type="text"')],
@@ -10515,7 +10521,21 @@ function renderQP_impl(el){
     QP.shut = {}; qpCalc(QP.half).rows.forEach(r=> QP.shut[r.name] = 1); qpSave(); renderQP();
   };
   if($('qpOpenAll')) $('qpOpenAll').onclick = ()=>{ QP.shut = {}; qpSave(); renderQP(); };
-  $('qpAdd').onclick = ()=>{ QP.emps.push({name:'موظف جديد', branch:'', salary:0, h1:true, h2:true}); qpSave(); renderQP(); };
+  // كارت بيانات الموظف — بيتفتح للتعديل بس
+  el.querySelectorAll('[data-qpefold]').forEach(h=> h.onclick = (ev)=>{
+    if(ev.target.closest('input, select, button')) return;
+    QP.eopen = QP.eopen || {};
+    const i = h.dataset.qpefold;
+    if(QP.eopen[i]) delete QP.eopen[i]; else QP.eopen[i] = 1;
+    qpSave();
+    h.parentElement.classList.toggle('closed', !QP.eopen[i]);
+  });
+  $('qpAdd').onclick = ()=>{
+    QP.emps.push({name:'موظف جديد', branch:'', salary:0, h1:true, h2:true});
+    // الموظف الجديد بيتفتح على طول عشان تكتب بياناته من غير دوسة زيادة
+    QP.eopen = QP.eopen || {}; QP.eopen[QP.emps.length - 1] = 1;
+    qpSave(); renderQP();
+  };
   el.querySelectorAll('[data-qpdel]').forEach(b=> b.onclick = ()=>{ QP.emps.splice(+b.dataset.qpdel, 1); qpSave(); renderQP(); });
   el.querySelectorAll('[data-qpc]').forEach(cb=> cb.onchange = ()=>{
     const [i, k] = cb.dataset.qpc.split('.'); QP.emps[+i][k] = cb.checked; qpSave(); renderQP();
@@ -10795,10 +10815,13 @@ function renderFP_impl(el){
         <button class="secondary" id="fpAdd">+ موظف</button>
       </div></div>
     <div class="sub" style="margin-top:6px">ارفع شيت المصنع — بيقرا الإعدادات (بداية ونهاية الشهر) وبيانات الموظفين (الاسم/الوظيفة/المكان/الراتب).</div>
-    ${MOB ? `<div style="margin-top:10px">${FP.emps.map((e, i)=> nkRowCard({
+    ${MOB ? `<div class="sub" style="margin-top:8px">دوس على أي عامل عشان تعدّل بياناته.</div>
+    <div style="margin-top:8px">${FP.emps.map((e, i)=> nkRowCard({
       n: i + 1, title: e.name || 'موظف جديد',
       sub: [e.job, e.place].filter(Boolean).join(' · ') || '—',
       value: nkF(e.salary, 0),
+      closed: !(FP.eopen || {})[i],
+      foldAttr: ` data-fpefold="${i}"`,
       del: `<button class="nk-rc-x" data-fpdel="${i}">🗑</button>`,
       fields: [
         ['اسم الموظف', nkInp(e.name, 'fpe.' + i + '.name', 'type="text"')],
@@ -10863,7 +10886,19 @@ function renderFP_impl(el){
     FP.shut = {}; fpCalc().rows.forEach(r=> FP.shut[r.name] = 1); fpSave(); renderFP();
   };
   if($('fpOpenAll')) $('fpOpenAll').onclick = ()=>{ FP.shut = {}; fpSave(); renderFP(); };
-  const add = $('fpAdd'); if(add) add.onclick = ()=>{ FP.emps.push({name:'موظف جديد', job:'', place:'', salary:0, pay2:true}); fpSave(); renderFP(); };
+  el.querySelectorAll('[data-fpefold]').forEach(h=> h.onclick = (ev)=>{
+    if(ev.target.closest('input, select, button')) return;
+    FP.eopen = FP.eopen || {};
+    const i = h.dataset.fpefold;
+    if(FP.eopen[i]) delete FP.eopen[i]; else FP.eopen[i] = 1;
+    fpSave();
+    h.parentElement.classList.toggle('closed', !FP.eopen[i]);
+  });
+  const add = $('fpAdd'); if(add) add.onclick = ()=>{
+    FP.emps.push({name:'موظف جديد', job:'', place:'', salary:0, pay2:true});
+    FP.eopen = FP.eopen || {}; FP.eopen[FP.emps.length - 1] = 1;
+    fpSave(); renderFP();
+  };
   el.querySelectorAll('[data-fpdel]').forEach(b=> b.onclick = ()=>{ FP.emps.splice(+b.dataset.fpdel, 1); fpSave(); renderFP(); });
   el.querySelectorAll('[data-fpm]').forEach(r=> r.onchange = ()=>{
     const [i, m] = r.dataset.fpm.split('.');
