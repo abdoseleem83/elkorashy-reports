@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v145';
+const CACHE_VERSION = 'v146';
 const CACHE_NAME = 'elkorashy-reports-' + CACHE_VERSION;
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
@@ -44,13 +44,28 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin) return;
 
   if (isPageRequest(req)) {
-    e.respondWith(
-      fetch(req).then(res => {
+    // ⚠️ fetch(req) العادي ممكن يرجّع نسخة قديمة من كاش المتصفح أو من كاش
+    // الاستضافة (CDN) — وساعتها المستخدم يفضل على نسخة قديمة ساعات من غير
+    // ما يعرف. بنضيف باراميتر فريد للرابط مع no-store عشان النسخة الجديدة
+    // توصل فعلاً، وبنرجع للطلب العادي لو ده فشل.
+    e.respondWith((async () => {
+      try {
+        const bust = url.pathname + (url.search ? url.search + '&' : '?') + '_v=' + Date.now();
+        let res;
+        try {
+          res = await fetch(bust, { cache: 'no-store' });
+          if (!res || !res.ok) throw new Error('bad');
+        } catch (e1) {
+          res = await fetch(req, { cache: 'no-store' });
+        }
         const copy = res.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
+        caches.open(CACHE_NAME).then(cache => cache.put(req, copy)).catch(() => {});
         return res;
-      }).catch(() => caches.match(req).then(c => c || caches.match('./index.html')))
-    );
+      } catch (e2) {
+        const c = await caches.match(req);
+        return c || (await caches.match('./index.html')) || Response.error();
+      }
+    })());
     return;
   }
 
