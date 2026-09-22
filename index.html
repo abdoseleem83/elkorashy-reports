@@ -147,6 +147,18 @@
   /* مجموعة فرعية جوه بند القائمة (مصاريف فرع طنطا مثلاً) */
   tr.fin-sub td{background:#dde5f7;font-weight:700;color:#16307a}
   tr.fin-subtot td{background:#eef2fb;font-weight:700}
+  /* دليل الأصناف الموحّد */
+  .it-chip{display:inline-block;font-size:10.5px;font-weight:700;border-radius:999px;
+    padding:1px 7px;margin:1px 2px;white-space:nowrap;border:1px solid transparent}
+  .it-wh{background:#e6efff;color:#16307a;border-color:#b9cdf5}
+  .it-bal{background:#e8f6ec;color:#12603a;border-color:#b6e0c4}
+  .it-sales{background:#fff1dc;color:#8a4b00;border-color:#f3d3a6}
+  .it-gv{background:#f0e8ff;color:#4a2a8a;border-color:#d6c4f5}
+  .it-dups{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:10px}
+  .it-dup{border:1px solid var(--border);border-radius:12px;padding:10px 12px;background:var(--panel2)}
+  .it-pick{display:flex;align-items:center;gap:7px;padding:4px 2px;font-size:13px;cursor:pointer}
+  .it-pick input{margin:0;flex:none}
+  @media (max-width:640px){ .it-dups{grid-template-columns:1fr} }
   .kpi4{grid-template-columns:repeat(4,minmax(0,1fr))}
   .kpi4 .kpi-card{min-width:0;overflow:hidden}
   .kpi4 .kpi-title{font-size:13px;margin-bottom:6px}
@@ -1015,7 +1027,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v136';
+const APP_VERSION = 'v137';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8575,7 +8587,7 @@ function nkSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e)
 // الحفظ لو المستخدم قفل المتصفح بسرعة على الموبايل)، وعند فتح التطبيق
 // بنسحب أحدث نسخة من السيرفر ونعرضها. الحالة (نجح/فشل) بتُعرض للمستخدم
 // بدل ما تفشل بصمت، عشان تقدر تعرف لو حصل مشكلة فعلًا.
-const NK_CLOUD_KEYS = {gvData:'renderGV', qpData:'renderQP', fpData:'renderFP', axData:'renderAX'};
+const NK_CLOUD_KEYS = {gvData:'renderGV', qpData:'renderQP', fpData:'renderFP', axData:'renderAX', itData:'renderIT'};
 let nkSyncState = {ok: null, msg: '', at: null};
 function nkSyncBadge(){
   nkStorageBadge();
@@ -9008,9 +9020,261 @@ function renderIT(){
       <br>جرّب تدوس على قسم "الأصناف" تاني، ولو تكرر قولّي بالظبط إنت كنت بتعمل إيه.</div></div>`;
   }
 }
+/* ==================== دليل الأصناف الموحّد ====================
+   الأصناف كانت متفرقة في أربع أماكن ومحدش بيعرف إن اللي في المخازن هو نفسه
+   اللي في المبيعات: دليل المخازن (whCatalog)، أرصدة المخازن (whBalances)،
+   أصناف المبيعات (monthsData + itemOverride)، ودليل جيفز (GV.items).
+   الشاشة دي بتجمعهم في جدول واحد، وبتلاقي الأسماء المتشابهة وتخليك تدمجها.
+
+   الدمج بالأسماء المستعارة (alias): الاسم البديل بيتربط باسم أساسي، والبيانات
+   الأصلية في كل قسم **ما بتتلمسش** — فتقدر تفك أي دمج في أي وقت.            */
+let IT = nkGet('itData', null) || {alias:{}, q:'', src:'all', tab:'all', showEmpty:false};
+if(!IT.alias) IT.alias = {};
+const itSave = ()=> nkSet('itData', IT);
+
+// المفتاح اللي بنقارن بيه: بنشيل المسافات والشرط والرموز عشان
+// "مقص 35- 60  GEVIS" و"مقص 35-60 gevis" يبقوا واحد.
+function itFingerprint(name){
+  return normName(name).toLowerCase()
+    .replace(/[ـ\-_/\\.,()\[\]"'،؛:]+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+// الاسم الأساسي للصنف بعد الدمج
+function itCanon(name){
+  const k = normName(name);
+  return IT.alias[k] || name;
+}
+
+// بيجمع كل الأصناف من كل الأقسام في خريطة واحدة
+function itCollect(){
+  const map = new Map();   // الاسم الأساسي -> السطر
+  const get = (rawName)=>{
+    const name = itCanon(rawName);
+    const k = normName(name);
+    if(!map.has(k)) map.set(k, {name, src:{}, alias:[], code:'', main:'', sub:'', color:'',
+      roll:0, unit:'', sector:'', pcs:'', weight:'', price:'', bal:{}, sales:0});
+    const row = map.get(k);
+    if(normName(rawName) !== k && row.alias.indexOf(rawName) < 0) row.alias.push(rawName);
+    return row;
+  };
+  // ١) دليل المخازن
+  Object.keys(whCatalog || {}).forEach(n=>{
+    const c = whCatalog[n] || {}, r = get(n);
+    r.src.wh = 1;
+    r.main = r.main || c.main || ''; r.sub = r.sub || c.sub || '';
+    r.color = r.color || c.color || ''; r.roll = r.roll || Number(c.roll) || 0;
+    r.unit = r.unit || c.unit || '';
+  });
+  // ٢) أرصدة المخازن
+  Object.keys(whBalances || {}).forEach(store=>{
+    const items = (whBalances[store] || {}).items || {};
+    Object.keys(items).forEach(n=>{
+      const r = get(n); r.src.bal = 1;
+      r.bal[store] = (r.bal[store] || 0) + (Number(items[n]) || 0);
+    });
+  });
+  // ٣) أصناف المبيعات
+  try{
+    allItemsWithTotals().forEach(o=>{
+      const r = get(o.item); r.src.sales = 1; r.sales += Number(o.total) || 0;
+      if(!r.sector) r.sector = itemOverride[o.item] || '';
+    });
+  }catch(e){}
+  // ٤) دليل جيفز
+  (GV.items || []).forEach(x=>{
+    if(!x.name && !x.code) return;
+    const r = get(x.name || x.code); r.src.gv = 1;
+    r.code = r.code || x.code || '';
+    r.pcs = r.pcs || x.pcs || ''; r.weight = r.weight || x.weight || ''; r.price = r.price || x.price || '';
+  });
+  return [...map.values()].sort((a,b)=> b.sales - a.sales || a.name.localeCompare(b.name, 'ar'));
+}
+
+// مجموعات الأسماء اللي شكلها واحد ومش مدموجة لسه
+function itDupGroups(){
+  const by = new Map();
+  itCollect().forEach(r=>{
+    const f = itFingerprint(r.name);
+    if(!f) return;
+    if(!by.has(f)) by.set(f, []);
+    by.get(f).push(r);
+  });
+  return [...by.values()].filter(g => g.length > 1)
+    .sort((a,b)=> b.length - a.length);
+}
+const IT_SRC = {wh:'دليل المخازن', bal:'أرصدة المخازن', sales:'المبيعات', gv:'جيفز'};
+function itSrcChips(src){
+  return Object.keys(IT_SRC).filter(k=>src[k])
+    .map(k=>`<span class="it-chip it-${k}">${IT_SRC[k]}</span>`).join('');
+}
+
+function itRows(){
+  let rows = itCollect();
+  if(IT.src && IT.src !== 'all') rows = rows.filter(r => r.src[IT.src]);
+  const q = normName(IT.q || '');
+  if(q) rows = rows.filter(r => normName(r.name + ' ' + r.code + ' ' + r.alias.join(' ')).indexOf(q) >= 0);
+  return rows;
+}
+
+function itHtml(){
+  const all = itCollect();
+  const rows = itRows();
+  const dups = itDupGroups();
+  const nSrc = (k)=> all.filter(r=>r.src[k]).length;
+  const stores = WAREHOUSES.filter(s => all.some(r => r.bal[s]));
+  const tab = IT.tab || 'all';
+  const head = `
+  <div class="card">
+    <div class="flex-between"><h2 style="margin:0">📦 دليل الأصناف الموحّد</h2>
+      <span class="badge">${all.length} صنف</span></div>
+    <div class="sub" style="margin-top:6px">كل صنف عرفه التطبيق من أي قسم، في مكان واحد.
+      الأرقام بين قوسين = عدد الأصناف اللي القسم ده يعرفها.</div>
+    <div class="tabs" style="margin-top:10px">
+      <div class="tab${tab==='all'?' active':''}" data-ittab="all">الكل (${all.length})</div>
+      <div class="tab${tab==='dups'?' active':''}" data-ittab="dups">🔗 دمج المكرر${dups.length?` (${dups.length})`:''}</div>
+      <div class="tab${tab==='gv'?' active':''}" data-ittab="gv">أصناف جيفز</div>
+    </div>
+  </div>`;
+  if(tab === 'gv') return head + gvItemsHtml();
+  if(tab === 'dups') return head + itDupsHtml(dups);
+
+  const filters = `
+  <div class="card">
+    <div class="row" style="flex-wrap:wrap;gap:8px">
+      <input type="text" id="itSearch" placeholder="🔍 دوّر بالاسم أو الكود" value="${esc(IT.q||'')}" style="min-width:200px;flex:1">
+      <label class="chk" style="gap:6px">القسم
+        <select id="itSrc">
+          <option value="all"${IT.src==='all'?' selected':''}>كل الأقسام</option>
+          ${Object.keys(IT_SRC).map(k=>`<option value="${k}"${IT.src===k?' selected':''}>${IT_SRC[k]} (${nSrc(k)})</option>`).join('')}
+        </select></label>
+      <span class="badge">${rows.length} ظاهر</span>
+      <span style="flex:1"></span>
+      <button class="ghost" id="itExport">⬇️ تصدير Excel</button>
+    </div>
+  </div>`;
+  const body = rows.slice(0, 600).map((r, i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td style="text-align:right">${esc(r.name)}
+        ${r.alias.length?`<div class="sub" style="font-size:11px">↳ ${esc(r.alias.join(' · '))}</div>`:''}</td>
+      <td style="text-align:right">${itSrcChips(r.src)}</td>
+      <td style="text-align:right">${esc(r.main||'—')}</td>
+      <td style="text-align:right">${esc(r.sub||'—')}</td>
+      <td style="text-align:right">${esc(r.color||'—')}</td>
+      <td class="wh-num">${r.roll||''}</td>
+      <td style="text-align:right">${esc(r.sector||'—')}</td>
+      ${stores.map(st=>`<td class="wh-num">${r.bal[st]?whFmt(r.bal[st]):''}</td>`).join('')}
+      <td class="wh-num">${r.sales?whFmt(Math.round(r.sales)):''}</td>
+    </tr>`).join('');
+  const table = `
+  <div class="card">
+    <div class="tbl-wrap" style="max-height:620px"><table><thead><tr>
+      <th>م</th><th>الصنف</th><th>موجود في</th><th>المجموعة</th><th>الفرعية</th>
+      <th>اللون</th><th>اللفة</th><th>القطاع</th>
+      ${stores.map(s=>`<th>${esc(s)}</th>`).join('')}<th>مبيعات</th>
+    </tr></thead><tbody>${body || `<tr><td colspan="${9+stores.length}" class="sub">مفيش أصناف مطابقة.</td></tr>`}</tbody></table></div>
+    ${rows.length>600?`<div class="sub" style="margin-top:6px">بيعرض أول ٦٠٠ صنف — ضيّق البحث عشان تشوف الباقي.</div>`:''}
+  </div>`;
+  return head + filters + table;
+}
+
+function itDupsHtml(dups){
+  // قايمة الدمج الحالي لازم تفضل ظاهرة حتى لما ما يبقاش فيه مكرر —
+  // من غير كده ما تقدرش تفكّ دمج عملته بالغلط.
+  const aliases = Object.keys(IT.alias);
+  let cur = '';
+  if(aliases.length){
+    const byCanon = {};
+    aliases.forEach(k=>{ const c = IT.alias[k]; (byCanon[c] = byCanon[c] || []).push(k); });
+    cur = `<div class="card">
+      <div class="flex-between"><h2 style="margin:0">🔗 الدمج الحالي</h2>
+        <button class="ghost" id="itUnmergeAll">↩️ فكّ الكل</button></div>
+      <div class="tbl-wrap" style="margin-top:8px;max-height:340px"><table><thead><tr>
+        <th>الاسم الأساسي</th><th>الأسماء المدموجة فيه</th><th></th></tr></thead><tbody>
+        ${Object.keys(byCanon).map(cn=>`<tr>
+          <td style="text-align:right"><b>${esc(cn)}</b></td>
+          <td style="text-align:right" class="sub">${byCanon[cn].map(esc).join(' · ')}</td>
+          <td><button class="ghost" data-itunmerge="${esc(cn)}" style="padding:3px 9px;font-size:12px">فكّ</button></td>
+        </tr>`).join('')}
+      </tbody></table></div>
+    </div>`;
+  }
+  if(!dups.length){
+    return cur + `<div class="card"><div class="msg ok">مفيش أسماء متكررة تانية — كل الأصناف مدموجة صح. ✅</div></div>`;
+  }
+  const cards = dups.slice(0, 120).map((g, gi)=>{
+    const total = g.reduce((a,r)=> a + r.sales, 0);
+    return `<div class="it-dup">
+      <div class="flex-between">
+        <b>${esc(g[0].name)}</b>
+        <button class="secondary" data-itmerge="${gi}">🔗 ادمجهم في ده</button>
+      </div>
+      <div class="sub" style="margin-top:4px">${g.length} اسم بيشاوروا على نفس الصنف${total?` — مبيعات مجمّعة ${whFmt(Math.round(total))}`:''}</div>
+      <div style="margin-top:6px">${g.map((r, ri)=>`
+        <label class="it-pick"><input type="radio" name="itpick${gi}" value="${ri}"${ri===0?' checked':''}>
+          <span>${esc(r.name)}</span> ${itSrcChips(r.src)}</label>`).join('')}</div>
+    </div>`;
+  }).join('');
+  return `
+  <div class="card">
+    <div class="sub">التطبيق لقى أسماء شكلها واحد بس مكتوبة بطرق مختلفة. اختار الاسم
+      الأساسي لكل مجموعة ودوس «ادمجهم». <b>بياناتك الأصلية ما بتتغيّرش</b> — الدمج
+      بيربط الأسماء ببعض بس، وتقدر تفكّه في أي وقت.</div>
+    <div class="it-dups" style="margin-top:10px">${cards}</div>
+    ${dups.length>120?`<div class="sub" style="margin-top:6px">بيعرض أول ١٢٠ مجموعة.</div>`:''}
+  </div>` + cur;
+}
 function renderIT_impl(el){
-  el.innerHTML = gvItemsHtml();
-  gvWire(el, renderIT);
+  el.innerHTML = itHtml();
+  el.querySelectorAll('[data-ittab]').forEach(t=> t.onclick = ()=>{ IT.tab = t.dataset.ittab; itSave(); renderIT(); });
+  const q = $('itSearch');
+  if(q) q.oninput = ()=>{ IT.q = q.value; itSave(); renderIT(); };
+  const src = $('itSrc');
+  if(src) src.onchange = ()=>{ IT.src = src.value; itSave(); renderIT(); };
+  const ex = $('itExport'); if(ex) ex.onclick = itExport;
+  el.querySelectorAll('[data-itunmerge]').forEach(btn=> btn.onclick = ()=>{
+    const cn = btn.dataset.itunmerge;
+    Object.keys(IT.alias).forEach(k=>{ if(IT.alias[k] === cn) delete IT.alias[k]; });
+    itSave(); renderIT();
+  });
+  const un = $('itUnmergeAll');
+  if(un) un.onclick = ()=>{
+    if(!confirm('تفكّ كل عمليات الدمج؟ الأسماء هترجع منفصلة زي ما كانت.')) return;
+    IT.alias = {}; itSave(); renderIT();
+  };
+  const dups = itDupGroups();
+  el.querySelectorAll('[data-itmerge]').forEach(b=> b.onclick = ()=>{
+    const gi = +b.dataset.itmerge;
+    const g = dups[gi]; if(!g) return;
+    const picked = el.querySelector(`input[name="itpick${gi}"]:checked`);
+    const keep = g[picked ? +picked.value : 0];
+    g.forEach(r=>{ if(r !== keep) IT.alias[normName(r.name)] = keep.name; });
+    // الأسماء المستعارة القديمة تتبع الاسم الجديد كمان
+    Object.keys(IT.alias).forEach(k=>{
+      if(g.some(r => r !== keep && normName(r.name) === normName(IT.alias[k]))) IT.alias[k] = keep.name;
+    });
+    itSave(); renderIT();
+  });
+  if(IT.tab === 'gv') gvWire(el, renderIT);
+}
+
+function itExport(){
+  const rows = itRows();
+  const all = itCollect();
+  const stores = WAREHOUSES.filter(s => all.some(r => r.bal[s]));
+  const aoa = [['م','الصنف','أسماء مدموجة','موجود في','الكود','المجموعة','الفرعية','اللون','اللفة','الوحدة','القطاع']
+    .concat(stores).concat(['مبيعات'])];
+  rows.forEach((r, i)=> aoa.push([i+1, r.name, r.alias.join(' | '),
+    Object.keys(IT_SRC).filter(k=>r.src[k]).map(k=>IT_SRC[k]).join('، '),
+    r.code, r.main, r.sub, r.color, r.roll||'', r.unit, r.sector]
+    .concat(stores.map(s=> r.bal[s] || '')).concat([Math.round(r.sales) || ''])));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:5},{wch:40},{wch:30},{wch:22},{wch:14},{wch:18},{wch:18},{wch:10},{wch:8},{wch:10},{wch:16}]
+    .concat(stores.map(()=>({wch:12}))).concat([{wch:14}]);
+  const wb = XLSX.utils.book_new();
+  wb.Workbook = {Views:[{RTL:true}]};
+  XLSX.utils.book_append_sheet(wb, ws, 'الأصناف');
+  XLSX.writeFile(wb, 'دليل-الأصناف-الموحّد.xlsx');
 }
 
 // نموذج إكسل فاضي بنفس الأعمدة المطلوبة بالظبط — تنزّله وتشوف الشكل المتوقع
