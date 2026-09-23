@@ -431,7 +431,9 @@
     .tab{flex:none;white-space:nowrap;text-align:center;padding:9px 13px;font-size:12.5px;min-height:38px}
     /* شريط التبويبات بيفضل ملزوق فوق وإنت بتنزل في جدول طويل، فما تتوهش */
     .tabs{position:sticky;top:52px;z-index:30;background:var(--bg);
-      padding:6px 0;margin-bottom:10px}
+      padding:6px 0;margin-bottom:10px;
+      /* على الموبايل التبويبات بتنزل سطر تاني بدل ما تتسحب يمين وشمال وتتوه منك */
+      flex-wrap:wrap;overflow-x:visible;row-gap:6px}
     table{font-size:11.5px}
     th,td{padding:6px 5px}
     /* أول عمود (اسم الصنف/البند) بيفضل ثابت وإنت بتزحلق الجدول يمين وشمال —
@@ -1208,7 +1210,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v152';
+const APP_VERSION = 'v153';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4334,11 +4336,18 @@ function styleSheet(ws, o){
                   border: xsAll('0E205C')};
       } else {
         const numeric = cell.t === 'n';
-        // الخصم أحمر والإضافة خضرا — زي الشاشة والـPDF
-        const sg = sign[c - R.s.c];
+        // الخصم أحمر والإضافة خضرا — زي الشاشة والـPDF.
+        // 'auto' = اللون من إشارة الرقم نفسه (عمود «الفرق» في الجرد)
+        // أو من نص الخانة (عمود «النوع»: عجز/زيادة).
+        let sg = sign[c - R.s.c];
+        if(sg === 'auto'){
+          if(numeric) sg = cell.v < 0 ? 'minus' : (cell.v > 0 ? 'plus' : '');
+          else sg = /عجز/.test(String(cell.v || '')) ? 'minus'
+                  : (/زياد/.test(String(cell.v || '')) ? 'plus' : '');
+        }
         // صف الإجمالي في الإكسل خلفيته فاتحة (D9E1F5) فالأحمر والأخضر
         // الغامقين بيتقروا عليه عادي
-        const paint = sg && numeric && cell.v !== 0;
+        const paint = sg && (numeric ? cell.v !== 0 : !!String(cell.v || ''));
         cell.s = {font:{bold: isTot || !!paint, sz:10.5,
                         color: paint ? {rgb: sg === 'minus' ? XS_RED : XS_GREEN} : undefined},
                   fill:{fgColor:{rgb: isTot ? XS_TOT : ((r - headRow) % 2 === 0 ? XS_BAND : 'FFFFFF')}},
@@ -8913,7 +8922,10 @@ $on('whExcelBtn').addEventListener('click', ()=>{
   whReportMode = true;
   try{
     // sheetWithHeader بيضيف تاريخ التقرير لوحده — كنا بنبعته تاني فيتكرر
-    XLSX.utils.book_append_sheet(wb, sheetWithHeader(aoa, title, 'مخزن ' + $('whStore').value, aoa[0].length),
+    // العجز أحمر والزيادة خضرا في الإكسل كمان
+    const sign = aoa[0].map(h=> /^الفرق$|^النوع$/.test(String(h || '').trim()) ? 'auto' : '');
+    XLSX.utils.book_append_sheet(wb,
+      sheetWithHeader(aoa, title, 'مخزن ' + $('whStore').value, aoa[0].length, {sign}),
       safeSheetName(sheet, new Set()));
   } finally { whReportMode = false; }
   XLSX.writeFile(wb, safeFileName(title) + '.xlsx');
@@ -8933,8 +8945,20 @@ $on('whPdfBtn').addEventListener('click', async ()=>{
     // blank = الخانة الفاضية تفضل فاضية (سطور الإجماليات) بدل ما تتحط فيها "-"
     // عمود الاسم: الأول في وضع الألوان، والتاني في باقي الجداول
     const nameAt = nameCol === 0 ? 0 : 1;
+    // العجز أحمر والزيادة خضرا في التصدير كمان — في عمود «الفرق» (الرقم
+    // السالب/الموجب) وفي عمود «النوع» (عجز/زيادة).
+    const diffAt = head.findIndex(h=> /^الفرق$/.test(String(h || '').trim()));
+    const kindAt = head.findIndex(h=> /^النوع$/.test(String(h || '').trim()));
+    const signOf = (c, i)=>{
+      if(i === diffAt && typeof c === 'number' && c !== 0) return c < 0 ? 'pay-minus' : 'pay-plus';
+      if(i === kindAt && typeof c === 'string'){
+        if(/عجز/.test(c)) return 'pay-minus';
+        if(/زياد/.test(c)) return 'pay-plus';
+      }
+      return '';
+    };
     const rowHtml = (cells, cls, blank)=> `<tr${cls?` class="${cls}"`:''}>` + cells.map((c,i)=>
-      `<td class="${i>=numAt?'num':''}" style="${i===nameAt?'text-align:right':''}">${esc(c === '' || c == null ? (blank ? '' : '-') : (typeof c === 'number' ? c.toLocaleString('en-US') : String(c)))}</td>`).join('') + '</tr>';
+      `<td class="${[(i>=numAt?'num':''), signOf(c, i)].filter(Boolean).join(' ')}" style="${i===nameAt?'text-align:right':''}">${esc(c === '' || c == null ? (blank ? '' : '-') : (typeof c === 'number' ? c.toLocaleString('en-US') : String(c)))}</td>`).join('') + '</tr>';
     // سطر عنوان مجموعة: خانة واحدة على عرض الجدول كله (زي ورقة النواقص)
     const labelHtml = (cells, cls)=>
       `<tr class="${cls}"><td colspan="${head.length}" style="text-align:right">${esc(cells[nameAt])}</td></tr>`;
@@ -9434,7 +9458,7 @@ function nkBlockHtml(b){
 const nkBlocksHtml = (blocks)=> blocks.map(b=> `<div class="blk">${nkBlockHtml(b)}</div>`).join('');
 
 // ---- تصدير: إكسل / PDF / صورة ----
-async function nkExport(kind, blocks, title, subtitle){
+async function nkExport(kind, blocks, title, subtitle, orient){
   const oldTitle = exportTitle;
   exportTitle = title;
   try{
@@ -9460,7 +9484,8 @@ async function nkExport(kind, blocks, title, subtitle){
       PDF_RENDER_W = Math.max(PDF_RENDER_W, wideW(wide));
       try{
         await renderPdfFromHtml(nkBlocksHtml(blocks), {subtitle: subtitle || title,
-          orient: wide >= 9 ? 'l' : 'p', wideCols: wide, fileName: safeFileName(title) + '.pdf'});
+          // المصدّر يقدر يفرض الاتجاه (التسعير مثلًا لازم طولي)
+          orient: orient || (wide >= 9 ? 'l' : 'p'), wideCols: wide, fileName: safeFileName(title) + '.pdf'});
       }finally{ PDF_RENDER_W = oldW; }
       return;
     }
@@ -9527,7 +9552,7 @@ document.addEventListener('click', async (e)=>{
   const fn = NK_EXPORTERS[key];
   if(!fn) return;
   const label = b.textContent; b.disabled = true; b.textContent = 'بيجهّز...';
-  try{ const p = fn(); await nkExport(kind, p.blocks, p.title, p.subtitle); }
+  try{ const p = fn(); await nkExport(kind, p.blocks, p.title, p.subtitle, p.orient); }
   catch(err){ alert('حصل خطأ في التصدير: ' + (err && err.message ? err.message : err)); }
   finally{ b.disabled = false; b.textContent = label; }
 });
@@ -9697,30 +9722,54 @@ function gvReceiptBlocks(o){
 NK_EXPORTERS['gvRcv'] = ()=> ({blocks: gvReceiptBlocks(gvOrder()), title: `استلام طلبية جيفيز ${gvOrder().no}`, subtitle: `طلبية رقم ${gvOrder().no} — ${nkDateAr(gvOrder().date)}`});
 
 /* ---------- التسعير: تكلفة الطلبية بالمصري بعد الجمارك والنولون والمصروفات ---------- */
+/* مصاريف الشحنة زي ما المستخدم بيحسبها بالظبط:
+     اجمالي الفاتورة $ (محسوب من الأصناف) · مصاريف بنكية $ · مصاريف بنكية
+     مصري · تخليص جمركي · شحن وكارجو $ · سعر صرف الدولار.
+   نسبة الجمارك اتشالت — كانت بتتحسب كنسبة من الفاتورة، والواقع إن
+   التخليص بيتدفع مبلغ مقطوع. */
 function gvPricing(orderNo){
-  GV.pricing[orderNo] = GV.pricing[orderNo] || {rate: 50, customsPct: 0.05, freightEgp: 0, otherEgp: 0};
-  return GV.pricing[orderNo];
+  const d = GV.pricing[orderNo] || {};
+  // تحويل من الشكل القديم مرة واحدة من غير ما يضيع رقم
+  if(d.customsPct !== undefined && d.clearEgp === undefined){
+    d.clearEgp = nkN(d.customsPct) * 0;   // النسبة القديمة مالهاش مقابل مباشر
+    d.otherEgp = nkN(d.otherEgp);
+    delete d.customsPct;
+  }
+  if(d.rate === undefined)      d.rate = 50;
+  if(d.bankUsd === undefined)   d.bankUsd = 0;     // مصاريف بنكية دولار
+  if(d.bankEgp === undefined)   d.bankEgp = 0;     // مصاريف بنكية مصري
+  if(d.clearEgp === undefined)  d.clearEgp = 0;    // تخليص جمركي
+  if(d.freightUsd === undefined) d.freightUsd = nkN(d.freightEgp) ? 0 : 0;  // شحن وكارجو دولار
+  if(d.freightEgp === undefined) d.freightEgp = 0;
+  if(d.otherEgp === undefined)  d.otherEgp = 0;
+  GV.pricing[orderNo] = d;
+  return d;
 }
-// أساس التسعير: الكمية المستلمة لو فيها استلام مسجّل، وإلا الكمية المطلوبة
+// أساس التسعير: الكمية **المستلمة** بس
 function gvPricingCalc(o){
   const c = gvCalc(o);
   const rc = gvReceiptCalc(o);
   const pr = gvPricing(o.no);
   const rate = nkN(pr.rate) || 1;
+  // التسعير على المستلم مش المطلوب: الصنف اللي لسه ما اتسلمش بياخد صفر
+  // وبيتقال عليه تحت، عشان ما نسعّرش بضاعة لسه ماوصلتش.
+  let noRecv = 0;
   const rows = c.rows.map((r, i)=>{
     const rec = rc.rows[i];
-    const hasRecv = rec && rec.received > 0;
-    const baseQty = hasRecv ? rec.received : r.qty;
-    return {name: r.name, code: r.code, qty: baseQty, weight: r.weight, priceUsd: r.price,
-      totalW: baseQty * r.weight, valueUsd: baseQty * r.price};
+    const got = rec ? nkN(rec.received) : 0;
+    if(!got && r.qty) noRecv++;
+    return {name: r.name, code: r.code, qty: got, ordered: r.qty, weight: r.weight, priceUsd: r.price,
+      totalW: got * r.weight, valueUsd: got * r.price};
   });
   const t = rows.reduce((a, r)=> ({w: a.w + r.totalW, usd: a.usd + r.valueUsd}), {w:0, usd:0});
   const invoiceUsd = t.usd;
   const invoiceEgp = invoiceUsd * rate;
-  const customsEgp = invoiceEgp * nkN(pr.customsPct);
-  const freightEgp = nkN(pr.freightEgp);
+  const bankUsd = nkN(pr.bankUsd), bankEgp = nkN(pr.bankEgp);
+  const clearEgp = nkN(pr.clearEgp);
+  const freightUsd = nkN(pr.freightUsd), freightEgp = nkN(pr.freightEgp);
   const otherEgp = nkN(pr.otherEgp);
-  const extraTotal = customsEgp + freightEgp + otherEgp;
+  // كل اللي بالدولار بيتحوّل بسعر الصرف
+  const extraTotal = bankUsd * rate + bankEgp + clearEgp + freightUsd * rate + freightEgp + otherEgp;
   const shipmentTotal = invoiceEgp + extraTotal;
   const perKg = t.w ? extraTotal / t.w : 0;
   const priced = rows.map(r=>{
@@ -9730,31 +9779,42 @@ function gvPricingCalc(o){
     return Object.assign({}, r, {valueEgp, share, totalEgp, perPiece: r.qty ? totalEgp / r.qty : 0});
   });
   const pt = priced.reduce((a, r)=> ({valueEgp:a.valueEgp+r.valueEgp, share:a.share+r.share, totalEgp:a.totalEgp+r.totalEgp}), {valueEgp:0, share:0, totalEgp:0});
-  return {rows: priced, t: pt, invoiceUsd, invoiceEgp, rate, customsPct: nkN(pr.customsPct), customsEgp,
-    freightEgp, otherEgp, extraTotal, shipmentTotal, totalWeight: t.w, perKg};
+  return {rows: priced, t: pt, invoiceUsd, invoiceEgp, rate,
+    bankUsd, bankEgp, clearEgp, freightUsd, freightEgp, otherEgp,
+    extraTotal, shipmentTotal, totalWeight: t.w, perKg, noRecv};
 }
 function gvPricingBlocks(o){
   const pc = gvPricingCalc(o);
-  const info = {title: 'بيانات الفاتورة والمصاريف', head: ['البيان', 'القيمة'], rows: [
-    ['اجمالي قيمة الفاتورة $ (على أساس الاستلام)', nkR(pc.invoiceUsd, 2)],
-    ['سعر صرف الدولار (جنيه)', nkR(pc.rate, 2)],
-    ['قيمة الفاتورة بالجنيه', nkR(pc.invoiceEgp, 2)],
-    ['نسبة الجمارك %', nkR(pc.customsPct * 100, 2) + '%'],
-    ['قيمة الجمارك (جنيه)', nkR(pc.customsEgp, 2)],
-    ['النولون / الشحن (جنيه)', nkR(pc.freightEgp, 2)],
-    ['مصروفات أخرى (جنيه)', nkR(pc.otherEgp, 2)],
-    ['إجمالي المصاريف الإضافية (جنيه)', nkR(pc.extraTotal, 2)],
-    ['إجمالي تكلفة الشحنة بالجنيه', nkR(pc.shipmentTotal, 2)],
+  // بلوك المصاريف كان طويل عمودي وواخد نص الورقة. بقى صفّين × أربع
+  // أعمدة — بيان/قيمة جنب بيان/قيمة — فبياخد مساحة صغيرة فوق الجدول.
+  const pair = [
+    ['اجمالي الفاتورة $', nkR(pc.invoiceUsd, 2)],
+    ['مصاريف بنكية $', nkR(pc.bankUsd, 2)],
+    ['مصاريف بنكية مصري', nkR(pc.bankEgp, 2)],
+    ['مصاريف تخليص جمركي', nkR(pc.clearEgp, 2)],
+    ['مصاريف شحن وكارجو $', nkR(pc.freightUsd, 2)],
+    ['سعر صرف الدولار', nkR(pc.rate, 2)],
+    ['إجمالي المصاريف (جنيه)', nkR(pc.extraTotal, 2)],
+    ['إجمالي تكلفة الشحنة (جنيه)', nkR(pc.shipmentTotal, 2)],
     ['إجمالي الوزن (كجم)', nkR(pc.totalWeight, 2)],
-    ['تكلفة إضافية لكل كيلو (جنيه/كجم)', nkR(pc.perKg, 4)],
-  ]};
+    ['تكلفة الكيلو (جنيه)', nkR(pc.perKg, 4)],
+  ];
+  const infoRows = [];
+  for(let i = 0; i < pair.length; i += 2){
+    infoRows.push([pair[i][0], pair[i][1],
+      pair[i+1] ? pair[i+1][0] : '', pair[i+1] ? pair[i+1][1] : '']);
+  }
+  const info = {title: 'بيانات الفاتورة والمصاريف',
+    head: ['البيان', 'القيمة', 'البيان', 'القيمة'], rows: infoRows};
   const head = ['م','اسم الصنف','الكمية','سعر القطعة $','قيمة الصنف بالجنيه','نصيبه من المصاريف','التكلفة الإجمالية','تكلفة القطعة (جنيه)'];
   const rows = pc.rows.map((r, i)=> [i+1, r.name, nkR(r.qty, 2), nkR(r.priceUsd, 4), nkR(r.valueEgp, 2), nkR(r.share, 2), nkR(r.totalEgp, 2), nkR(r.perPiece, 4)]);
   const tot = ['', 'الإجمالي', '', '', nkR(pc.t.valueEgp, 2), nkR(pc.t.share, 2), nkR(pc.t.totalEgp, 2), ''];
   tot.__cls = 'total-row'; rows.push(tot);
   return [info, {title: 'تسعير الأصناف بالمصري', head, rows}];
 }
-NK_EXPORTERS['gvPrc'] = ()=> ({blocks: gvPricingBlocks(gvOrder()), title: `تسعير طلبية جيفيز ${gvOrder().no}`, subtitle: `طلبية رقم ${gvOrder().no} — ${nkDateAr(gvOrder().date)}`});
+NK_EXPORTERS['gvPrc'] = ()=> ({blocks: gvPricingBlocks(gvOrder()), orient: 'p',
+  title: `تسعير طلبية جيفيز ${gvOrder().no}`,
+  subtitle: `طلبية رقم ${gvOrder().no} — ${nkDateAr(gvOrder().date)}`});
 
 /* ---------- استيراد إكسل: دليل أصناف أو طلبية قديمة ---------- */
 function gvItemsImport(wb){
@@ -9868,17 +9928,20 @@ function nkSafeRender(appId, label, impl){
 }
 function renderGV(){ nkSafeRender('gvApp', 'جيفز', renderGV_impl); }
 function renderGV_impl(el){
-  const tab = (GV.tab === 'items' ? 'orders' : (GV.tab || 'orders'));
+  const tab = GV.tab || 'orders';
   el.innerHTML = `
-  <div class="sub" style="margin:-4px 0 10px">دليل الأصناف بقى قسم لوحده — أيقونة "📦 الأصناف" فوق — وبيتحدّث منه كل الشاشات هنا تلقائي.</div>
   <div class="tabs">
     <div class="tab ${tab === 'orders' ? 'active' : ''}" data-gvtab="orders">🧾 الطلبيات</div>
     <div class="tab ${tab === 'receive' ? 'active' : ''}" data-gvtab="receive">📥 الاستلام</div>
     <div class="tab ${tab === 'pricing' ? 'active' : ''}" data-gvtab="pricing">💰 التسعير</div>
+    <div class="tab ${tab === 'items' ? 'active' : ''}" data-gvtab="items">💲 أسعار وأوزان الأصناف</div>
   </div>
   ${tab === 'orders' ? gvOrdersHtml() : ''}
   ${tab === 'receive' ? gvReceiveHtml() : ''}
-  ${tab === 'pricing' ? gvPricingHtml() : ''}`;
+  ${tab === 'pricing' ? gvPricingHtml() : ''}
+  ${tab === 'items' ? `<div class="sub" style="margin:-2px 0 10px">نفس الدليل اللي في أيقونة
+    «📦 الأصناف» — بتعدّل السعر أو الوزن أو محتوى الكرتونة هنا وبيتحدّث في كل مكان.</div>`
+    + gvItemsHtml() : ''}`;
   gvWire(el);
 }
 
@@ -10473,12 +10536,29 @@ function gvPricingHtml(){
     <div class="flex-between"><h2 style="margin:0">💰 تسعير الطلبية</h2>
       <div class="row"><label>الطلبية <select id="gvPriceOrder">${opts}</select></label>
       <button class="secondary" id="gvSavePrice">💾 حفظ</button></div></div>
-    <div class="sub" style="margin-top:4px">التسعير على أساس الكمية المستلمة (لو مسجّلة)، وإلا الكمية المطلوبة. المصاريف الإضافية بتوزّع على الأصناف حسب نصيب كل صنف من الوزن.</div>
-    <div class="row" style="margin-top:10px;gap:14px;flex-wrap:wrap">
-      <label>سعر صرف الدولار (جنيه) <input type="number" id="gvPRate" value="${esc(pr.rate)}" style="width:100px"></label>
-      <label>نسبة الجمارك % <input type="number" step="0.001" id="gvPCustoms" value="${esc(pr.customsPct)}" style="width:90px"></label>
-      <label>النولون / الشحن (جنيه) <input type="number" id="gvPFreight" value="${esc(pr.freightEgp)}" style="width:110px"></label>
-      <label>مصروفات أخرى (جنيه) <input type="number" id="gvPOther" value="${esc(pr.otherEgp)}" style="width:110px"></label>
+    <div class="sub" style="margin-top:4px">التسعير على <b>الكمية المستلمة</b> — الصنف اللي لسه ما اتسلمش بياخد صفر.
+      المصاريف بتتوزّع على الأصناف حسب نصيب كل صنف من الوزن.</div>
+    ${pc.noRecv ? `<div class="msg warn" style="margin-top:8px"><b>${pc.noRecv}</b> صنف لسه ما اتسجّلش
+      استلامه — داخل بصفر. سجّل الاستلام من تاب «📥 الاستلام» الأول.</div>` : ''}
+    <div class="qp-cols" style="grid-template-columns:repeat(2,1fr);margin-top:10px">
+      <label class="chk" style="flex-direction:column;align-items:stretch;gap:3px">
+        <span>مصاريف بنكية $</span>
+        <input type="number" step="any" id="gvPBankUsd" value="${esc(pr.bankUsd)}"></label>
+      <label class="chk" style="flex-direction:column;align-items:stretch;gap:3px">
+        <span>مصاريف بنكية مصري</span>
+        <input type="number" step="any" id="gvPBankEgp" value="${esc(pr.bankEgp)}"></label>
+      <label class="chk" style="flex-direction:column;align-items:stretch;gap:3px">
+        <span>مصاريف تخليص جمركي</span>
+        <input type="number" step="any" id="gvPClear" value="${esc(pr.clearEgp)}"></label>
+      <label class="chk" style="flex-direction:column;align-items:stretch;gap:3px">
+        <span>مصاريف شحن وكارجو $</span>
+        <input type="number" step="any" id="gvPFreightUsd" value="${esc(pr.freightUsd)}"></label>
+      <label class="chk" style="flex-direction:column;align-items:stretch;gap:3px">
+        <span>مصروفات أخرى (جنيه)</span>
+        <input type="number" step="any" id="gvPOther" value="${esc(pr.otherEgp)}"></label>
+      <label class="chk" style="flex-direction:column;align-items:stretch;gap:3px">
+        <span>سعر صرف الدولار</span>
+        <input type="number" step="any" id="gvPRate" value="${esc(pr.rate)}"></label>
     </div>
     <div class="card" style="background:var(--panel2);margin-top:12px">
       <div class="row" style="gap:16px;flex-wrap:wrap">
@@ -10689,7 +10769,8 @@ function gvWire(el, refresh){
   const po = $('gvPriceOrder'); if(po) po.onchange = ()=>{ GV.cur = +po.value; gvSave(); renderGV(); };
   const pr = gvPricing(o.no);
   const pSet = (id, field)=>{ const e = $(id); if(e) e.onchange = ()=>{ pr[field] = nkN(e.value); gvSave(); renderGV(); }; };
-  pSet('gvPRate', 'rate'); pSet('gvPCustoms', 'customsPct'); pSet('gvPFreight', 'freightEgp'); pSet('gvPOther', 'otherEgp');
+  pSet('gvPRate', 'rate'); pSet('gvPBankUsd', 'bankUsd'); pSet('gvPBankEgp', 'bankEgp');
+  pSet('gvPClear', 'clearEgp'); pSet('gvPFreightUsd', 'freightUsd'); pSet('gvPOther', 'otherEgp');
 }
 
 /* ==================== 2) مرتبات شركة القرشي ==================== */
