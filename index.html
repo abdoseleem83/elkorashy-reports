@@ -1264,7 +1264,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v161';
+const APP_VERSION = 'v162';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1744,10 +1744,7 @@ async function loadStorage(){
     if(idxErr) throw idxErr;
     const months = JSON.parse(idxPre.value);
     indexedMonths = months.slice();
-    const loadMonth = async (m)=>{
-      const r = await window.storage.get('month:' + m);
-      return [m, JSON.parse(r.value)];
-    };
+    const loadMonth = async (m)=> [m, await getMonthValue(m)];
     // الشهر اللي ختمه زي اللي عندنا وموجود في الكاش: منجيبوش تاني
     const fresh = [];
     const stillNeeded = months.filter(m=>{
@@ -1997,10 +1994,8 @@ async function retryFailedMonths(){
   if(!failedMonths.length) return;
   const still = [];
   for(const m of failedMonths){
-    try{
-      const r = await window.storage.get('month:' + m);
-      monthsData[m] = JSON.parse(r.value);
-    }catch(e){ still.push(m); }
+    try{ monthsData[m] = await getMonthValue(m); }
+    catch(e){ still.push(m); }
   }
   failedMonths = still;
   staleMonths = staleMonths.filter(m => still.includes(m));
@@ -2191,11 +2186,78 @@ $on('closeArchiveBtn').addEventListener('click', ()=> $('archivePanel').style.di
    بتقع (مهلة، أو Apps Script بيرجّع 404 لأن رابط إعادة التوجيه بيبوظ في نص
    الرفع). فبنقسّمه بالعميل: أول دفعة `set` (بتحل محل القديم) والباقي `merge`
    ذرّي على السيرفر — نفس المفتاح ونفس شكل البيانات، فالقراءة ما اتغيّرتش. */
+/* تقسيم الشهر على مفاتيح: month:2026-01#1..#N + فهرس {"__parts":N} في
+   المفتاح الأصلي. بتشتغل على أي سيرفر (قديم أو جديد) والقراءة بتجمّعهم. */
+function splitByCustomer(data, limit){
+  const parts = []; let batch = {}, len = 2;
+  Object.keys(data).forEach(c=>{
+    const s2 = JSON.stringify(data[c]);
+    if(len + s2.length > limit && Object.keys(batch).length){ parts.push(batch); batch = {}; len = 2; }
+    batch[c] = data[c];
+    len += s2.length + c.length + 4;
+  });
+  if(Object.keys(batch).length) parts.push(batch);
+  return parts;
+}
+async function monthPartsCount(month){
+  try{
+    const r = await window.storage.get('month:' + month);
+    const v = JSON.parse(r.value);
+    return (v && v.__parts) ? Number(v.__parts) || 0 : 0;
+  }catch(e){ return 0; }
+}
+async function saveMonthParts(month, data){
+  const key = 'month:' + month;
+  const parts = splitByCustomer(data, MONTH_CHUNK_CHARS);
+  const before = await monthPartsCount(month);
+  for(let i = 0; i < parts.length; i++){
+    await setKey(key + '#' + (i + 1), JSON.stringify(parts[i]));
+    const el = document.getElementById('uploadMsg');
+    if(el) el.innerHTML = `<div class="msg warn">بيرفع ${monthLabel(month)} على دفعات —
+      ${i + 1} من ${parts.length}... متقفلش الصفحة.</div>`;
+  }
+  // آخر خطوة: الفهرس. قبلها الشهر القديم لسه كامل على السيرفر.
+  await setKey(key, JSON.stringify({__parts: parts.length}));
+  for(let i = parts.length + 1; i <= before; i++){
+    try{ await window.storage.delete(key + '#' + i); }catch(e){}
+  }
+}
+// قراءة شهر: عادي أو مقسّم لأجزاء
+async function getMonthValue(month){
+  const r = await window.storage.get('month:' + month);
+  const v = JSON.parse(r.value) || {};
+  if(!v || !v.__parts) return v;
+  const out = {};
+  for(let i = 1; i <= Number(v.__parts); i++){
+    const pr = await window.storage.get('month:' + month + '#' + i);
+    Object.assign(out, JSON.parse(pr.value) || {});
+  }
+  return out;
+}
 const MONTH_CHUNK_CHARS = 60000;
+/* الرفع على دفعات محتاج `merge` — والسيرفر القديم مابيعرفهاش وبيرد
+   «unknown action». فبنسأله مرة واحدة قبل ما نبدأ، بدل ما نكتشف ده في نص
+   الرفع ونسيب الشهر ناقص. */
+async function serverSupportsMerge(){
+  if(serverHasMerge !== null) return serverHasMerge;
+  try{
+    await window.storage.merge('__mergecheck', {});
+    serverHasMerge = true;
+    try{ await window.storage.delete('__mergecheck'); }catch(e){}
+  }catch(e){
+    if(/unknown action/i.test(e && e.message || '')) serverHasMerge = false;
+    else throw e;
+  }
+  return serverHasMerge;
+}
 async function saveMonthChunked(month, data){
   const key = 'month:' + month;
   const full = JSON.stringify(data);
   if(full.length <= MONTH_CHUNK_CHARS) return setKey(key, full);
+  // سيرفر قديم (مايعرفش merge): بنكتب الأجزاء في مفاتيح جنبية وآخر حاجة
+  // بنكتب «الفهرس» في المفتاح الأصلي. لحد ما الفهرس يتكتب، القديم لسه سليم
+  // على السيرفر — يعني مفيش شهر نصّه ضايع لو الرفع وقع في النص.
+  if(!(await serverSupportsMerge())) return saveMonthParts(month, data);
   const custs = Object.keys(data);
   let batch = {}, len = 2, first = true, done = 0;
   const flush = async ()=>{
@@ -2209,13 +2271,20 @@ async function saveMonthChunked(month, data){
       ${done} من ${custs.length} عميل... متقفلش الصفحة.</div>`;
     batch = {}; len = 2;
   };
-  for(const c of custs){
-    const s2 = JSON.stringify(data[c]);
-    if(len + s2.length > MONTH_CHUNK_CHARS) await flush();
-    batch[c] = data[c];
-    len += s2.length + c.length + 4;
+  try{
+    for(const c of custs){
+      const s2 = JSON.stringify(data[c]);
+      if(len + s2.length > MONTH_CHUNK_CHARS) await flush();
+      batch[c] = data[c];
+      len += s2.length + c.length + 4;
+    }
+    await flush();
+  }catch(e){
+    // وقع في نص الدفعات: الشهر على السيرفر ناقص. لازم يتقال بصراحة —
+    // إعادة الرفع بتبدأ من الأول (set) فبتصلّحه.
+    throw new Error(`الرفع وقف بعد ${done} من ${custs.length} عميل — الشهر على السيرفر ناقص دلوقتي. `
+      + `ارفع نفس الملف تاني وهو هيبدأ من الأول ويكمّله. (${e.message})`);
   }
-  await flush();
 }
 async function saveMonths(changedMonths){
   // مهم: الفهرس بيشمل الشهور اللي فشل تحميلها كمان. من غير كده أول حفظ بعد
@@ -2928,6 +2997,8 @@ async function deleteMonth(m){
   const backup = monthsData[m];
   delete monthsData[m];
   try{
+    const np = await monthPartsCount(m);
+    for(let i = 1; i <= np; i++){ try{ await window.storage.delete('month:' + m + '#' + i); }catch(e){} }
     await window.storage.delete('month:' + m);
     failedMonths = failedMonths.filter(x => x !== m);
     indexedMonths = indexedMonths.filter(x => x !== m);
