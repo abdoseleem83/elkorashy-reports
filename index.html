@@ -4296,8 +4296,10 @@ function groupRows(g, columns){
 const XS_NAVY = '16307A', XS_LINE = 'C4CBE0', XS_BAND = 'EEF1F9', XS_TOT = 'D9E1F5';
 const xsBorder = (c)=> ({style:'thin', color:{rgb: c || XS_LINE}});
 const xsAll = (c)=> ({top:xsBorder(c), bottom:xsBorder(c), left:xsBorder(c), right:xsBorder(c)});
+const XS_RED = 'C0202F', XS_GREEN = '0A7D3C';
 function styleSheet(ws, o){
   o = o || {};
+  const sign = o.sign || [];             // '' | 'minus' | 'plus' لكل عمود
   const headRow = o.headRow || 0;        // صف العناوين (0-based داخل الشيت)
   const titleRows = o.titleRows || 0;    // عدد سطور رأس التقرير فوقه
   const totalRe = /^(الإجمالي|الاجمالي|إجمالي|اجمالي|صافي|مجمل)/;
@@ -4327,7 +4329,13 @@ function styleSheet(ws, o){
                   border: xsAll('0E205C')};
       } else {
         const numeric = cell.t === 'n';
-        cell.s = {font:{bold: isTot, sz:10.5},
+        // الخصم أحمر والإضافة خضرا — زي الشاشة والـPDF
+        const sg = sign[c - R.s.c];
+        // صف الإجمالي في الإكسل خلفيته فاتحة (D9E1F5) فالأحمر والأخضر
+        // الغامقين بيتقروا عليه عادي
+        const paint = sg && numeric && cell.v !== 0;
+        cell.s = {font:{bold: isTot || !!paint, sz:10.5,
+                        color: paint ? {rgb: sg === 'minus' ? XS_RED : XS_GREEN} : undefined},
                   fill:{fgColor:{rgb: isTot ? XS_TOT : ((r - headRow) % 2 === 0 ? XS_BAND : 'FFFFFF')}},
                   alignment:{horizontal: numeric ? 'center' : 'right', vertical:'center'},
                   border: xsAll()};
@@ -4345,7 +4353,7 @@ function styleSheet(ws, o){
 }
 
 // عنوان التقرير والفترة فوق كل شيت — زي رأس الـPDF
-function sheetWithHeader(aoa, title, period, width){
+function sheetWithHeader(aoa, title, period, width, opts){
   const pad = (arr) => arr.concat(new Array(Math.max(0, width - arr.length)).fill(''));
   const head = [
     pad([`${reportTitle()} — ${title}`]),
@@ -4387,7 +4395,7 @@ function sheetWithHeader(aoa, title, period, width){
     return {wch: Math.min(w, 34)};
   });
   // الرأس ٣ سطور (عنوان / فترة / فاضي) وبعدهم صف العناوين
-  return styleSheet(ws, {titleRows:3, headRow:3});
+  return styleSheet(ws, {titleRows:3, headRow:3, sign: opts && opts.sign});
 }
 
 // صفوف جدول النمو كمصفوفة للإكسل
@@ -5318,6 +5326,15 @@ const PDF_STYLE = `
      «صافي المرتب» كانت بتطلع «صف ي لمرت ب» و«الإسكندرية» «لالسرائ دوة»،
      لأن كسر الكلمة العربية بيبوّظ شكل الحروف المتصلة. دلوقتي العمود بياخد
      عرضه من محتواه، والكسر بيحصل عند المسافات بس. */
+  /* المرتبات: الخصم أحمر والإضافة خضرا في الصورة والـPDF */
+  .pay-minus{color:#c0202f !important;font-weight:800}
+  .pay-plus{color:#0a7d3c !important;font-weight:800}
+  /* صف الإجمالي خلفيته كحلي غامق — الأحمر والأخضر الغامقين مكانوش
+     بيتقروا عليه خالص، فبنستخدم درجات فاتحة */
+  tr.total-row td.pay-minus{color:#ff9aa5 !important}
+  tr.total-row td.pay-plus{color:#7df0b0 !important}
+  th.pay-minus-h{background:#7a1420 !important;border-color:#5e0f18 !important}
+  th.pay-plus-h{background:#0a5c2e !important;border-color:#07401f !important}
   .blk table{table-layout:auto}
   .blk th, .blk td{word-break:keep-all;overflow-wrap:normal;hyphens:none}
   .blk td:nth-child(2), .blk th:nth-child(2){width:auto}
@@ -9366,14 +9383,21 @@ const nkToday = ()=> new Date().toISOString().slice(0, 10);
 const nkDateAr = (d)=>{ if(!d) return ''; const p = String(d).split('-'); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : String(d); };
 
 // ---- جدول HTML من بلوك {title, head, rows, align} ----
+/* b.sign = مصفوفة بطول العناوين، كل عنصر '' أو 'minus' أو 'plus'.
+   في كشوف المرتبات: أي عمود بينقص المرتب بيطلع أحمر في الصورة والـPDF
+   والإكسل، وأي عمود بيزوّده بيطلع أخضر — زي ما هو على الشاشة بالظبط. */
 function nkBlockHtml(b){
   let h = b.title ? `<div class="grp-title" style="font-size:16px;margin:12px 0 4px">${esc(b.title)}</div>` : '';
-  h += '<table><thead><tr>' + b.head.map(x=> `<th>${esc(x)}</th>`).join('') + '</tr></thead><tbody>';
+  const sg = b.sign || [];
+  h += '<table><thead><tr>' + b.head.map((x, i)=>
+    `<th${sg[i] ? ` class="pay-${sg[i]}-h"` : ''}>${esc(x)}</th>`).join('') + '</tr></thead><tbody>';
   (b.rows || []).forEach(r=>{
     const cls = (r.__cls ? ` class="${r.__cls}"` : '');
     h += `<tr${cls}>` + r.map((c, i)=>{
       const num = typeof c === 'number';
-      return `<td${num ? ' class="wh-num"' : ''} style="text-align:${num ? 'center' : (i === 0 || i === 1 ? 'right' : 'center')}">${num ? esc(nkF(c)) : esc(c == null ? '' : c)}</td>`;
+      // الصفر مالوش لازمة يتلوّن — اللون معناه «فيه خصم» أو «فيه إضافة»
+      const sign = (sg[i] && num && c !== 0) ? ' pay-' + sg[i] : '';
+      return `<td class="${((num ? 'wh-num' : '') + sign).trim()}" style="text-align:${num ? 'center' : (i === 0 || i === 1 ? 'right' : 'center')}">${num ? esc(nkF(c)) : esc(c == null ? '' : c)}</td>`;
     }).join('') + '</tr>';
   });
   return h + '</tbody></table>';
@@ -9391,7 +9415,7 @@ async function nkExport(kind, blocks, title, subtitle){
       const used = new Set();
       blocks.forEach((b, i)=>{
         const aoa = [b.head].concat((b.rows || []).map(r=> r.slice()));
-        const ws = sheetWithHeader(aoa, b.title || title, subtitle || '', b.head.length);
+        const ws = sheetWithHeader(aoa, b.title || title, subtitle || '', b.head.length, {sign: b.sign});
         XLSX.utils.book_append_sheet(wb, ws, safeSheetName(b.title || ('ورقة ' + (i + 1)), used));
       });
       XLSX.writeFile(wb, safeFileName(title) + '.xlsx');
@@ -10730,7 +10754,7 @@ function qpSendBlock(rr, title){
     tt('dLate'), tt('vExt'), tt('dPen'), tt('adv'), tt('ins'), tt('totalDed'), tt('inc'), tt('net')];
   const tot = fullTot.filter((_, k)=> on[k]);
   tot.__cls = 'total-row'; rows.push(tot);
-  return {title, head, rows};
+  return {title, head, rows, sign: head.map(qpSign)};
 }
 function qpBlocks(which){
   const c = qpCalc(QP.half);
@@ -11130,7 +11154,8 @@ function fpBlocks(which){
     const tot = fullTot.filter((_, k)=> on[k]);
     tot.__cls = 'total-row'; rows.push(tot);
     const lbl = FP_PERIODS[FP.period] + (FP.expPlace ? ' — ' + FP.expPlace : '');
-    return [{title: 'كشف الإرسال - مصنع سمارتي - ' + lbl, head, rows}];
+    const fpSign = (c)=> FP_MINUS.indexOf(c) >= 0 ? 'minus' : (FP_PLUS.indexOf(c) >= 0 ? 'plus' : '');
+    return [{title: 'كشف الإرسال - مصنع سمارتي - ' + lbl, head, rows, sign: head.map(fpSign)}];
   }
   if(which === 'emps'){
     return [{title: 'بيانات عاملين المصنع',
