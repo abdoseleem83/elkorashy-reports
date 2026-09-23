@@ -164,6 +164,15 @@
   .it-pick{display:flex;align-items:center;gap:7px;padding:4px 2px;font-size:13px;cursor:pointer}
   .it-pick input{margin:0;flex:none}
   @media (max-width:640px){ .it-dups{grid-template-columns:1fr} }
+  /* شريط أدوات التقرير: على الموبايل عمودين متساويين بدل سطر لكل خيار —
+     الشكل بيبقى مرتّب وبيوفّر نص الطول. */
+  @media (max-width:760px){
+    .nk-tools{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
+    .nk-tools > *{width:100%;min-width:0;margin:0}
+    .nk-tools > input[type="text"], .nk-tools > button, .nk-tools > .nk-tools-wide{grid-column:1 / -1}
+    .nk-tools .chk{justify-content:space-between;padding:8px 10px;min-height:40px}
+    .nk-tools select{max-width:100%}
+  }
   /* فورم «ضيف صنف جديد» — خانات جنب بعض على الكمبيوتر وتحت بعض على الموبايل */
   .it-add{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
   .it-f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted)}
@@ -511,15 +520,14 @@
   <button class="mod-btn" data-mod="sales" aria-expanded="false" aria-controls="salesApp">
     <span class="mod-ico">📊</span><span class="mod-txt"><b>المبيعات</b><span class="mod-sub">مقارنات وقطاعات ونمو</span></span><span class="mod-car">▾</span>
   </button>
-  <button class="mod-btn" data-mod="fin" aria-expanded="false" aria-controls="finApp">
-    <span class="mod-ico">🧾</span><span class="mod-txt"><b>قوائم مالية</b><span class="mod-sub">ميزان المراجعة ← دخل ومركز مالي</span></span><span class="mod-car">▾</span>
-  </button>
   <button class="mod-btn" data-mod="wh" aria-expanded="false" aria-controls="whApp">
     <span class="mod-ico">🏬</span><span class="mod-txt"><b>المخازن</b><span class="mod-sub">أرصدة ونواقص وجرد</span></span><span class="mod-car">▾</span>
   </button>
-
   <button class="mod-btn" data-mod="gv" aria-expanded="false" aria-controls="gvApp">
     <span class="mod-ico">🚢</span><span class="mod-txt"><b>طلبيات جيفز</b><span class="mod-sub">طلبيات واستلام وتسعير</span></span><span class="mod-car">▾</span>
+  </button>
+  <button class="mod-btn" data-mod="fin" aria-expanded="false" aria-controls="finApp">
+    <span class="mod-ico">🧾</span><span class="mod-txt"><b>قوائم مالية</b><span class="mod-sub">ميزان المراجعة ← دخل ومركز مالي</span></span><span class="mod-car">▾</span>
   </button>
   <button class="mod-btn" data-mod="qp" aria-expanded="false" aria-controls="qpApp">
     <span class="mod-ico">💵</span><span class="mod-txt"><b>مرتبات القرشي</b><span class="mod-sub">كشف نصف شهري</span></span><span class="mod-car">▾</span>
@@ -555,7 +563,7 @@
 
 <div class="card" id="salesUploadCard">
   <div class="flex-between">
-    <h2 style="margin:0">1) رفع ملف شهر جديد</h2>
+    <h2 style="margin:0">⬆️ رفع ملف شهر جديد</h2>
     <span class="badge" id="loadStatus">بيتحمّل البيانات المحفوظة...</span>
     <span class="badge" id="saveStatus" style="display:none;align-items:center"></span>
     <button class="ghost" id="updateBtn" title="تحقق من نسخة أحدث">تحديث</button>
@@ -585,15 +593,12 @@
 
 <div class="card">
   <div class="flex-between">
-    <h2 style="margin:0">2) الشهور المحفوظة</h2>
+    <h2 style="margin:0">🗓️ الشهور المحفوظة</h2>
     <div class="row">
       <button class="secondary" id="manageCustomersBtn" title="تصنيف العملاء">العملاء</button>
       <button class="secondary" id="manageSectorsBtn" title="مطابقة القطاعات">القطاعات</button>
       <button class="secondary" id="manageItemsBtn" title="الأصناف">الأصناف</button>
       <button class="secondary" id="archiveBtn" title="أرشفة سنة كاملة">الأرشيف</button>
-      <button class="secondary" id="exportBtn">تصدير Excel</button>
-      <button class="secondary" id="exportPdfBtn">تصدير PDF</button>
-      <span class="badge">الاتنين بنفس الاختيارات</span>
     </div>
   </div>
   <div id="monthsPills" class="row"></div>
@@ -602,7 +607,7 @@
 
 <div class="card" id="archivePanel" style="display:none">
   <div class="flex-between">
-    <h2 style="margin:0">الأرشيف</h2>
+    <h2 style="margin:0">🗄️ الأرشيف</h2>
     <button class="ghost" id="closeArchiveBtn">إغلاق ✕</button>
   </div>
   <p class="sub" style="margin:6px 0 12px">
@@ -616,7 +621,7 @@
 
 <div class="card" id="customersPanel" style="display:none">
   <div class="flex-between">
-    <h2 style="margin:0">تصنيف العملاء</h2>
+    <h2 style="margin:0">👤 تصنيف العملاء</h2>
     <div class="row">
       <input type="text" id="custSearch" placeholder="بحث باسم العميل...">
       <select id="custClassFilter" title="فلتر بالتصنيف"></select>
@@ -628,7 +633,7 @@
 
 <div class="card" id="sectorsPanel" style="display:none">
   <div class="flex-between">
-    <h2 style="margin:0">القطاعات ومطابقة الأقسام</h2>
+    <h2 style="margin:0">🏷️ القطاعات ومطابقة الأقسام</h2>
     <button class="ghost" id="closeSectorsBtn">إغلاق ✕</button>
   </div>
 
@@ -657,7 +662,7 @@
 
 <div class="card" id="itemsPanel" style="display:none">
   <div class="flex-between">
-    <h2 style="margin:0">الأصناف اللي بتتباع</h2>
+    <h2 style="margin:0">📋 الأصناف اللي بتتباع</h2>
     <div class="row">
       <input type="text" id="itemSearch" placeholder="بحث باسم الصنف...">
       <select id="itemSectorFilter" title="فلتر بالقطاع"></select>
@@ -681,7 +686,7 @@
 
 <div class="card" id="pdfPanel" style="display:none">
   <div class="flex-between">
-    <h2 style="margin:0">إعدادات التصدير (PDF / Excel)</h2>
+    <h2 style="margin:0">⚙️ إعدادات التصدير (PDF / Excel)</h2>
     <button class="ghost" id="closePdfBtn">إغلاق ✕</button>
   </div>
   <div class="row" style="margin-top:10px;gap:8px">
@@ -809,7 +814,7 @@
     <button type="button" class="refresh-ico" id="salesTabRefreshBtn" title="تحديث بيانات المبيعات من السيرفر">🔄</button>
   </div>
 
-  <div class="row" style="margin-bottom:12px;gap:8px">
+  <div class="row nk-tools" style="margin-bottom:12px;gap:8px">
     <input type="text" id="reportSearch" placeholder="بحث باسم العميل..." style="min-width:180px">
     <select id="reportClassFilter" title="فلتر بالتصنيف"></select>
     <label class="chk"><input type="checkbox" id="reportAggWholesale" checked> اجمع الجملة في صف واحد</label>
@@ -831,6 +836,13 @@
         <option value="both">القيمة والكمية</option>
       </select>
     </label>
+    <label class="chk" style="gap:6px">التجميع
+      <select id="reportGroup" style="padding:4px 8px">
+        <option value="month" selected>شهري</option>
+        <option value="q">ربع سنوي</option>
+        <option value="y">سنوي</option>
+      </select>
+    </label>
     <button class="ghost" id="reportMonthsBtn">الشهور المعروضة</button>
     <button class="ghost" id="reportSectorsBtn" style="display:none">القطاعات المعروضة</button>
     <span class="badge" id="reportCount"></span>
@@ -843,6 +855,14 @@
   <div id="doorsFixCard"></div>
   <div id="kpiCards"></div>
   <div id="reportArea"><div class="sub">ارفع أول ملف عشان يظهر التقرير.</div></div>
+  <!-- التصدير دايمًا **تحت** التقرير: بتشوف الأرقام الأول وبعدين تصدّرها -->
+  <div class="nk-exp" style="margin-top:14px">
+    <div class="nk-exp-lbl">تصدير التقرير المعروض <span class="badge">الاتنين بنفس الاختيارات</span></div>
+    <div class="nk-exp-btns" style="grid-template-columns:repeat(2,1fr)">
+      <button class="nk-x" id="exportBtn"><span>⬇️</span>إكسل</button>
+      <button class="nk-x" id="exportPdfBtn"><span>📄</span>PDF</button>
+    </div>
+  </div>
 </div>
 </div><!-- /salesApp -->
 
@@ -855,7 +875,7 @@
 
   <div class="card" id="whUploadCard">
     <div class="flex-between">
-      <h2 style="margin:0">1) رفع الأرصدة</h2>
+      <h2 style="margin:0">⬆️ رفع الأرصدة</h2>
       <span class="badge" id="whCatalogState"></span>
     </div>
     <div class="row" style="margin-top:10px">
@@ -876,35 +896,21 @@
     <div id="whUnknownBox" style="margin-top:12px"></div>
 
     <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-      <div class="flex-between">
-        <h2 style="margin:0;font-size:14px">دليل الأصناف</h2>
-        <div class="row">
-          <input type="file" id="whCatFile" accept=".xls,.xlsx">
-          <button class="secondary" id="whCatBtn" disabled>حدّث الدليل</button>
-          <button class="ghost" id="whCatTemplate">⬇️ نموذج</button>
-        </div>
-        <label class="chk" style="gap:6px;margin-top:8px">
-          <input type="checkbox" id="whCatReplace"> استبدل الدليل كله (امسح الأصناف اللي مش في الملف)
-        </label>
-      </div>
-      <div class="sub" style="margin-top:6px">
-        شيت <b>data</b>: اسم الصنف · المجموعة الرئيسية · المجموعة الفرعية · محتوي اللفه · اللون.
-        بيتخزن مرة واحدة، ومنه بتتحسب اللفة/العود والمجموعات في كل التقارير.
-      </div>
-      <div id="whCatMsg"></div>
-
-      <div style="margin-top:12px;border-top:1px dashed var(--border);padding-top:10px">
-        <div class="flex-between"><b>+ إضافة صنف واحد يدوي</b>
-          <button class="secondary" id="whCatAddBtn">حفظ الصنف</button></div>
-        <div class="sub" style="margin-top:4px">لو صنف واحد جديد بس، مش محتاج ترفع ملف كامل — اكتبه هنا.</div>
-        <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
-          <input type="text" id="whCatNewName" placeholder="اسم الصنف" style="min-width:200px;flex:1">
-          <input type="text" id="whCatNewMain" placeholder="المجموعة الرئيسية" style="min-width:150px">
-          <input type="text" id="whCatNewSub" placeholder="المجموعة الفرعية" style="min-width:150px">
-          <input type="number" id="whCatNewRoll" placeholder="محتوى اللفة" style="width:110px">
-          <input type="text" id="whCatNewColor" placeholder="اللون" style="width:110px">
-        </div>
-        <div id="whCatAddMsg" style="margin-top:6px"></div>
+      <div class="sub">📦 <b>دليل الأصناف</b> (رفع الشيت · إضافة صنف يدوي · المجموعات واللفة)
+        مكانه بقى في أيقونة «الأصناف» عشان ما يتكررش في مكانين.
+        <button class="ghost" id="whGoItems" style="padding:3px 10px;font-size:12px;margin-inline-start:6px">افتح الأصناف</button></div>
+      <!-- الخانات دي مخفية بس لسه موجودة: كود الرفع والنموذج بيستعملها، وشاشة
+           الأصناف بتنده نفس الدوال. شيلها خالص = كسر الرفع. -->
+      <div style="display:none">
+        <input type="file" id="whCatFile" accept=".xls,.xlsx">
+        <button id="whCatBtn" disabled>حدّث الدليل</button>
+        <button id="whCatTemplate">نموذج</button>
+        <input type="checkbox" id="whCatReplace">
+        <div id="whCatMsg"></div>
+        <button id="whCatAddBtn">حفظ الصنف</button>
+        <input type="text" id="whCatNewName"><input type="text" id="whCatNewMain">
+        <input type="text" id="whCatNewSub"><input type="number" id="whCatNewRoll">
+        <input type="text" id="whCatNewColor"><div id="whCatAddMsg"></div>
       </div>
     </div>
   </div>
@@ -994,7 +1000,7 @@
 
   <div class="card" id="finUploadCard">
     <div class="flex-between">
-      <h2 style="margin:0">1) رفع ميزان المراجعة</h2>
+      <h2 style="margin:0">⬆️ رفع ميزان المراجعة</h2>
       <span class="badge" id="finState"></span>
     </div>
     <div class="row" style="margin-top:10px">
@@ -1267,7 +1273,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v167';
+const APP_VERSION = 'v168';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1485,7 +1491,13 @@ window.addEventListener('beforeunload', (e)=>{
 });
 
 const AR_MONTHS = ['','يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const AR_Q = {1:'الربع الأول', 2:'الربع التاني', 3:'الربع التالت', 4:'الربع الرابع'};
 function monthLabel(m){
+  const str = String(m || '');
+  // أعمدة مجمّعة: «2026-Q1» أو «2026»
+  const q = str.match(/^(\d{4})-Q([1-4])$/);
+  if(q) return `${AR_Q[+q[2]]} ${q[1]}`;
+  if(/^\d{4}$/.test(str)) return 'سنة ' + str;
   const [y,mo] = (m||'').split('-');
   const idx = parseInt(mo,10);
   if(!y || !idx || !AR_MONTHS[idx]) return m;
@@ -3449,6 +3461,7 @@ const reportView = {
   cls: '',            // '' = كل التصنيفات
   aggWholesale: true, // الجملة في صف واحد زي التصدير
   hiddenMonths: [],   // شهور المستخدم شالها من العرض
+  group: 'month',     // شهري / ربع سنوي (q) / سنوي (y)
   hiddenSectors: [],  // قطاعات المستخدم شالها من أعمدة "مقارنة المبيعات بالقطاع"
   metric: 'value',      // 'value' | 'qty' | 'both' — لتقارير العملاء
   // تقرير الأصناف بالقطاع غرضه الكميات (كام باب 70 وكام باب 80)، فبيفتح
@@ -3720,6 +3733,31 @@ function buildItemRows(metric, byCode, opts){
 
 // بيرجّع صفوف جاهزة حسب المقياس المختار. في وضع "الاتنين" بنحسب الصفوف
 // مرتين (فلوس وكمية) وبنلزق الكمية جنب كل صف بنفس الاسم.
+/* تجميع أعمدة الشهور: ربع سنوي أو سنوي. بنجمّع **بعد** ما الصفوف اتحسبت
+   شهر شهر، فكل الحسابات (القطاعات/النمو/الترتيب) بتشتغل زي ما هي بالظبط
+   بس على أعمدة أعرض. مفيش أي مسار حساب اتكرر. */
+function monthBucket(m, mode){
+  if(mode === 'y') return String(m).slice(0, 4);
+  const mo = parseInt(String(m).slice(5, 7), 10);
+  return String(m).slice(0, 4) + '-Q' + (Math.floor((mo - 1) / 3) + 1);
+}
+function groupMonthCols(months, rows, mode){
+  if(mode !== 'q' && mode !== 'y') return {months, rows};
+  const labels = [], cols = {};
+  months.forEach((m, i)=>{
+    const k = monthBucket(m, mode);
+    if(!(k in cols)){ cols[k] = []; labels.push(k); }
+    cols[k].push(i);
+  });
+  const sum = (arr, idxs)=> idxs.reduce((a, i)=> a + (Number((arr || [])[i]) || 0), 0);
+  const newRows = rows.map(r=>{
+    const o = Object.assign({}, r);
+    o.months = labels.map(k=> sum(r.months, cols[k]));
+    if(r.monthsQty) o.monthsQty = labels.map(k=> sum(r.monthsQty, cols[k]));
+    return o;
+  });
+  return {months: labels, rows: newRows};
+}
 function rowsForMetric(metric, build){
   if(metric === 'qty') return withMetric('q', build);
   const rows = build();
@@ -3802,8 +3840,14 @@ function renderReport(){
       : `القطاعات المعروضة (${shown}/${cand.length})`;
     if(activeTab !== 'sector') $('reportSectorsPanel').style.display = 'none';
   }
-  const rows = sortReportRows(baseRows, activeTab, secCols);
+  let rows = sortReportRows(baseRows, activeTab, secCols);
   const total = rows.reduce((a,r)=> a + rowGrandTotal(activeTab, r, secCols), 0);
+  // التجميع آخر خطوة قبل الرسم: الترتيب والإجمالي زي ما هم
+  let cols = months;
+  if(reportView.group && reportView.group !== 'month'){
+    const g = groupMonthCols(months, rows, reportView.group);
+    cols = g.months; rows = g.rows;
+  }
   const ranksOff = reportView.ranks && !(reportView.sortKey === 'total' && reportView.sortDir === 'desc');
   const metricNote = metric === 'qty' ? ' — الأرقام كمية مش قيمة'
     : (metric === 'both' ? ' — الرقم الصغير تحت كل قيمة هو الكمية' : '');
@@ -3812,7 +3856,7 @@ function renderReport(){
       (ranksOff ? ' — الميداليات مخفية عشان الترتيب مش بالإجمالي' : '')
     : '';
   $('reportArea').innerHTML = rows.length
-    ? buildTableHtml(activeTab, months, rows, null, {
+    ? buildTableHtml(activeTab, cols, rows, null, {
         sortable:true, growthCols: reportView.growthCols, showClass: reportView.showClass, allRows: rows,
         sectorCols: secCols, showAllSectorCols: !!secCols, qty: metric === 'both',
         // الميدالية معناها "الأعلى مبيعات" — فمتظهرش لو المستخدم رتّب بعمود تاني
@@ -7680,7 +7724,7 @@ function bindWhFamButtons(){
 $on('whFile').addEventListener('change', ()=>{ $('whProcessBtn').disabled = !$('whFile').files.length; });
 $on('whCatFile').addEventListener('change', ()=>{ $('whCatBtn').disabled = !$('whCatFile').files.length; });
 // نموذج فاضي بنفس الأعمدة بالظبط — تنزّله وتعبيه وترفعه زي ما هو
-if($('whCatTemplate')) $('whCatTemplate').addEventListener('click', ()=>{
+function whCatTemplateDownload(){
   const cur = Object.keys(whCatalog || {}).slice(0, 3).map(nm=>{
     const c = whCatalog[nm] || {};
     return [nm, c.main || '', c.sub || '', c.roll || '', c.color || '', c.base || ''];
@@ -7693,7 +7737,8 @@ if($('whCatTemplate')) $('whCatTemplate').addEventListener('click', ()=>{
   wb.Workbook = {Views:[{RTL:true}]};
   XLSX.utils.book_append_sheet(wb, ws, 'data');
   XLSX.writeFile(wb, 'نموذج-دليل-الأصناف.xlsx');
-});
+}
+if($('whCatTemplate')) $('whCatTemplate').addEventListener('click', whCatTemplateDownload);
 
 $on('whCatBtn').addEventListener('click', async ()=>{
   const f = $('whCatFile').files[0];
@@ -7994,6 +8039,12 @@ function whOrdRefresh(){
 })();
 
 // ---- تبويبات وأدوات ----
+const whGo = $('whGoItems');
+if(whGo) whGo.onclick = ()=>{ if(typeof showModule === 'function') showModule('it'); window.scrollTo(0, 0); };
+
+const rgSel = $('reportGroup');
+if(rgSel) rgSel.onchange = ()=>{ reportView.group = rgSel.value; renderReport(); };
+
 document.querySelectorAll('#whTabs .tab').forEach(t=>{
   t.addEventListener('click', ()=>{
     document.querySelectorAll('#whTabs .tab').forEach(x=>x.classList.remove('active'));
@@ -10711,7 +10762,7 @@ function itHtml(){
     <div class="tabs" style="margin-top:10px">
       <div class="tab${tab==='all'?' active':''}" data-ittab="all">الكل (${all.length})</div>
       <div class="tab${tab==='dups'?' active':''}" data-ittab="dups">🔗 دمج المكرر${dups.length?` (${dups.length})`:''}</div>
-      <div class="tab${tab==='gv'?' active':''}" data-ittab="gv">أصناف جيفز</div>
+
     </div>
   </div>`;
   // رفع شيت الأصناف — مكانه هنا لأن ده مصدر الأسماء لكل الأقسام
@@ -10732,7 +10783,7 @@ function itHtml(){
     </label>
     <div id="itCatMsg" style="margin-top:8px">${IT.catMsg || ''}</div>
   </div>`;
-  if(tab === 'gv') return head + up + gvItemsHtml();
+  if(tab === 'gv') IT.tab = 'all';   // التاب ده اتشال — دليل جيفز مكانه في شاشة جيفز
   if(tab === 'dups') return head + up + itDupsHtml(dups);
 
   const filters = `
@@ -10745,8 +10796,6 @@ function itHtml(){
           ${Object.keys(IT_SRC).map(k=>`<option value="${k}"${IT.src===k?' selected':''}>${IT_SRC[k]} (${nSrc(k)})</option>`).join('')}
         </select></label>
       <span class="badge">${rows.length} ظاهر</span>
-      <span style="flex:1"></span>
-      <button class="ghost" id="itExport">⬇️ تصدير Excel</button>
     </div>
   </div>`;
   const body = rows.slice(0, 600).map((r, i)=>`
@@ -10771,6 +10820,12 @@ function itHtml(){
       ${stores.map(s=>`<th>${esc(s)}</th>`).join('')}<th>مبيعات</th>
     </tr></thead><tbody>${body || `<tr><td colspan="${9+stores.length}" class="sub">مفيش أصناف مطابقة.</td></tr>`}</tbody></table></div>
     ${rows.length>600?`<div class="sub" style="margin-top:6px">بيعرض أول ٦٠٠ صنف — ضيّق البحث عشان تشوف الباقي.</div>`:''}
+    <div class="nk-exp" style="margin-top:12px">
+      <div class="nk-exp-lbl">تصدير الجدول المعروض</div>
+      <div class="nk-exp-btns" style="grid-template-columns:repeat(1,1fr)">
+        <button class="nk-x" id="itExport"><span>⬇️</span>إكسل</button>
+      </div>
+    </div>
   </div>`;
   return head + itAddHtml() + up + filters + table;
 }
@@ -11007,7 +11062,7 @@ function renderIT_impl(el){
   }
   itNwWire();
   const ct = $('itCatTemplate');
-  if(ct) ct.onclick = ()=>{ const b = document.getElementById('whCatTemplate'); if(b) b.click(); };
+  if(ct) ct.onclick = whCatTemplateDownload;
   el.querySelectorAll('[data-itunmerge]').forEach(btn=> btn.onclick = ()=>{
     const cn = btn.dataset.itunmerge;
     Object.keys(IT.alias).forEach(k=>{ if(IT.alias[k] === cn) delete IT.alias[k]; });
@@ -11797,7 +11852,7 @@ function renderQP_impl(el){
   </div>
 
   <div class="card">
-    <div class="flex-between"><h2 style="margin:0">بيانات الموظفين (${QP.emps.length})</h2>
+    <div class="flex-between"><h2 style="margin:0">👥 بيانات الموظفين (${QP.emps.length})</h2>
       <div class="row">
         <input type="file" id="qpFile" accept=".xlsx,.xls" style="max-width:230px">
         <button class="secondary" id="qpAdd">+ موظف</button>
@@ -12169,7 +12224,7 @@ function renderFP_impl(el){
   </div>
 
   <div class="card" style="display:${tab === 'pay' ? '' : 'none'}">
-    <div class="flex-between"><h2 style="margin:0">كشف المرتبات — ${esc(FP_PERIODS[FP.period])}</h2>
+    <div class="flex-between"><h2 style="margin:0">💰 كشف المرتبات — ${esc(FP_PERIODS[FP.period])}</h2>
       <span class="badge">${esc(fpPeriodLbl())}</span></div>
     ${MOB ? `<div class="row" style="margin-top:10px;gap:8px">
       <button class="btn sm" id="fpFoldAll">🗜️ اطوي الكل</button>
@@ -12892,7 +12947,7 @@ function renderAX_impl(el){
     ${nkBar('ax')}
   </div>
   <div class="card">
-    <div class="flex-between"><h2 style="margin:0">بونص الموزعين</h2>
+    <div class="flex-between"><h2 style="margin:0">🚚 بونص الموزعين</h2>
       <button class="secondary" id="axDistAdd">+ موزع</button></div>
     <div style="margin-top:10px">${dists}</div>
   </div>`;
