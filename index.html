@@ -255,12 +255,21 @@
   .nk-rc-sug{position:relative}
 
   /* أعمدة الكشف: ٤ في الصف تحت بعض، والاختيار كله باين قدامك مرة واحدة */
-  .qp-cols{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
-  .qp-cols label.chk{display:flex;align-items:flex-start;gap:4px;min-width:0;
+  /* ⚠️ الكلام كان بيتكسر في نص الكلمة («المرت ب الكام ل») لأن
+     word-break:break-word بتقطع جوه الكلمة، وده بيبوّظ شكل الحروف
+     العربية المتصلة. دلوقتي الكسر عند المسافات بس، والخانة بتطول
+     لتحت لو الاسم من كلمتين. */
+  .qp-cols{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:8px}
+  .qp-cols label.chk{display:flex;align-items:flex-start;gap:3px;min-width:0;
     background:var(--panel);border:1px solid var(--border);border-radius:9px;
-    padding:6px 5px;font-size:11px;line-height:1.25;cursor:pointer}
-  .qp-cols label.chk span{min-width:0;word-break:break-word}
-  .qp-cols input[type=checkbox]{width:16px;height:16px;flex:none;margin-top:1px}
+    padding:6px 4px;font-size:10.5px;line-height:1.3;cursor:pointer}
+  .qp-cols label.chk span{min-width:0;word-break:keep-all;overflow-wrap:normal;hyphens:none}
+  .qp-cols input[type=checkbox]{width:15px;height:15px;flex:none;margin-top:1px}
+  /* أي حاجة تنقص المرتب حمرا، وأي حاجة تزوّده خضرا */
+  .pay-minus{color:var(--danger) !important;font-weight:800}
+  .pay-plus{color:var(--accent2) !important;font-weight:800}
+  .nk-rc-sum b.pay-minus i{color:var(--danger)}
+  .nk-rc-sum b.pay-plus i{color:var(--accent2)}
   .mod-btn:hover{border-color:#b9cdf5}
   .mod-btn.active:hover{border-color:var(--accent)}
   .nk-exp{margin-top:14px;padding:10px;border-radius:12px;background:var(--panel2);border:1px solid var(--border)}
@@ -786,9 +795,12 @@
       </select>
     </label>
     <button class="ghost" id="reportMonthsBtn">الشهور المعروضة</button>
+    <button class="ghost" id="reportSectorsBtn" style="display:none">القطاعات المعروضة</button>
     <span class="badge" id="reportCount"></span>
   </div>
   <div id="reportMonthsPanel" class="row" style="display:none;margin-bottom:12px;padding:10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px">
+  </div>
+  <div id="reportSectorsPanel" class="row" style="display:none;margin-bottom:12px;padding:10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px">
   </div>
 
   <div id="kpiCards"></div>
@@ -1178,7 +1190,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v150';
+const APP_VERSION = 'v151';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1238,6 +1250,14 @@ let whSyncAt = 0;         // آخر مرة جبنا فيها بيانات الم
 // الفرق ده مهم جدًا: الكتابة الافتراضية فوق مفتاح موجود بتمسح إعدادات المستخدم.
 function isMissingKey(e){ return /not found/i.test((e && e.message) || ''); }
 let settingsStale = false; // فشلنا نقرا إعداد أو أكتر — التطبيق شغال على نسخة محلية
+// أسباب الفشل بالاسم — من غيرها الرسالة بتقول «فيه مشكلة» من غير ما
+// تقول مشكلة إيه، والمستخدم مايعرفش يتصرف
+const settingsStaleWhy = [];
+function noteStale(key, e){
+  settingsStale = true;
+  const m = (e && e.message) || String(e || '');
+  if(!settingsStaleWhy.some(x=> x.key === key)) settingsStaleWhy.push({key, msg: m.slice(0, 120)});
+}
 let failedMonths = [];  // شهور موجودة في الفهرس بس تحميلها فشل — بياناتها لسه على السيرفر
 // منهم اللي بنعرضه من النسخة المحلية القديمة: بيتعرض في التقارير، بس ممنوع
 // نرفعه للسيرفر — يمكن يكون فيه نسخة أحدث هناك وإحنا اللي فشلنا نجيبها.
@@ -1686,7 +1706,7 @@ async function loadStorage(){
     setBaseline('classificationDiff', cdObj);
     classification = migrateClassification(mergeWithSeed(clsSeed, cdObj));
     clsLoaded = true;
-  }catch(e){ clsMissing = isMissingKey(e); if(!clsMissing) settingsStale = true; }
+  }catch(e){ clsMissing = isMissingKey(e); if(!clsMissing) noteStale('تصنيف العملاء', e); }
   if(!clsLoaded){
     try{
       const c = await window.storage.get('classification');
@@ -1719,7 +1739,7 @@ async function loadStorage(){
     setBaseline('itemOverrideDiff', idObj);
     itemOverride = mergeWithSeed(ITEM_SECTOR_SEED, idObj);
     itemsLoaded = true;
-  }catch(e){ if(!isMissingKey(e)) settingsStale = true; }
+  }catch(e){ if(!isMissingKey(e)) noteStale('تصنيف الأصناف', e); }
   if(!itemsLoaded){
     try{
       const io = await window.storage.get('itemOverride');
@@ -1730,7 +1750,7 @@ async function loadStorage(){
       }
     }catch(e){
       // نفس السبب: مننساش تعديلات المستخدم اللي في الكاش لما الشبكة تفشل
-      if(!isMissingKey(e)) settingsStale = true;
+      if(!isMissingKey(e)) noteStale('خريطة الأصناف', e);
       if(!netFailed && isMissingKey(e) && !Object.keys(itemOverride).length){
         itemOverride = Object.assign({}, ITEM_SECTOR_SEED);
         await trySave(saveItemOverride);
@@ -1753,7 +1773,7 @@ async function loadStorage(){
     // فوق قطاعات المستخدم لو القراءة فشلت لأي سبب مؤقت. النتيجة: القطاعات
     // اللي هو ضايفها (ابواب 70/80، حلوق وبرور...) تختفي من السيرفر خالص.
     if(isMissingKey(e) && !netFailed){ await trySave(saveSectors); sectorsLoaded = true; }
-    else settingsStale = true;
+    else noteStale('قايمة القطاعات', e);
   }
   // توزيع القطاعات على الشيتات الخاصة
   let sheetsLoaded = false;
@@ -1765,7 +1785,7 @@ async function loadStorage(){
   }catch(e){
     // نفس القاعدة: مانمسحش الخريطة اللي في الذاكرة/الكاش لمجرد إن القراءة فشلت
     if(isMissingKey(e) && !netFailed) sheetsLoaded = true;
-    else settingsStale = true;
+    else noteStale('توزيع القطاعات على الشيتات', e);
   }
   try{
     const wf = await getKey('warehouseForcing');
@@ -1808,7 +1828,7 @@ async function loadStorage(){
       const v = JSON.parse(r.value) || {};
       if(key === 'whBalances') setBaseline(key, v);
       setter(v);
-    }catch(e){ if(!isMissingKey(e)) settingsStale = true; }
+    }catch(e){ if(!isMissingKey(e)) noteStale('إعدادات إضافية', e); }
   }
   whSyncAt = Date.now();
   preFetched = null;   // المرات الجاية تقرا من السيرفر مباشرة
@@ -1836,10 +1856,13 @@ async function loadStorage(){
   const stEl = $('settingsWarn');
   if(stEl){
     stEl.innerHTML = (settingsStale && !netFailed)
-      ? `<div class="msg warn" style="margin-top:10px"><b>تنبيه:</b> مقدرناش نقرا إعدادات
-         (القطاعات / تصنيف الأصناف) من التخزين المركزي دلوقتي، والتطبيق شغال على آخر نسخة
-         محلية. متعدّلش الإعدادات دلوقتي عشان مايتكتبش فوق اللي على السيرفر —
-         دوس "تحديث" لما النت يبقى أحسن.</div>`
+      ? `<div class="msg warn" style="margin-top:10px"><b>تنبيه:</b> مقدرناش نقرا
+         ${esc(settingsStaleWhy.map(x=> x.key).join('، ') || 'بعض الإعدادات')}
+         من التخزين المركزي دلوقتي، والتطبيق شغال على آخر نسخة محلية.
+         متعدّلش الإعدادات دلوقتي عشان مايتكتبش فوق اللي على السيرفر —
+         دوس "تحديث" لما النت يبقى أحسن.
+         ${settingsStaleWhy.length ? `<div class="sub" style="margin-top:6px">السبب:
+           ${esc(settingsStaleWhy.map(x=> x.key + ' — ' + x.msg).join(' · '))}</div>` : ''}</div>`
       : '';
   }
   // السيرفر رفض الطلبات لأن كلمة السر ناقصة/غلط — الرسالة دي أهم من
@@ -2406,13 +2429,44 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
 // القطاع بالترتيب: اللي إنت صنّفته بإيدك ← المجموعة الرئيسية من **شيت
 // الأصناف** ← تخمين من اسم الصنف. قبل كده الشيت مكانش بيتقرا خالص، فصنف
 // جديد كان بيروح بالتخمين حتى لو مجموعته مكتوبة في الشيت.
+/* أبواب WPC مش قطاع واحد — المطلوب مقارنة أفقية بالمقاسات:
+   ٧٠ / ٨٠ / ٩٠ / متر، والاكسسوارات لوحدها. شيت الأصناف أصلًا فيه
+   المقاس في «المجموعة الفرعية» (ابواب 70 سم WPC / ضلف ابواب فقط 80 سم
+   / اكسسوارات ابواب)، فبنستخرج القطاع منها بدل ما كل الأبواب تتلم على
+   عمود واحد اسمه «ابواب WPC» ومايبقاش فيه مقارنة أصلًا.                */
+function doorSectorOfSub(sub){
+  const b = normName(sub || '');
+  if(!b) return '';
+  if(/اكسسوار/.test(b)) return 'اكسسوارات ابواب';
+  // المقاس: بندوّر على ٧٠/٨٠/٩٠/١٠٠ كرقم مستقل عشان «2.50 م» ما تتحسبش
+  const m = b.match(/(?:^|[^\d.])(70|80|90|100)(?![\d.])/);
+  if(m) return m[1] === '100' ? 'ابواب متر' : 'ابواب ' + m[1];
+  return '';
+}
 function itemSector(itemName){
-  if(itemOverride[itemName]) return itemOverride[itemName];
+  const ov = itemOverride[itemName];
+  if(ov){
+    // استثناء واحد: لو التصنيف المحفوظ هو «ابواب WPC» العام وشيت الأصناف
+    // عارف مقاس الباب بالظبط، المقاس أولى. القيمة العامة دي جاية من
+    // التصنيف التلقائي القديم مش من اختيار المستخدم، وسيبانها كانت
+    // بتخلي كل الأبواب في عمود واحد فمفيش مقارنة بالمقاسات أصلًا.
+    // أي تصنيف تاني اخترته بإيدك بيفضل هو الأساس.
+    if(normName(ov) === 'ابواب WPC' && typeof itCatOf === 'function'){
+      const cc = itCatOf(itemName);
+      const dd = cc ? doorSectorOfSub(cc.sub) : '';
+      if(dd) return dd;
+    }
+    return ov;
+  }
   // «اسم مخزن» = فاتورة من تصدير رؤوس الفواتير — قطاعها من المخزن
   if(typeof isInvItem === 'function' && isInvItem(itemName))
     return sectorOfWarehouse(String(itemName).replace(/^«|»$/g, ''));
   const c = typeof itCatOf === 'function' ? itCatOf(itemName) : null;
   if(c && c.main){
+    if(/ابواب|wpc/i.test(normName(c.main))){
+      const d = doorSectorOfSub(c.sub);
+      if(d) return d;
+    }
     if(SECTORS.indexOf(c.main) >= 0) return c.main;
     const g = guessSector(c.main);
     if(g && g !== 'اكسسوارات') return g;
@@ -2529,7 +2583,17 @@ $on('processBtn').addEventListener('click', async ()=>{
         + `(${parsed.warehouses.map(esc).join(' · ') || 'مفيش مخزن'}) — تقدر تغيّره من شاشة القطاعات.<br>`
         + `لو عايز تقارير الأصناف، صدّر <b>تفاصيل الفواتير</b> (فيه c_name و Item_Name و vout).</div>`;
     } else if(newItems.length){
-      msg += `<div class="msg warn">${newItems.length} صنف جديد هيتحط تلقائي على أقرب قطاع بالتخمين بعد الحفظ — راجعهم من "الأصناف" لو حابب تظبطهم.</div>`;
+      // الأصناف اللي في شيت الأصناف بتاخد قطاعها منه — مش تخمين.
+      // الرسالة القديمة كانت بتقول «كلهم بالتخمين» حتى لو الشيت مرفوع،
+      // فالمستخدم يفتكر إن الشيت مش بيتقرا.
+      const known = newItems.filter(n=> typeof itCatOf === 'function' && itCatOf(n));
+      const guessed = newItems.length - known.length;
+      msg += `<div class="msg ${guessed ? 'warn' : 'ok'}">${newItems.length} صنف جديد`
+        + (known.length ? ` — <b>${known.length}</b> منهم قطاعهم اتقرا من <b>شيت الأصناف</b>` : '')
+        + (guessed ? ` و<b>${guessed}</b> مش في شيت الأصناف فهياخدوا أقرب قطاع بالتخمين`
+                     + ` (${esc(newItems.filter(n=> !(typeof itCatOf === 'function' && itCatOf(n))).slice(0, 3).join(' · '))}${guessed > 3 ? '…' : ''})`
+                   : '')
+        + `. راجعهم من "الأصناف" لو حابب تظبطهم.</div>`;
     }
     // الكمية: نقول للمستخدم لقيناها في أنهي عمود، ولو ملقيناهاش نعرض أسماء
     // الأعمدة اللي في الملف عشان يقولنا اسم عمود الكمية الصح.
@@ -3111,6 +3175,7 @@ const reportView = {
   cls: '',            // '' = كل التصنيفات
   aggWholesale: true, // الجملة في صف واحد زي التصدير
   hiddenMonths: [],   // شهور المستخدم شالها من العرض
+  hiddenSectors: [],  // قطاعات المستخدم شالها من أعمدة "مقارنة المبيعات بالقطاع"
   metric: 'value',      // 'value' | 'qty' | 'both' — لتقارير العملاء
   // تقرير الأصناف بالقطاع غرضه الكميات (كام باب 70 وكام باب 80)، فبيفتح
   // على "الكمية" بشكل افتراضي وبيفتكر اختيار المستخدم لوحده.
@@ -3135,6 +3200,36 @@ function renderItemsSheetOptions(){
   sel.innerHTML = `<option value="">كل القطاعات</option>` +
     SPECIAL_SHEETS.map(sh=>`<option value="${sh.id}">شيت ${esc(sh.title)}</option>`).join('');
   sel.value = cur;
+}
+
+// أعمدة "مقارنة المبيعات بالقطاع": تختار اللي يظهر واللي يتخفي.
+// الجدول بيبقى عريض جدًا لما كل القطاعات تظهر، والمستخدم غالبًا بيهمه
+// كام قطاع بس (وشتر وبلسيه مثلًا مش محتاجه).
+function renderReportSectorsPanel(){
+  const box = $('reportSectorsPanel'); if(!box) return;
+  const all = mainSectors();
+  box.innerHTML = all.map(sec=>`
+    <label class="chk" style="font-size:12.5px;padding:5px 9px">
+      <input type="checkbox" class="reportSecChk" value="${esc(sec)}"
+        ${reportView.hiddenSectors.includes(sec) ? '' : 'checked'}
+        style="width:14px;height:14px"> ${esc(sec)}
+    </label>`).join('') +
+    `<button class="ghost" id="reportSecAll" style="margin-right:auto">تحديد الكل</button>`;
+  box.querySelectorAll('.reportSecChk').forEach(chk=>{
+    chk.addEventListener('change', ()=>{
+      const sec = chk.value;
+      reportView.hiddenSectors = chk.checked
+        ? reportView.hiddenSectors.filter(x => x !== sec)
+        : reportView.hiddenSectors.concat([sec]);
+      renderReport();
+    });
+  });
+  const allBtn = $('reportSecAll');
+  if(allBtn) allBtn.addEventListener('click', ()=>{
+    reportView.hiddenSectors = [];
+    renderReportSectorsPanel();
+    renderReport();
+  });
 }
 
 function renderReportClassFilter(){
@@ -3403,8 +3498,18 @@ function renderReport(){
   // نفس القايمة بتروح للترتيب وللرسم، عشان الضغط على رأس عمود يرتّب بالعمود
   // اللي المستخدم ضغط عليه فعلًا.
   const secCols = activeTab === 'sector'
-    ? SECTORS.filter(sec => baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0))
+    ? SECTORS.filter(sec => !reportView.hiddenSectors.includes(sec)
+        && baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0))
     : null;
+  // زرار القطاعات بيبان في تاب المقارنة بالقطاع بس
+  const secBtn = $('reportSectorsBtn');
+  if(secBtn){
+    secBtn.style.display = activeTab === 'sector' ? '' : 'none';
+    secBtn.textContent = reportView.hiddenSectors.length
+      ? `القطاعات المعروضة (${mainSectors().length - reportView.hiddenSectors.length}/${mainSectors().length})`
+      : 'القطاعات المعروضة';
+    if(activeTab !== 'sector') $('reportSectorsPanel').style.display = 'none';
+  }
   const rows = sortReportRows(baseRows, activeTab, secCols);
   const total = rows.reduce((a,r)=> a + rowGrandTotal(activeTab, r, secCols), 0);
   const ranksOff = reportView.ranks && !(reportView.sortKey === 'total' && reportView.sortDir === 'desc');
@@ -3950,6 +4055,12 @@ $on('reportMonthsBtn').addEventListener('click', ()=>{
   const showing = panel.style.display !== 'none';
   panel.style.display = showing ? 'none' : 'flex';
   if(!showing) renderReportMonthsPanel();
+});
+$on('reportSectorsBtn').addEventListener('click', ()=>{
+  const panel = $('reportSectorsPanel');
+  const showing = panel.style.display !== 'none';
+  panel.style.display = showing ? 'none' : 'flex';
+  if(!showing) renderReportSectorsPanel();
 });
 
 // ---- Top-10 charts ----
@@ -7441,12 +7552,16 @@ function finBranchKey(name){
   if(/انشاص|منتج\s*تام|مصنع/.test(n)) return 'مصنع الابواب';
   if(/اكسا|العاشر|المنصور/.test(n)) return 'اكسا العاشر - المنصوره';
   if(/شتر|بلسيه|طنطا/.test(n)) return 'طنطا';
+  // مصاريف السيارة والموتوسيكل مشتركة ومش تابعة لفرع معيّن، بس هي
+  // مصاريف تشغيل PVC — فبتدخل في قائمة PVC ومش بتظهر في «مساهمة
+  // الفروع» (الجدول ده مبيعات وتكلفة بس، مفيهوش مصاريف).
+  if(/سيار|موتوسيكل|متوسيكل/.test(n)) return 'مصاريف مشتركة PVC';
   return n.replace(/^.*?-\s*/, '') || n;
 }
 // ثلاث قوائم دخل: الشركة كلها، وPVC (طنطا + الاسكندرية + اكسا)،
 // ومصنع الأبواب لوحده.
 const FIN_UNITS = {
-  'PVC': ['طنطا', 'الاسكندريه', 'اكسا العاشر - المنصوره'],
+  'PVC': ['طنطا', 'الاسكندريه', 'اكسا العاشر - المنصوره', 'مصاريف مشتركة PVC'],
   'مصنع الابواب': ['مصنع الابواب'],
 };
 const finUnitHas = (unit, branch)=> !unit || (FIN_UNITS[unit] || []).indexOf(branch) >= 0;
@@ -7914,7 +8029,10 @@ function renderFin(){
   if(usel){
     const seen = new Set();
     try{ finIncome(finSelectedMonths()).branches.forEach(b=> seen.add(b.branch)); }catch(e){}
-    const units = Object.keys(FIN_UNITS).filter(u=> FIN_UNITS[u].some(b=> seen.has(b)));
+    // «مصاريف مشتركة PVC» مش بتظهر في مساهمة الفروع (مصاريف مش مبيعات)،
+    // فمابنعتمدش عليها في إظهار الخيار
+    const units = Object.keys(FIN_UNITS).filter(u=>
+      FIN_UNITS[u].some(bb=> bb !== 'مصاريف مشتركة PVC' && seen.has(bb)));
     usel.innerHTML = `<option value="">الشركة كلها</option>`
       + units.map(u=> `<option value="${esc(u)}">${esc(u)}</option>`).join('');
     if(finUnitSel && !units.includes(finUnitSel)) finUnitSel = '';
@@ -9358,8 +9476,10 @@ window.addEventListener('resize', ()=>{
 function nkRowCard(o){
   const f = (o.fields || []).filter(Boolean).map(x=>
     `<label class="nk-rc-f"><span>${esc(x[0])}</span>${x[1]}</label>`).join('');
-  const sum = (o.sums || []).filter(Boolean).map(x=>
-    `<b${x[2] ? ' class="hi"' : ''}>${esc(x[0])} <i>${x[1]}</i></b>`).join('');
+  const sum = (o.sums || []).filter(Boolean).map(x=>{
+    const cls = x[2] === 'minus' ? 'pay-minus' : (x[2] === 'plus' ? 'pay-plus' : (x[2] ? 'hi' : ''));
+    return `<b${cls ? ` class="${cls}"` : ''}>${esc(x[0])} <i>${x[1]}</i></b>`;
+  }).join('');
   return `<div class="nk-rc${o.closed ? ' closed' : ''}"${o.attr || ''}>
     <div class="nk-rc-head"${o.foldAttr || ''}>
       ${o.n != null ? `<span class="nk-rc-n">${o.n}</span>` : ''}
@@ -10515,6 +10635,14 @@ function qpSendColsOn(){
   return QP_SEND_COLS.map((_, k)=> c[k] === undefined ? QP_SEND_DEF[k] : c[k] !== false);
 }
 const qpBranches = ()=> [...new Set(QP.emps.map(e=> (e.branch || '').trim()).filter(Boolean))];
+// أي عمود بينقص من المرتب (أحمر) وأي عمود بيزوّده (أخضر). الاسم هو
+// المفتاح عشان الترتيب لو اتغيّر ما يبوّظش الألوان.
+const QP_MINUS = ['غياب بإذن (أيام)','غياب بدون إذن (أيام)','تأخيرات (ساعات)','جزاءات (أيام)',
+  'خصم غياب بإذن','خصم غياب بدون إذن','خصم غياب','خصم تأخيرات','خصم جزاءات','سلف','تأمينات',
+  'إجمالي الخصومات'];
+const QP_PLUS = ['إضافي (ساعات)','إضافي','حوافز'];
+const qpSign = (col)=> QP_MINUS.indexOf(col) >= 0 ? 'minus'
+  : (QP_PLUS.indexOf(col) >= 0 ? 'plus' : '');
 // بلوك واحد = كشف بالأعمدة اللي إنت مختارها، لمجموعة صفوف معيّنة
 function qpSendBlock(rr, title){
   const on = qpSendColsOn();
@@ -10612,7 +10740,9 @@ function renderQP_impl(el){
   if(MOB){
     c.rows.forEach((r, i)=>{
       const p = 'qp.' + i + '.';
-      const shut = !!(QP.shut || {})[r.name];
+      // مقفولة من الأصل: العنوان فيه الاسم والفرع والصافي، وتفتحه لما
+      // تيجي تكتب. مع ٦٠ موظف ده بيوفّر سكرول طويل جدًا.
+      const shut = (QP.open || {})[r.name] ? false : true;
       cards += nkRowCard({
         n: i + 1, title: r.name, sub: r.branch || 'من غير فرع',
         value: nkF(r.net, 0), closed: shut,
@@ -10630,11 +10760,14 @@ function renderQP_impl(el){
         sums: [
           ['الراتب', nkF(r.salary, 0)], ['راتب النصف', nkF(r.half, 0)],
           ['اليوم', nkF(r.day, 2)], ['الساعة', nkF(r.hour, 2)],
-          r.dExc  ? ['خصم بإذن', nkF(r.dExc, 0)] : null,
-          r.dNo   ? ['خصم بدون إذن', nkF(r.dNo, 0)] : null,
-          r.dLate ? ['خصم تأخير', nkF(r.dLate, 0)] : null,
-          r.vExt  ? ['مبلغ إضافي', nkF(r.vExt, 0)] : null,
-          r.dPen  ? ['خصم جزاءات', nkF(r.dPen, 0)] : null,
+          r.dExc  ? ['خصم بإذن', nkF(r.dExc, 0), 'minus'] : null,
+          r.dNo   ? ['خصم بدون إذن', nkF(r.dNo, 0), 'minus'] : null,
+          r.dLate ? ['خصم تأخير', nkF(r.dLate, 0), 'minus'] : null,
+          r.dPen  ? ['خصم جزاءات', nkF(r.dPen, 0), 'minus'] : null,
+          r.adv   ? ['سلف', nkF(r.adv, 0), 'minus'] : null,
+          r.ins   ? ['تأمينات', nkF(r.ins, 0), 'minus'] : null,
+          r.vExt  ? ['مبلغ إضافي', nkF(r.vExt, 0), 'plus'] : null,
+          r.inc   ? ['حوافز', nkF(r.inc, 0), 'plus'] : null,
           ['الصافي', nkF(r.net, 0), true],
         ],
       });
@@ -10653,9 +10786,11 @@ function renderQP_impl(el){
       <td>${nkInp(r.d.late, p + 'late')}</td><td>${nkInp(r.d.extra, p + 'extra')}</td>
       <td>${nkInp(r.d.pen, p + 'pen')}</td><td>${nkInp(r.d.adv, p + 'adv')}</td>
       <td>${nkInp(r.d.ins, p + 'ins')}</td><td>${nkInp(r.d.inc, p + 'inc')}</td>
-      <td class="wh-num">${nkF(r.dExc, 0)}</td><td class="wh-num">${nkF(r.dNo, 0)}</td>
-      <td class="wh-num">${nkF(r.dLate, 0)}</td><td class="wh-num">${nkF(r.vExt, 0)}</td>
-      <td class="wh-num">${nkF(r.dPen, 0)}</td>
+      <td class="wh-num${r.dExc ? ' pay-minus' : ''}">${nkF(r.dExc, 0)}</td>
+      <td class="wh-num${r.dNo ? ' pay-minus' : ''}">${nkF(r.dNo, 0)}</td>
+      <td class="wh-num${r.dLate ? ' pay-minus' : ''}">${nkF(r.dLate, 0)}</td>
+      <td class="wh-num${r.vExt ? ' pay-plus' : ''}">${nkF(r.vExt, 0)}</td>
+      <td class="wh-num${r.dPen ? ' pay-minus' : ''}">${nkF(r.dPen, 0)}</td>
       <td class="wh-num" style="font-weight:700">${nkF(r.net, 0)}</td></tr>`;
   });
   el.innerHTML = `
@@ -10781,16 +10916,16 @@ function renderQP_impl(el){
   // طيّ/فتح كارت الموظف — بيتحفظ عشان يفضل زي ما سبته بعد أي إعادة رسم
   el.querySelectorAll('[data-qpfold]').forEach(h=> h.onclick = (ev)=>{
     if(ev.target.closest('input, select, button')) return;
-    QP.shut = QP.shut || {};
+    QP.open = QP.open || {};
     const k = h.dataset.qpfold;
-    if(QP.shut[k]) delete QP.shut[k]; else QP.shut[k] = 1;
+    if(QP.open[k]) delete QP.open[k]; else QP.open[k] = 1;
     qpSave();
-    h.parentElement.classList.toggle('closed', !!QP.shut[k]);
+    h.parentElement.classList.toggle('closed', !QP.open[k]);
   });
-  if($('qpFoldAll')) $('qpFoldAll').onclick = ()=>{
-    QP.shut = {}; qpCalc(QP.half).rows.forEach(r=> QP.shut[r.name] = 1); qpSave(); renderQP();
+  if($('qpFoldAll')) $('qpFoldAll').onclick = ()=>{ QP.open = {}; qpSave(); renderQP(); };
+  if($('qpOpenAll')) $('qpOpenAll').onclick = ()=>{
+    QP.open = {}; qpCalc(QP.half).rows.forEach(r=> QP.open[r.name] = 1); qpSave(); renderQP();
   };
-  if($('qpOpenAll')) $('qpOpenAll').onclick = ()=>{ QP.shut = {}; qpSave(); renderQP(); };
   // كارت بيانات الموظف — بيتفتح للتعديل بس
   el.querySelectorAll('[data-qpefold]').forEach(h=> h.onclick = (ev)=>{
     if(ev.target.closest('input, select, button')) return;
@@ -10880,8 +11015,24 @@ const FP_PERIODS = {full:'الشهر كامل', h1:'النصف الأول (1-15)
 const fpPeriodLbl = ()=> `${FP_PERIODS[FP.period]} — ${nkDateAr(FP.start)}${FP.transitional && FP.end ? ' حتى ' + nkDateAr(FP.end) : ''} (${fpDays()} يوم)`;
 // كشف الإرسال المبسّط للمصنع — نفس فكرة كشف إرسال القرشي: أعمدة قليلة
 // تختارها بنفسك، وتقدر تصدّرها لمكان/قسم بعينه لوحده.
-const FP_SEND_COLS = ['م','اسم الموظف','الوظيفة','المكان','الراتب الشهري','أيام الفترة','المستحق','خصم الغياب','إجمالي الخصومات','حوافز','صافي الراتب'];
-const fpSendColsOn = ()=> FP.sendCols && FP.sendCols.length === FP_SEND_COLS.length ? FP.sendCols : FP_SEND_COLS.map(()=> true);
+// زي مرتبات القرشي بالظبط: كل الأعمدة متاحة، والأيام والساعات اللي
+// بتكتبها معاها. الافتراضي هو الأعمدة القديمة عشان الكشف ما يتغيّرش لوحده.
+const FP_SEND_COLS = ['م','اسم الموظف','الوظيفة','المكان','الراتب الشهري','أيام الفترة',
+  'قيمة اليوم','قيمة الساعة',
+  'غياب بإذن (أيام)','غياب بدون إذن (أيام)','تأخيرات (ساعات)','إضافي (ساعات)','جزاءات (أيام)',
+  'المستحق','خصم الغياب','خصم تأخيرات','إضافي','خصم جزاءات','سلف','تأمينات',
+  'إجمالي الخصومات','حوافز','صافي الراتب'];
+const FP_SEND_DEF = FP_SEND_COLS.map(c=> ['قيمة اليوم','قيمة الساعة','غياب بإذن (أيام)',
+  'غياب بدون إذن (أيام)','تأخيرات (ساعات)','إضافي (ساعات)','جزاءات (أيام)',
+  'خصم تأخيرات','إضافي','خصم جزاءات','سلف','تأمينات'].indexOf(c) < 0);
+function fpSendColsOn(){
+  const c = FP.sendCols;
+  if(!Array.isArray(c)) return FP_SEND_DEF.slice();
+  return FP_SEND_COLS.map((_, k)=> c[k] === undefined ? FP_SEND_DEF[k] : c[k] !== false);
+}
+const FP_MINUS = ['غياب بإذن (أيام)','غياب بدون إذن (أيام)','تأخيرات (ساعات)','جزاءات (أيام)',
+  'خصم الغياب','خصم تأخيرات','خصم جزاءات','سلف','تأمينات','إجمالي الخصومات'];
+const FP_PLUS = ['إضافي (ساعات)','إضافي','حوافز'];
 const fpPlaceRows = (c)=> FP.expPlace ? c.rows.filter(r=> (r.place || '') === FP.expPlace) : c.rows;
 function fpBlocks(which){
   const c = fpCalc();
@@ -10889,11 +11040,24 @@ function fpBlocks(which){
     const rr = fpPlaceRows(c);
     const on = fpSendColsOn();
     const head = FP_SEND_COLS.filter((_, k)=> on[k]);
-    const full = rr.map((r, i)=> [i+1, r.name, r.job, r.place, r.salary, r.days, r.due, r.absDed, r.totalDed, nkN(r.p.inc), r.net]);
+    const hourOf = (r)=> r.days ? (r.salary / 30) / 8 : 0;
+    const full = rr.map((r, i)=> [i+1, r.name, r.job, r.place, r.salary, r.days,
+      nkR(r.salary / 30, 2), nkR(hourOf(r), 2),
+      nkN(r.p.absExc), nkN(r.p.absNo), nkN(r.p.late), nkN(r.p.extra), nkN(r.p.pen),
+      r.due, r.absDed,
+      nkR(nkN(r.p.late) * hourOf(r), 2), nkR(nkN(r.p.extra) * hourOf(r) * 1.5, 2),
+      nkR(nkN(r.p.pen) * (r.salary / 30), 2), nkN(r.p.adv), nkN(r.p.ins),
+      r.totalDed, nkN(r.p.inc), r.net]);
     const rows = full.map(row=> row.filter((_, k)=> on[k]));
     const tt = (k)=> rr.reduce((a, r)=> a + (typeof r[k] === 'number' ? r[k] : nkN(r.p ? r.p[k] : 0)), 0);
-    const fullTot = ['', 'الإجمالي', '', '', tt('salary'), '', nkR(tt('due'), 2), nkR(tt('absDed'), 2), nkR(tt('totalDed'), 2),
-      rr.reduce((a, r)=> a + nkN(r.p.inc), 0), tt('net')];
+    const tp = (k)=> rr.reduce((a, r)=> a + nkN(r.p[k]), 0);
+    const tc = (f)=> nkR(rr.reduce((a, r)=> a + f(r), 0), 2);
+    const fullTot = ['', 'الإجمالي', '', '', tt('salary'), '', '', '',
+      tp('absExc'), tp('absNo'), tp('late'), tp('extra'), tp('pen'),
+      nkR(tt('due'), 2), nkR(tt('absDed'), 2),
+      tc(r=> nkN(r.p.late) * hourOf(r)), tc(r=> nkN(r.p.extra) * hourOf(r) * 1.5),
+      tc(r=> nkN(r.p.pen) * (r.salary / 30)), tp('adv'), tp('ins'),
+      nkR(tt('totalDed'), 2), tp('inc'), tt('net')];
     const tot = fullTot.filter((_, k)=> on[k]);
     tot.__cls = 'total-row'; rows.push(tot);
     const lbl = FP_PERIODS[FP.period] + (FP.expPlace ? ' — ' + FP.expPlace : '');
@@ -10975,7 +11139,7 @@ function renderFP_impl(el){
   if(MOB){
     c.rows.forEach((r, i)=>{
       const p = 'fpp.' + i + '.';
-      const shut = !!(FP.shut || {})[r.name];
+      const shut = (FP.open || {})[r.name] ? false : true;
       cards += nkRowCard({
         n: i + 1, title: r.name,
         sub: [r.job, r.place].filter(Boolean).join(' · ') || '—',
@@ -10994,8 +11158,12 @@ function renderFP_impl(el){
         sums: [
           ['الراتب', nkF(r.salary, 0)], ['أيام الفترة', r.days],
           ['المستحق', nkF(r.due, 0)],
-          r.absDed ? ['خصم الغياب', nkF(r.absDed, 0)] : null,
-          r.totalDed ? ['إجمالي الخصومات', nkF(r.totalDed, 0)] : null,
+          r.absDed ? ['خصم الغياب', nkF(r.absDed, 0), 'minus'] : null,
+          nkN(r.p.adv) ? ['سلف', nkF(nkN(r.p.adv), 0), 'minus'] : null,
+          nkN(r.p.ins) ? ['تأمينات', nkF(nkN(r.p.ins), 0), 'minus'] : null,
+          r.totalDed ? ['إجمالي الخصومات', nkF(r.totalDed, 0), 'minus'] : null,
+          nkN(r.p.extra) ? ['إضافي (ساعات)', nkN(r.p.extra), 'plus'] : null,
+          nkN(r.p.inc) ? ['حوافز', nkF(nkN(r.p.inc), 0), 'plus'] : null,
           ['الصافي', nkF(r.net, 0), true],
         ],
       });
@@ -11071,10 +11239,17 @@ function renderFP_impl(el){
           ${[...new Set(FP.emps.map(e=> e.place).filter(Boolean))].map(pl=> `<option value="${esc(pl)}" ${FP.expPlace === pl ? 'selected' : ''}>${esc(pl)}</option>`).join('')}
         </select></label>
       </div>
-      <div class="sub" style="margin-top:8px">أعمدة كشف الإرسال:</div>
-      <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:10px">
-        ${FP_SEND_COLS.map((cl, k)=> `<label class="chk" style="display:flex;gap:5px;align-items:center;font-size:12.5px">
-          <input type="checkbox" data-fpcol="${k}" ${fpSendColsOn()[k] ? 'checked' : ''}> ${esc(cl)}</label>`).join('')}
+      <div class="flex-between" style="margin-top:10px">
+        <div class="sub" style="margin:0"><b>أعمدة الكشف</b></div>
+        <div class="row" style="gap:6px">
+          <button class="btn sm" id="fpSnAll">✅ الكل</button>
+          <button class="btn sm" id="fpSnNone">✖️ ولا حاجة</button>
+        </div>
+      </div>
+      <div class="qp-cols">
+        ${FP_SEND_COLS.map((cl, k)=> `<label class="chk">
+          <input type="checkbox" data-fpcol="${k}" ${fpSendColsOn()[k] ? 'checked' : ''}>
+          <span>${esc(cl)}</span></label>`).join('')}
       </div>
     </div>
     ${nkBar('fpP', '<span class="pill">الكشف التفصيلي</span>')}
@@ -11124,11 +11299,18 @@ function renderFP_impl(el){
 
   el.querySelectorAll('[data-fptab]').forEach(t=> t.onclick = ()=>{ FP.tab = t.dataset.fptab; fpSave(); renderFP(); });
   const epl = $('fpExpPlace'); if(epl) epl.onchange = ()=>{ FP.expPlace = epl.value; fpSave(); renderFP(); };
+  // زي القرشي: مفيش إعادة رسم عشان الشاشة ما تنطّش والعلامة ما ترجعش
   el.querySelectorAll('[data-fpcol]').forEach(cb=> cb.onchange = ()=>{
     const on = fpSendColsOn().slice();
     on[+cb.dataset.fpcol] = cb.checked;
-    FP.sendCols = on; fpSave(); renderFP();
+    FP.sendCols = on; fpSave();
   });
+  const fpSetCols = (v)=>{
+    FP.sendCols = FP_SEND_COLS.map(()=> v); fpSave();
+    el.querySelectorAll('[data-fpcol]').forEach(cb=> cb.checked = v);
+  };
+  if($('fpSnAll'))  $('fpSnAll').onclick  = ()=> fpSetCols(true);
+  if($('fpSnNone')) $('fpSnNone').onclick = ()=> fpSetCols(false);
   $('fpStart').onchange = (e)=>{ FP.start = e.target.value; fpSave(); renderFP(); };
   $('fpEnd').onchange = (e)=>{ FP.end = e.target.value; fpSave(); renderFP(); };
   $('fpTrans').onchange = (e)=>{ FP.transitional = e.target.checked; fpSave(); renderFP(); };
@@ -11149,16 +11331,16 @@ function renderFP_impl(el){
   // طيّ/فتح كارت العامل على الموبايل
   el.querySelectorAll('[data-fpfold]').forEach(h=> h.onclick = (ev)=>{
     if(ev.target.closest('input, select, button')) return;
-    FP.shut = FP.shut || {};
+    FP.open = FP.open || {};
     const k = h.dataset.fpfold;
-    if(FP.shut[k]) delete FP.shut[k]; else FP.shut[k] = 1;
+    if(FP.open[k]) delete FP.open[k]; else FP.open[k] = 1;
     fpSave();
-    h.parentElement.classList.toggle('closed', !!FP.shut[k]);
+    h.parentElement.classList.toggle('closed', !FP.open[k]);
   });
-  if($('fpFoldAll')) $('fpFoldAll').onclick = ()=>{
-    FP.shut = {}; fpCalc().rows.forEach(r=> FP.shut[r.name] = 1); fpSave(); renderFP();
+  if($('fpFoldAll')) $('fpFoldAll').onclick = ()=>{ FP.open = {}; fpSave(); renderFP(); };
+  if($('fpOpenAll')) $('fpOpenAll').onclick = ()=>{
+    FP.open = {}; fpCalc().rows.forEach(r=> FP.open[r.name] = 1); fpSave(); renderFP();
   };
-  if($('fpOpenAll')) $('fpOpenAll').onclick = ()=>{ FP.shut = {}; fpSave(); renderFP(); };
   el.querySelectorAll('[data-fpefold]').forEach(h=> h.onclick = (ev)=>{
     if(ev.target.closest('input, select, button')) return;
     FP.eopen = FP.eopen || {};
@@ -11350,15 +11532,15 @@ NK_EXPORTERS['ax'] = ()=> ({blocks: axBlocks(), title: AX.period || 'بونص ا
 // نِسب البونص حسب نوع المجموعة. الاكسسوارات بكل أنواعها ٥٪ والقطاعات ٢٪.
 // أي مجموعة تانية بتيجي بصفر عشان تحطلها نسبتها بإيدك وتلاحظها.
 const AX_RATES = [
-  [/اكسسوار/, 0.05],
+  [/اكسسوار|بل[يى]?سيه|سيل[يى]?كون|فوم/, 0.05],
   [/كرافت/, 0.02],
   [/نيو\s*لاين/, 0.02],
   [/كومبن/, 0.02],
 ];
 // أنواع البونص المعروفة (من جدول النسب). أي مجموعة جديدة من الشيت
 // بتتضاف عليهم تلقائي.
-const AX_TYPES = ['اكسسوارات عام','اكسسوارات ( بلسيه )','اكسسوارات ( سيلكون وفوم)',
-  'كرافت لاين','نيو لاين','كومبن ابيض','كومبن بيج'];
+const AX_TYPES = ['كرافت لاين','نيو لاين','كومبن ابيض','كومبن بيج',
+  'اكسسوارات','بلسيه','سيلكون وفوم'];
 function axAllTypes(){
   const set = new Set(AX_TYPES);
   (AX.items || []).forEach(it=>{
@@ -11377,14 +11559,15 @@ const axItemKey = (it)=> String(it.code || '').trim() || normName(it.name);
 function axBonusType(main, sub){
   const m = normName(main || ''), b = normName(sub || '');
   if(!m && !b) return '';
-  if(/بل[يى]?سيه/.test(b) || /بل[يى]?سيه/.test(m)) return 'اكسسوارات ( بلسيه )';
-  if(/سيل[يى]?كون|فوم/.test(b)) return 'اكسسوارات ( سيلكون وفوم)';
-  if(/اكسسوار/.test(m)) return 'اكسسوارات عام';
+  if(/بل[يى]?سيه/.test(b) || /بل[يى]?سيه/.test(m)) return 'بلسيه';
+  if(/سيل[يى]?كون|فوم/.test(b)) return 'سيلكون وفوم';
+  if(/اكسسوار/.test(m)) return 'اكسسوارات';
   if(/كرافت/.test(m)) return 'كرافت لاين';
   if(/نيو\s*لاين/.test(m)) return 'نيو لاين';
   if(/كومبن/.test(m)){
     if(/ابيض/.test(b)) return 'كومبن ابيض';
     if(/بيج/.test(b))  return 'كومبن بيج';
+    // كومبن خشبي/ارو/رمادي مش في جدول النسب — بيرجعوا باسمهم بنسبة صفر
     return b || 'كومبن';
   }
   return m || b;
