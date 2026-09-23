@@ -1208,7 +1208,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v151';
+const APP_VERSION = 'v152';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -6927,12 +6927,10 @@ function whCompareView(){
 // نتيجة الجرد: أصناف العجز مع بعض، وأصناف الزيادة مع بعض، والمطابق مش بيتعرض
 function whCountResultHtml(detail){
   if(!detail.length) return '<div class="msg ok">مفيش فروق — كل اللي اتجرد مطابق ✅</div>';
-  const block = (title, list, color, sign)=>{
+  const block = (title, list, color, sign, secId)=>{
     if(!list.length) return `<div class="msg ok" style="margin-top:10px">مفيش ${esc(title)}.</div>`;
     const qty = list.reduce((a,r)=> a + Math.abs(r.diff), 0);
-    let h = `<div class="grp-title" style="margin-top:14px;color:${color}">${esc(title)}
-      — ${list.length} صنف بفرق ${whFmt(qty)} قطعة</div>
-      <div class="tbl-wrap"><table><thead><tr>
+    let h = `<div class="tbl-wrap"><table><thead><tr>
         <th>م</th><th>الصنف</th><th class="hide-sm">المجموعة</th><th>الرصيد</th><th>الفعلي</th><th>الفرق</th>
       </tr></thead><tbody>`;
     let lastMain = null;
@@ -6950,10 +6948,12 @@ function whCountResultHtml(detail){
       });
     h += `<tr class="total-row"><td colspan="2">الإجمالي</td><td class="hide-sm"></td>
       <td colspan="2"></td><td class="wh-num" style="color:${color}">${sign}${whFmt(qty)}</td></tr>`;
-    return h + '</tbody></table></div>';
+    // قايمة منسدلة: العنوان فيه عدد الأصناف والفرق، والجدول بيتفتح بالضغط
+    return nkSection(secId, `<span style="color:${color}">${esc(title)}</span>`,
+      `${list.length} صنف · فرق ${sign}${whFmt(qty)} قطعة`, h + '</tbody></table></div>');
   };
-  return block('أصناف العجز', detail.filter(r=>r.diff < 0), 'var(--danger)', '-')
-       + block('أصناف الزيادة', detail.filter(r=>r.diff > 0), 'var(--accent2)', '+');
+  return block('🔻 أصناف العجز', detail.filter(r=>r.diff < 0), 'var(--danger)', '-', 'whCntShort')
+       + block('🔺 أصناف الزيادة', detail.filter(r=>r.diff > 0), 'var(--accent2)', '+', 'whCntOver');
 }
 
 function whOrderView(){
@@ -7037,29 +7037,39 @@ function whCountView(){
     </div>
     <div id="whCountMsg"></div>
   </div>
-  <div class="kpi-row kpi4">
+  ${nkSection('whCntKpi', '📊 ملخص الجرد',
+    `${counted} اتجردت · عجز ${shortItems} · زيادة ${overItems} · مطابقة ${match}%`,
+    `<div class="kpi-row kpi4" style="margin:0">
     <div class="kpi-card"><div class="kpi-title">أصناف اتجردت</div><div class="kpi-sum" id="whCntCounted" style="font-size:20px">${counted}</div></div>
     <div class="kpi-card"><div class="kpi-title">أصناف عجز</div><div class="kpi-sum" id="whCntShortItems" style="font-size:20px;color:var(--danger)">${shortItems}</div>
       <div class="kpi-share" id="whCntShortQty">${shortQty.toLocaleString('en-US',{maximumFractionDigits:2})} قطعة</div></div>
     <div class="kpi-card"><div class="kpi-title">أصناف زيادة</div><div class="kpi-sum" id="whCntOverItems" style="font-size:20px;color:var(--accent2)">${overItems}</div>
       <div class="kpi-share" id="whCntOverQty">${overQty.toLocaleString('en-US',{maximumFractionDigits:2})} قطعة</div></div>
     <div class="kpi-card"><div class="kpi-title">نسبة المطابقة</div><div class="kpi-sum" id="whCntMatch" style="font-size:20px">${match}%</div></div>
-  </div>
+  </div>`)}
   <div class="fam-bar" style="margin:12px 0 8px">
     <button class="fam-btn${whCountMode === 'entry' ? '' : ' ghost'}" data-cmode="entry">📝 إدخال الجرد</button>
     <button class="fam-btn${whCountMode === 'result' ? '' : ' ghost'}" data-cmode="result">📊 نتيجة الجرد
       <span class="fam-n"${whCountMode === 'result' ? '' : ' style="background:var(--panel2)"'}>${shortItems + overItems}</span></button>
   </div>
-  <div class="row" style="align-items:center;gap:8px;margin:0 0 10px">
-    <span class="sub" style="margin:0">التصدير (Excel / PDF) — تقدر تختار أكتر من واحد:</span>
-    <div class="fam-bar" style="margin:0;flex:1">
-      <button class="fam-btn${whScopeOn('all') ? '' : ' ghost'}" data-cscope="all">📄 كل الجرد</button>
-      <button class="fam-btn${whScopeOn('short') ? '' : ' ghost'}" data-cscope="short">${whScopeOn('short') ? '☑' : '☐'} 🔻 العجز
-        <span class="fam-n"${whScopeOn('short') ? '' : ' style="background:var(--panel2)"'}>${shortItems}</span></button>
-      <button class="fam-btn${whScopeOn('over') ? '' : ' ghost'}" data-cscope="over">${whScopeOn('over') ? '☑' : '☐'} 🔺 الزيادة
-        <span class="fam-n"${whScopeOn('over') ? '' : ' style="background:var(--panel2)"'}>${overItems}</span></button>
-    </div>
-  </div>`;
+  ${nkSection('whCntExp', '📤 تصدير الجرد', `عجز ${shortItems} · زيادة ${overItems}`,
+    `<div class="sub" style="margin:0 0 8px">كل زرار بيطلّع ملفه على طول — مش محتاج تظبط حاجة قبله.</div>
+     <div class="nk-exp" style="margin:0">
+       <div class="nk-exp-lbl"><span class="pill">🔻🔺 العجز والزيادة بس (${shortItems + overItems} صنف)</span></div>
+       <div class="nk-exp-btns">
+         <button class="nk-x" data-cxp="diff.xlsx"><span>⬇️</span>إكسل</button>
+         <button class="nk-x" data-cxp="diff.pdf"><span>📄</span>PDF</button>
+         <button class="nk-x" data-cxp="diff.img"><span>🖼️</span>صورة</button>
+       </div>
+     </div>
+     <div class="nk-exp" style="margin-top:8px">
+       <div class="nk-exp-lbl"><span class="pill">📄 كل الجرد (${rows.length} صنف)</span></div>
+       <div class="nk-exp-btns">
+         <button class="nk-x" data-cxp="all.xlsx"><span>⬇️</span>إكسل</button>
+         <button class="nk-x" data-cxp="all.pdf"><span>📄</span>PDF</button>
+         <button class="nk-x" data-cxp="all.img"><span>🖼️</span>صورة</button>
+       </div>
+     </div>`)}`;
   if(whCountMode === 'result'){
     return {html: html + whCountResultHtml(detail), count: `عجز ${shortItems} · زيادة ${overItems}`};
   }
@@ -7249,6 +7259,20 @@ function bindWhInputs(){
   document.querySelectorAll('[data-cscope]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ whToggleScope(btn.dataset.cscope); renderWh(); });
   });
+  /* زراير التصدير المباشرة: بتظبط النطاق بنفسها وبعدين بتشغّل نفس زرار
+     التصدير الأصلي. قبل كده كان لازم تختار «العجز» و«الزيادة» من شريط
+     فوق الأول وبعدين تنزل تدوس إكسل — خطوتين ومحدش واخد باله منهم. */
+  document.querySelectorAll('[data-cxp]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const [scope, kind] = btn.dataset.cxp.split('.');
+      whCountScope = scope === 'diff' ? ['short', 'over'] : ['all'];
+      const target = kind === 'xlsx' ? 'whExcelBtn' : (kind === 'pdf' ? 'whPdfBtn' : 'whImgBtn');
+      const t = document.getElementById(target);
+      if(t) t.click();
+    });
+  });
+  // الأقسام المنسدلة في شاشة المخازن
+  if(typeof nkWireSections === 'function') nkWireSections(document.getElementById('whApp'));
 }
 
 // أزرار صور المجموعات + مسح النواقص (بتتربط كل ما الشريط يتعاد بناؤه)
