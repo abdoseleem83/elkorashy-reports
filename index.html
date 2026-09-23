@@ -896,6 +896,28 @@
     </div>
   </div>
 
+  <!-- ربط الرصيد ببرنامج الطلبات (elkorashy-orders) — نفس الملف اللي بيترفع هنا
+       بيتبعت لهناك بضغطة بدل ما يترفع مرتين. التوكن بيتخزن على الجهاز بس. -->
+  <div class="card" id="whOrdCard">
+    <div class="flex-between">
+      <h2 style="margin:0">🔗 ابعت الرصيد لبرنامج الطلبات</h2>
+      <span class="badge" id="whOrdState">—</span>
+    </div>
+    <div class="sub" style="margin-top:6px">نفس الرصيد اللي رفعته فوق بيتبعت لبرنامج الطلبات
+      (<b>وضع «الرصيد بس»</b>) — بيحدّث عمود الرصيد للأصناف الموجودة عنده بس، وما بيضيفش
+      أصناف جديدة وما بيلمسش سعر ولا أي عمود تاني. مش محتاج ترفع الملف مرتين.</div>
+    <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+      <label class="chk" style="gap:6px">المخزن <select id="whOrdStore"></select></label>
+      <input type="password" id="whOrdTok" placeholder="توكن الإدارة بتاع برنامج الطلبات" style="min-width:220px;flex:1">
+      <label class="chk" style="gap:6px"><input type="checkbox" id="whOrdShow"> إظهار</label>
+      <button class="secondary" id="whOrdSend">🚀 ابعت الرصيد</button>
+      <button class="ghost" id="whOrdXlsx">⬇️ نزّل الملف بدل كده</button>
+    </div>
+    <div class="sub" style="margin-top:6px">التوكن بيتحفظ على الجهاز ده بس (مش بيتبعت للسيرفر بتاعنا
+      ولا بيتزامن مع أي جهاز تاني) — هو نفس توكن الإدارة اللي بتدخل بيه شاشة الإدارة هناك.</div>
+    <div id="whOrdMsg" style="margin-top:8px"></div>
+  </div>
+
   <div class="card">
     <div class="tabs" id="whTabs">
       <div class="tab active" data-wtab="balances">أرصدة المخازن</div>
@@ -1215,7 +1237,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v154';
+const APP_VERSION = 'v155';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -7455,11 +7477,85 @@ $on('whProcessBtn').addEventListener('click', async ()=>{
       <br>حدّث الدليل من فوق لو الأصناف دي جديدة.</div>`;
     $('whUploadMsg').innerHTML = msg;
     $('whStore').value = store;
+    try{ whOrdRefresh(); }catch(e){}
     renderWh();
   }catch(e){
     $('whUploadMsg').innerHTML = `<div class="msg err">${esc(e.message)}</div>`;
   }
 });
+
+/* ===== ربط رصيد المخزن ببرنامج الطلبات =====
+   برنامج الطلبات (elkorashy-orders) بيستقبل {action:'manageUploadCatalog',
+   mode:'stock', rows:[{name, stock}]} وبيحدّث عمود الرصيد للأصناف الموجودة
+   عنده بالاسم بالظبط، وبيرجّع اللي مالقهوش في notFound. نفس الملف اللي بيترفع
+   هنا بالظبط (اسم الصنف + الرصيد بالقطعة) — فمفيش تحويل وحدات ولا تخمين. */
+const ORD_URL = 'https://script.google.com/macros/s/AKfycbwRMd_ZIrXC_UQL1zc_YM8gV3zCfB9nWx8kehDN6QzYBW1OnrhDLdoWx42WWiNWVnEX/exec';
+const ORD_TOK_KEY = 'ordManageToken';   // على الجهاز بس — عمدًا مش nkSet
+function ordTok(){ try{ return localStorage.getItem(ORD_TOK_KEY) || ''; }catch(e){ return ''; } }
+function ordSetTok(t){ try{ t ? localStorage.setItem(ORD_TOK_KEY, t) : localStorage.removeItem(ORD_TOK_KEY); }catch(e){} }
+// صفوف الرصيد بنفس شكل اللي بيترفع في برنامج الطلبات
+function ordStockRows(store){
+  const items = (whBalances[store] || {}).items || {};
+  return Object.keys(items).map(n=> ({name: n, stock: Number(items[n]) || 0}));
+}
+function whOrdRefresh(){
+  const sel = $('whOrdStore'); if(!sel) return;
+  const cur = sel.value || 'طنطا';
+  sel.innerHTML = WAREHOUSES.map(w=> `<option value="${esc(w)}">${esc(w)}</option>`).join('');
+  sel.value = WAREHOUSES.indexOf(cur) >= 0 ? cur : 'طنطا';
+  const b = whBalances[sel.value] || {};
+  const n = Object.keys(b.items || {}).length;
+  const st = $('whOrdState');
+  if(st) st.textContent = n ? `${n} صنف · رصيد ${esc(b.date || '')}` : 'مفيش رصيد مرفوع';
+}
+(function wireWhOrd(){
+  const send = $('whOrdSend'); if(!send) return;
+  const tok = $('whOrdTok'), sh = $('whOrdShow'), sel = $('whOrdStore'), msg = $('whOrdMsg');
+  tok.value = ordTok();
+  tok.onchange = ()=> ordSetTok(tok.value.trim());
+  sh.onchange = ()=>{ tok.type = sh.checked ? 'text' : 'password'; };
+  whOrdRefresh();
+  sel.onchange = whOrdRefresh;
+  $('whOrdXlsx').onclick = ()=>{
+    const store = sel.value, rows = ordStockRows(store);
+    if(!rows.length) return msg.innerHTML = '<div class="msg err">مفيش رصيد مرفوع للمخزن ده.</div>';
+    const ws = XLSX.utils.aoa_to_sheet([['اسم الصنف','الرصيد']].concat(rows.map(r=> [r.name, r.stock])));
+    ws['!cols'] = [{wch:38},{wch:12}];
+    const wb = XLSX.utils.book_new();
+    wb.Workbook = {Views:[{RTL:true}]};
+    XLSX.utils.book_append_sheet(wb, ws, 'الرصيد');
+    XLSX.writeFile(wb, `رصيد-${store}-لبرنامج-الطلبات.xlsx`);
+  };
+  send.onclick = async ()=>{
+    const store = sel.value, rows = ordStockRows(store);
+    const t = (tok.value || '').trim();
+    if(!rows.length) return msg.innerHTML = '<div class="msg err">مفيش رصيد مرفوع للمخزن ده — ارفعه فوق الأول.</div>';
+    if(!t){ ordSetTok(''); return msg.innerHTML = '<div class="msg err">اكتب توكن الإدارة بتاع برنامج الطلبات.</div>'; }
+    if(!confirm(`هيتبعت رصيد ${rows.length} صنف من «${store}» لبرنامج الطلبات ويحل محل الرصيد الحالي هناك. تكمل؟`)) return;
+    ordSetTok(t);
+    send.disabled = true;
+    msg.innerHTML = '<div class="msg warn">بيبعت...</div>';
+    try{
+      const res = await fetch(ORD_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({action:'manageUploadCatalog', token: t, mode:'stock', rows})});
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const d = await res.json();
+      if(!d || d.ok === false){
+        msg.innerHTML = `<div class="msg err">${esc(d && d.error === 'unauthorized'
+          ? 'التوكن مش صالح — افتح شاشة الإدارة في برنامج الطلبات وهات التوكن من هناك.'
+          : (d && d.error) || 'البرنامج التاني رفض الطلب.')}</div>`;
+      }else{
+        const nf = d.notFound || [];
+        msg.innerHTML = `<div class="msg ok">تم: <b>${d.updated || 0}</b> صنف اتحدّث رصيده في برنامج الطلبات.</div>`
+          + (nf.length ? `<div class="msg warn"><b>${nf.length} صنف</b> مش موجودين عنده بنفس الاسم فاتساب زي ما هم:
+              ${esc(nf.slice(0, 10).join('، '))}${nf.length > 10 ? '...' : ''}</div>` : '');
+      }
+    }catch(e){
+      msg.innerHTML = '<div class="msg err">مفيش اتصال ببرنامج الطلبات دلوقتي — جرب تاني، أو نزّل الملف وارفعه هناك.</div>';
+    }
+    send.disabled = false;
+  };
+})();
 
 // ---- تبويبات وأدوات ----
 document.querySelectorAll('#whTabs .tab').forEach(t=>{
