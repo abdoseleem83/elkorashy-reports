@@ -1144,7 +1144,9 @@ function isTransientError(msg){
   // "not found" مش خطأ عابر — دي إجابة نهائية إن المفتاح مش موجود. كانت
   // هنا فبتتعاد 3 مرات بتباعد متزايد لكل مفتاح ناقص، وده كان بيضيف تقريبًا
   // ٢.٤ ثانية لكل مفتاح على أول فتح للتطبيق.
-  return /unknown action|busy|HTTP 5\d\d|Service invoked too many|Exceeded maximum|timed out|وقت أطول/i.test(msg || '');
+  // HTTP 404 من Apps Script في ٩٩٪ من الحالات = رابط إعادة التوجيه بتاع الـPOST
+  // باظ في نص الرفع، مش إن النشر اتمسح. فبنعيد المحاولة زي أي خطأ عابر.
+  return /unknown action|busy|HTTP 404|HTTP 5\d\d|Service invoked too many|Exceeded maximum|timed out|وقت أطول|مش لاقي الرابط/i.test(msg || '');
 }
 
 // لما نتأكد إن مفيش اتصال خالص، مفيش داعي نعيد المحاولة لكل مفتاح.
@@ -1264,7 +1266,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v163';
+const APP_VERSION = 'v164';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1502,7 +1504,12 @@ function guessSector(itemName){
   if(/كومبن|\bkom\b/i.test(n)) return 'قطاعات PVC كومبن';
   if(/شاتر|شتر|بل[يى]?سيه|موتور|شرائح|ريموت|ر[يى]?سيفر|رسيفر|استقبال|كوروبيني|جيرو|بوكس/.test(n)) return 'شتر وبلسيه';
   if(/حشو/.test(n)) return 'حشوات';
-  if(/wpc|ابواب|أبواب|(^|\s)باب(\s|$)|حلوق|برور|ليمنيشن/i.test(n)) return 'ابواب WPC';
+  if(/wpc|ابواب|أبواب|(^|\s)باب(\s|$)|حلوق|برور|ليمنيشن/i.test(n)){
+    // المقاس من اسم الصنف نفسه لو موجود («باب كامل بني 70 سم») — أحسن من
+    // ما كل الأبواب تتلم في عمود واحد
+    const d = doorSectorOfSub(n);
+    return ensureSector(d || 'ابواب WPC');
+  }
   return 'اكسسوارات';
 }
 
@@ -1682,6 +1689,7 @@ async function loadStorage(){
       if(cachedSectors) SECTORS = JSON.parse(cachedSectors);
       const cachedSheets = localStorage.getItem('cache:sectorSheets');
       if(cachedSheets) sectorSheet = JSON.parse(cachedSheets);
+      try{ fixDoorSectorSheets(); }catch(e){}
       const cachedWF = localStorage.getItem('cache:warehouseForcing');
       if(cachedWF !== null) warehouseForcingOn = JSON.parse(cachedWF) !== false;
       const cachedArchive = localStorage.getItem('cache:archivedYears');
@@ -1893,6 +1901,7 @@ async function loadStorage(){
     sectorSheet = JSON.parse(ss.value) || {};
     setBaseline('sectorSheets', sectorSheet);
     sheetsLoaded = true;
+    try{ fixDoorSectorSheets(); }catch(e){}
   }catch(e){
     // نفس القاعدة: مانمسحش الخريطة اللي في الذاكرة/الكاش لمجرد إن القراءة فشلت
     if(isMissingKey(e) && !netFailed) sheetsLoaded = true;
@@ -2654,14 +2663,41 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
    المقاس في «المجموعة الفرعية» (ابواب 70 سم WPC / ضلف ابواب فقط 80 سم
    / اكسسوارات ابواب)، فبنستخرج القطاع منها بدل ما كل الأبواب تتلم على
    عمود واحد اسمه «ابواب WPC» ومايبقاش فيه مقارنة أصلًا.                */
+const DOOR_SECTORS = ['ابواب 70', 'ابواب 80', 'ابواب 90', 'ابواب متر', 'اكسسوارات ابواب'];
+/* بتشتغل على «المجموعة الفرعية» من شيت الأصناف **أو على اسم الصنف نفسه** —
+   أغلب أسماء الأبواب فيها المقاس أصلًا («باب كامل بني 70 سم A07»)، فحتى
+   الصنف اللي مش في الشيت بياخد مقاسه الصح بدل ما يتلم على «ابواب WPC». */
 function doorSectorOfSub(sub){
   const b = normName(sub || '');
   if(!b) return '';
-  if(/اكسسوار/.test(b)) return 'اكسسوارات ابواب';
+  // اكسسوارات الأبواب: الكلمة نفسها أو قطع معروفة (جوان/كالون/مفصلة/مقبض)
+  if(/اكسسوار|جوان|كالون|كوالين|مفصل|مقبض/.test(b)) return 'اكسسوارات ابواب';
   // المقاس: بندوّر على ٧٠/٨٠/٩٠/١٠٠ كرقم مستقل عشان «2.50 م» ما تتحسبش
   const m = b.match(/(?:^|[^\d.])(70|80|90|100)(?![\d.])/);
   if(m) return m[1] === '100' ? 'ابواب متر' : 'ابواب ' + m[1];
+  if(/(?:^|\s)(متر|1\s*م)(?:\s|$)/.test(b)) return 'ابواب متر';
   return '';
+}
+// أي قطاع أبواب بيظهر في البيانات لازم يبقى في قايمة القطاعات، وإلا التقارير
+// (اللي بتلف على SECTORS) ما هتعرضوش خالص.
+function ensureSector(sec){
+  if(!sec) return sec;
+  if(SECTORS.indexOf(sec) < 0) SECTORS = SECTORS.concat([sec]);
+  /* لازم كمان يبقى متسجّل إنه تابع لشيت الأبواب. من غير كده
+     resolveForcedSector بيلاقي القطاع من غير شيت فبيرجّع «ابواب WPC» العام
+     اللي المخزن بيفرضه — وده اللي كان بيخلي المقاسات ما تظهرش أصلًا. */
+  if(!sectorSheet[sec] && typeof guessSheetForSector === 'function'){
+    const g = guessSheetForSector(sec);
+    if(g) sectorSheet[sec] = g;
+  }
+  return sec;
+}
+// قطاعات الأبواب اللي جاية من السيرفر من نُسخ قديمة ممكن تكون من غير شيت —
+// بنظبّطها مرة واحدة بعد أي تحميل.
+function fixDoorSectorSheets(){
+  (SECTORS || []).forEach(sec=>{
+    if(!sectorSheet[sec] && /ابواب|أبواب/.test(sec)) sectorSheet[sec] = 'doors';
+  });
 }
 function itemSector(itemName){
   const ov = itemOverride[itemName];
@@ -2671,10 +2707,10 @@ function itemSector(itemName){
     // التصنيف التلقائي القديم مش من اختيار المستخدم، وسيبانها كانت
     // بتخلي كل الأبواب في عمود واحد فمفيش مقارنة بالمقاسات أصلًا.
     // أي تصنيف تاني اخترته بإيدك بيفضل هو الأساس.
-    if(normName(ov) === 'ابواب WPC' && typeof itCatOf === 'function'){
-      const cc = itCatOf(itemName);
-      const dd = cc ? doorSectorOfSub(cc.sub) : '';
-      if(dd) return dd;
+    if(/^ابواب\s*wpc$/i.test(normName(ov).replace(/[أإآ]/g, 'ا'))){
+      const cc = typeof itCatOf === 'function' ? itCatOf(itemName) : null;
+      const dd = (cc ? doorSectorOfSub(cc.sub) : '') || doorSectorOfSub(itemName);
+      if(dd) return ensureSector(dd);
     }
     return ov;
   }
@@ -2683,9 +2719,10 @@ function itemSector(itemName){
     return sectorOfWarehouse(String(itemName).replace(/^«|»$/g, ''));
   const c = typeof itCatOf === 'function' ? itCatOf(itemName) : null;
   if(c && c.main){
-    if(/ابواب|wpc/i.test(normName(c.main))){
-      const d = doorSectorOfSub(c.sub);
-      if(d) return d;
+    if(/ابواب|أبواب|wpc/i.test(normName(c.main))){
+      // الفرعية الأول، وبعدين اسم الصنف — المهم ما يرجعش «ابواب WPC» عام
+      const d = doorSectorOfSub(c.sub) || doorSectorOfSub(itemName);
+      if(d) return ensureSector(d);
     }
     if(SECTORS.indexOf(c.main) >= 0) return c.main;
     const g = guessSector(c.main);
