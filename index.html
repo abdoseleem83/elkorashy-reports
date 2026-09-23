@@ -1134,7 +1134,7 @@ function askAppToken(){
   if(t && t.trim()){ setAppToken(t.trim()); location.reload(); return; }
   showTokenNeeded();
 }
-const NET_TIMEOUT_MS = 60000;
+const NET_TIMEOUT_MS = 90000;   // السيرفر ممكن ياخد ٢٠+ ثانية لرد صغير وقت الزحمة
 const NET_RETRIES = 2;
 
 // أخطاء عابرة بتتحل بإعادة المحاولة. أهمها "unknown action": Apps Script بيعمل
@@ -1264,7 +1264,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v160';
+const APP_VERSION = 'v161';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1578,7 +1578,10 @@ async function nkPingServer(){
     const t0 = Date.now();
     try{
       await fn();
-      line.push(`<div class="msg ok" style="margin-top:4px">${label}: تمام ✔ (${Date.now()-t0} جزء من الألف)</div>`);
+      const sec = (Date.now() - t0) / 1000;
+      // رد بيوصل بس بطيء = السبب الحقيقي في فشل الرفعات الكبيرة
+      line.push(`<div class="msg ${sec > 5 ? 'warn' : 'ok'}" style="margin-top:4px">${label}: تمام ✔
+        في <b>${sec.toFixed(1)} ثانية</b>${sec > 5 ? ' — <b>ده بطيء جدًا</b>' : ''}</div>`);
       say(); return true;
     }catch(e){
       line.push(`<div class="msg err" style="margin-top:4px">${label}: فشل — ${esc(e.message)}</div>`);
@@ -1594,9 +1597,12 @@ async function nkPingServer(){
   const okSet = okGet && await step('كتابة صغيرة (POST)', ()=> setKey('__ping', String(Date.now())));
   if(okSet) await step('كتابة كبيرة ٢٠٠ كيلو (POST)', ()=> setKey('__ping', big));
   if(okSet) try{ await window.storage.delete('__ping'); }catch(e){}
-  line.push(`<div class="sub" style="margin-top:6px">لو القراءة والكتابة الصغيرة نجحوا والكبيرة وقعت،
-    يبقى المشكلة النت مش السيرفر — التطبيق بيرفع الشهر على دفعات أصلاً، جرّب تاني على نت أحسن.
-    لو كلهم وقعوا بـ404، يبقى نشر Apps Script محتاج يتعمل تاني.</div>`);
+  line.push(`<div class="sub" style="margin-top:6px">
+    • القراءة والكتابة الصغيرة نجحوا والكبيرة وقعت → المشكلة بطء النت/السيرفر، والتطبيق
+      بيرفع الشهر على دفعات صغيرة أصلاً — جرّب تاني على واي فاي.<br>
+    • كلهم وقعوا بـ404 → نشر Apps Script محتاج يتعمل تاني.<br>
+    • كلهم نجحوا بس بأرقام كبيرة (أكتر من ٥ ثواني) → السيرفر بطيء دلوقتي؛ ارفع وسيب
+      الصفحة مفتوحة، أو جرّب وقت تاني.</div>`);
   say();
   if(btn) btn.disabled = false;
 }
@@ -2185,7 +2191,7 @@ $on('closeArchiveBtn').addEventListener('click', ()=> $('archivePanel').style.di
    بتقع (مهلة، أو Apps Script بيرجّع 404 لأن رابط إعادة التوجيه بيبوظ في نص
    الرفع). فبنقسّمه بالعميل: أول دفعة `set` (بتحل محل القديم) والباقي `merge`
    ذرّي على السيرفر — نفس المفتاح ونفس شكل البيانات، فالقراءة ما اتغيّرتش. */
-const MONTH_CHUNK_CHARS = 120000;
+const MONTH_CHUNK_CHARS = 60000;
 async function saveMonthChunked(month, data){
   const key = 'month:' + month;
   const full = JSON.stringify(data);
@@ -10599,7 +10605,7 @@ function itHtml(){
       <td class="wh-num">${r.sales?whFmt(Math.round(r.sales)):''}</td>
     </tr>`).join('');
   const table = `
-  <div class="card">
+  <div class="card" data-fold="📋 جدول الأصناف" data-fold-open>
     <div class="tbl-wrap" style="max-height:620px"><table><thead><tr>
       <th>م</th><th>الصنف</th><th>موجود في</th><th>المجموعة</th><th>الفرعية</th>
       <th>اللون</th><th>اللفة</th><th>القطاع</th>
