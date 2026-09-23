@@ -1252,7 +1252,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v158';
+const APP_VERSION = 'v159';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2362,6 +2362,25 @@ function looksLikeInvoiceHeaders(rows){
   const has = (n)=> h.indexOf(n.toLowerCase()) >= 0;
   return has('acc_name') && has('tout') && !has('Item_Name') && !has('c_name');
 }
+/* آخر سطر في تصدير المحاسبة مش سطر بيانات — ده سطر الإجماليات بتاع البرنامج
+   نفسه (total_vout: / total_qout: / Total_Sales_Tax_In:). كان بيتحسب «سطر
+   رقم مبيعاته مش صالح» ويطلع تحذير أحمر مخضوض من غير أي مشكلة حقيقية. */
+function isTotalsRow_(r){
+  return (r || []).some(c=> /^\s*total[_ ]/i.test(String(c == null ? '' : c)));
+}
+// الرقم اللي بعد total_vout: في سطر الإجماليات — بنقارن بيه حسابنا
+function totalsRowValue_(r, key){
+  const a = r || [];
+  for(let i = 0; i < a.length; i++){
+    if(new RegExp('^\\s*' + key + '\\s*:?\\s*$', 'i').test(String(a[i] == null ? '' : a[i]))){
+      for(let j = i + 1; j < Math.min(i + 3, a.length); j++){
+        const v = cellNum(a[j]);
+        if(v !== null) return v;
+      }
+    }
+  }
+  return null;
+}
 function parseInvoiceHeaders(wb, sheetName, fallbackMonth){
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:''});
   const hi = rows.findIndex(r=> (r || []).some(c=> normName(c).toLowerCase() === 'acc_name'));
@@ -2376,6 +2395,7 @@ function parseInvoiceHeaders(wb, sheetName, fallbackMonth){
   let skippedRows = 0, noMonthRows = 0, invoices = 0;
   for(let i = hi + 1; i < rows.length; i++){
     const r = rows[i] || [];
+    if(isTotalsRow_(r)) continue;          // سطر إجماليات الملف، مش بيانات
     const cust = normName(r[cCust]);
     const out = cellNum(r[cOut]);
     if(!cust || out === null){ if(cust || normName(r[cOut])) skippedRows++; continue; }
@@ -2448,8 +2468,14 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
   const byMonth = {}; // month -> customer -> item -> {cat, net, wh}
   const newItems = new Set();
   let skippedRows = 0, noMonthRows = 0;
+  let fileTotalVout = null, sumVout = 0;   // للمقارنة مع إجمالي الملف نفسه
   for(let i=headerIdx+1;i<rows.length;i++){
     const r = rows[i];
+    if(isTotalsRow_(r)){                   // سطر إجماليات الملف، مش بيانات
+      const t = totalsRowValue_(r, 'total_vout');
+      if(t !== null) fileTotalVout = t;
+      continue;
+    }
     const custCell = normName(r[cCustomer]);
     const itemCell = normName(r[cItem]);
     let vout = toNum(r[cVout]);
@@ -2465,6 +2491,7 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
       continue;
     }
     const net = vout - (vin || 0);
+    sumVout += vout;
     const qty = qOut ? ((toNum(r[qOut.idx]) || 0) - (qIn ? (toNum(r[qIn.idx]) || 0) : 0)) : 0;
     const month = excelSerialToMonth(r[cDate]) || fallbackMonth;
     if(!month){ noMonthRows++; continue; }
@@ -2483,7 +2510,7 @@ function parseFlatWorkbook(wb, sheetName, fallbackMonth){
     }
     if(!(itemCell in itemOverride)) newItems.add(itemCell);
   }
-  return {byMonth, newItems: Array.from(newItems), skippedRows, noMonthRows,
+  return {byMonth, newItems: Array.from(newItems), skippedRows, noMonthRows, fileTotalVout, sumVout,
           qtyCol: qOut ? qOut.name : null,
           headerNames: header.map(h => normName(h)).filter(Boolean)};
 }
@@ -2608,6 +2635,7 @@ $on('processBtn').addEventListener('click', async ()=>{
       ? parseInvoiceHeaders(wb, sheetName, fallbackMonth)
       : parseFlatWorkbook(wb, sheetName, fallbackMonth);
     const {byMonth, newItems, skippedRows, noMonthRows, qtyCol, headerNames} = parsed;
+    const {fileTotalVout, sumVout} = parsed;
 
     if(!Object.keys(byMonth).length){
       $('uploadMsg').innerHTML = `<div class="msg err">مقدرتش أوصل لشهر لأي صف — الملف مفيهوش تاريخ صالح أو مش بنفس تنسيق ملفات المحاسبة المعروفة، ومحددتش شهر يدوي. جرب اختار الشهر يدوي وأعد المحاولة.</div>`;
@@ -2669,6 +2697,15 @@ $on('processBtn').addEventListener('click', async ()=>{
     if(skippedRows){
       msg += `<div class="msg err"><b>${skippedRows} سطر</b> فيه بيانات بس رقم المبيعات فيه مش صالح —
         السطور دي مش داخلة في الحسابات. راجع الملف قبل ما تحفظ.</div>`;
+    }
+    /* الملف نفسه فيه سطر إجماليات (total_vout) — بنقارنه بحسابنا. ده أحسن
+       طمأنة ممكنة للمستخدم: مش بس «اتقرا كام سطر» لأ، ده الإجمالي طابق ولا لأ. */
+    if(fileTotalVout !== null){
+      const diff = Math.round((sumVout - fileTotalVout) * 100) / 100;
+      msg += Math.abs(diff) < 1
+        ? `<div class="msg ok">الإجمالي طابق إجمالي الملف نفسه: <b>${nkF(fileTotalVout, 2)}</b> — مفيش سطر ضايع.</div>`
+        : `<div class="msg err">إجمالي الملف <b>${nkF(fileTotalVout, 2)}</b> وإحنا حسبنا
+            <b>${nkF(sumVout, 2)}</b> — فرق <b>${nkF(diff, 2)}</b>. راجع الملف قبل ما تحفظ.</div>`;
     }
     if(noMonthRows){
       msg += `<div class="msg err"><b>${noMonthRows} سطر</b> مفيش ليه تاريخ صالح ومحددتش شهر يدوي —
@@ -10793,17 +10830,17 @@ function gvItemsHtml(){
   return `
   <div class="card">
     <div class="flex-between"><h2 style="margin:0">📦 دليل الأصناف</h2>
-      <button class="secondary" id="gvSaveItems">💾 حفظ</button>
+      <button class="secondary" data-gvi="save">💾 حفظ</button>
     </div>
     <div class="row" style="margin-top:10px;flex-wrap:wrap">
-      <input type="file" id="gvFile" accept=".xlsx,.xls" style="max-width:200px">
-      <button class="ghost" id="gvTemplateBtn">⬇️ تنزيل نموذج إكسل</button>
-      <button class="secondary" id="gvAddItem">+ صنف يدوي</button>
+      <input type="file" data-gvi="file" accept=".xlsx,.xls" style="max-width:200px">
+      <button class="ghost" data-gvi="tmpl">⬇️ تنزيل نموذج إكسل</button>
+      <button class="secondary" data-gvi="add">+ صنف يدوي</button>
     </div>
     <div class="sub" style="margin-top:6px">مش عارف الملف يتقبل؟ نزّل النموذج فوق وشوف شكل الأعمدة بالظبط، وارفع نفس الملف بعد ما تعبيه.
       الأعمدة المطلوبة: <b>الكود CODE</b> و<b>اسم الصنف</b> (لازم)، وياريت <b>عدد القطع بالكرتونة</b> و<b>وزن القطعة</b> و<b>سعر القطعة</b>.</div>
-    <div id="gvItemsMsg" style="margin-top:6px"></div>
-    <div class="row" style="margin-top:8px"><input type="text" id="gvItemSearch" placeholder="🔍 دوّر بالاسم أو الكود" value="${esc(GV.q || '')}" style="min-width:240px;flex:1"></div>
+    <div data-gvi="msg" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:8px"><input type="text" data-gvi="q" placeholder="🔍 دوّر بالاسم أو الكود" value="${esc(GV.q || '')}" style="min-width:240px;flex:1"></div>
     ${nkMobile() ? `<div style="margin-top:10px">${filtered.slice(0, 200).map(({x, i})=> nkRowCard({
       n: i + 1, title: x.name || 'صنف جديد', sub: x.code ? 'كود ' + x.code : 'من غير كود',
       del: `<button class="nk-rc-x" data-gvidel="${i}">🗑</button>`,
@@ -11039,21 +11076,27 @@ function gvWire(el, refresh){
   const o = gvOrder();
   el.querySelectorAll('[data-gvtab]').forEach(t=> t.onclick = ()=>{ GV.tab = t.dataset.gvtab; gvSave(); renderGV(); });
 
+  /* دليل الأصناف بيتعرض في مكانين (شاشة الأصناف وتاب «أسعار وأوزان الأصناف»
+     في جيفز) والاتنين موجودين في الصفحة مع بعض — واحد مخفي بس. فلازم ندوّر
+     على الأزرار **جوه الشاشة اللي بنربطها** مش بـ id في الصفحة كلها، وإلا
+     أزرار شاشة بتشتغل على خانات الشاشة التانية المخفية. */
+  const one = (k)=> el.querySelector(`[data-gvi="${k}"]`);
+
   // ---- تاب الأصناف ----
-  const q = $('gvItemSearch');
+  const q = one('q');
   if(q) q.oninput = ()=>{ GV.q = q.value; gvSave(); const pos = q.selectionStart; refresh();
-    const n = $('gvItemSearch'); if(n){ n.focus({preventScroll: true}); try{ n.setSelectionRange(pos, pos); }catch(e){} } };
-  const addItem = $('gvAddItem'); if(addItem) addItem.onclick = ()=>{ GV.items.unshift({code:'', name:'', pcs:'', weight:'', price:''}); gvSave(); refresh(); };
+    const n = one('q'); if(n){ n.focus({preventScroll: true}); try{ n.setSelectionRange(pos, pos); }catch(e){} } };
+  const addItem = one('add'); if(addItem) addItem.onclick = ()=>{ GV.items.unshift({code:'', name:'', pcs:'', weight:'', price:''}); gvSave(); refresh(); };
   el.querySelectorAll('[data-gvidel]').forEach(b=> b.onclick = ()=>{ GV.items.splice(+b.dataset.gvidel, 1); gvSave(); refresh(); });
-  const tmplBtn = $('gvTemplateBtn'); if(tmplBtn) tmplBtn.onclick = gvItemsTemplate;
-  const saveBtn = $('gvSaveItems'); if(saveBtn) saveBtn.onclick = ()=>{
+  const tmplBtn = one('tmpl'); if(tmplBtn) tmplBtn.onclick = gvItemsTemplate;
+  const saveBtn = one('save'); if(saveBtn) saveBtn.onclick = ()=>{
     gvSave();
-    const m = $('gvItemsMsg'); if(m){ m.innerHTML = '<div class="msg ok">تم الحفظ ✔</div>'; setTimeout(()=>{ if(m) m.innerHTML = ''; }, 2500); }
+    const m = one('msg'); if(m){ m.innerHTML = '<div class="msg ok">تم الحفظ ✔</div>'; setTimeout(()=>{ if(m) m.innerHTML = ''; }, 2500); }
   };
-  const fi = $('gvFile');
+  const fi = one('file');
   if(fi) fi.onchange = (e)=>{
     const f = e.target.files && e.target.files[0]; if(!f) return;
-    const msg = $('gvItemsMsg'); if(msg) msg.innerHTML = '<div class="msg warn">بيقرا الملف...</div>';
+    const msg = one('msg'); if(msg) msg.innerHTML = '<div class="msg warn">بيقرا الملف...</div>';
     const rd = new FileReader();
     rd.onload = (ev)=>{
       try{
@@ -11061,7 +11104,7 @@ function gvWire(el, refresh){
         const sheetNames = wb.SheetNames.join('، ');
         const res = gvItemsImport(wb);
         refresh();
-        const m2 = $('gvItemsMsg');
+        const m2 = one('msg');
         if(res.added || res.upd){
           if(m2) m2.innerHTML = `<div class="msg ok">تم: ${res.added} صنف جديد، ${res.upd} صنف اتحدّث.</div>`;
         } else if(m2){
@@ -11069,7 +11112,7 @@ function gvWire(el, refresh){
             الشيتات اللي في ملفك: <b>${esc(sheetNames)}</b> — نزّل النموذج فوق وقارن أسماء الأعمدة بالظبط.</div>`;
         }
       }catch(err){
-        const m3 = $('gvItemsMsg');
+        const m3 = one('msg');
         if(m3) m3.innerHTML = `<div class="msg err">مش قادر أقرا الملف: ${esc(err.message)}</div>`;
       }
     };
