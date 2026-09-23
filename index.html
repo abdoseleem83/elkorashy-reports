@@ -1267,7 +1267,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v166';
+const APP_VERSION = 'v167';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -3479,16 +3479,18 @@ function renderItemsSheetOptions(){
 // أعمدة "مقارنة المبيعات بالقطاع": تختار اللي يظهر واللي يتخفي.
 // الجدول بيبقى عريض جدًا لما كل القطاعات تظهر، والمستخدم غالبًا بيهمه
 // كام قطاع بس (وشتر وبلسيه مثلًا مش محتاجه).
+let reportSecCandidates = [];   // القطاعات اللي ليها أرقام في التبويب الحالي
 function renderReportSectorsPanel(){
   const box = $('reportSectorsPanel'); if(!box) return;
-  const all = mainSectors();
+  const all = reportSecCandidates.length ? reportSecCandidates : mainSectors();
   box.innerHTML = all.map(sec=>`
     <label class="chk" style="font-size:12.5px;padding:5px 9px">
       <input type="checkbox" class="reportSecChk" value="${esc(sec)}"
         ${reportView.hiddenSectors.includes(sec) ? '' : 'checked'}
         style="width:14px;height:14px"> ${esc(sec)}
     </label>`).join('') +
-    `<button class="ghost" id="reportSecAll" style="margin-right:auto">تحديد الكل</button>`;
+    `<button class="ghost" id="reportSecAll" style="margin-right:auto">تحديد الكل</button>`
+    + `<button class="ghost" id="reportSecNone">شيل الكل</button>`;
   box.querySelectorAll('.reportSecChk').forEach(chk=>{
     chk.addEventListener('change', ()=>{
       const sec = chk.value;
@@ -3501,6 +3503,12 @@ function renderReportSectorsPanel(){
   const allBtn = $('reportSecAll');
   if(allBtn) allBtn.addEventListener('click', ()=>{
     reportView.hiddenSectors = [];
+    renderReportSectorsPanel();
+    renderReport();
+  });
+  const noneBtn = $('reportSecNone');
+  if(noneBtn) noneBtn.addEventListener('click', ()=>{
+    reportView.hiddenSectors = (reportSecCandidates.length ? reportSecCandidates : mainSectors()).slice();
     renderReportSectorsPanel();
     renderReport();
   });
@@ -3772,17 +3780,26 @@ function renderReport(){
   // أعمدة تبويب "بالقطاع" بتتحدد هنا مرة واحدة: كل قطاع فيه مبيعات فعلية.
   // نفس القايمة بتروح للترتيب وللرسم، عشان الضغط على رأس عمود يرتّب بالعمود
   // اللي المستخدم ضغط عليه فعلًا.
+  /* كل قطاع فيه أرقام فعلية = عمود ممكن يظهر. اللوحة لازم تعرض **نفس** القايمة
+     دي (حتى المخفي منها)، مش mainSectors() — دي كانت بتستبعد قطاعات الأبواب
+     والشتر لأنها تابعة لشيتات خاصة، فالمستخدم كان بيشوف أعمدة أبواب في الجدول
+     ومش لاقيها في «القطاعات المعروضة» عشان يتحكم فيها. */
+  if(activeTab === 'sector'){
+    reportSecCandidates = SECTORS.filter(sec => baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
+    renderReportSectorsPanel();
+  }
   const secCols = activeTab === 'sector'
-    ? SECTORS.filter(sec => !reportView.hiddenSectors.includes(sec)
-        && baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0))
+    ? reportSecCandidates.filter(sec => !reportView.hiddenSectors.includes(sec))
     : null;
   // زرار القطاعات بيبان في تاب المقارنة بالقطاع بس
   const secBtn = $('reportSectorsBtn');
   if(secBtn){
     secBtn.style.display = activeTab === 'sector' ? '' : 'none';
-    secBtn.textContent = reportView.hiddenSectors.length
-      ? `القطاعات المعروضة (${mainSectors().length - reportView.hiddenSectors.length}/${mainSectors().length})`
-      : 'القطاعات المعروضة';
+    const cand = reportSecCandidates.length ? reportSecCandidates : mainSectors();
+    const shown = cand.filter(x => !reportView.hiddenSectors.includes(x)).length;
+    secBtn.textContent = shown === cand.length
+      ? `القطاعات المعروضة (${cand.length})`
+      : `القطاعات المعروضة (${shown}/${cand.length})`;
     if(activeTab !== 'sector') $('reportSectorsPanel').style.display = 'none';
   }
   const rows = sortReportRows(baseRows, activeTab, secCols);
