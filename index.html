@@ -911,12 +911,14 @@
       <input type="password" id="whOrdTok" placeholder="الرقم السري لشاشة الإدارة في برنامج الطلبات" style="min-width:250px;flex:1">
       <label class="chk" style="gap:6px"><input type="checkbox" id="whOrdShow"> إظهار</label>
       <button class="secondary" id="whOrdSend">🚀 ابعت الرصيد</button>
+      <button class="ghost" id="whOrdMatchBtn">🔍 طابق الأسماء</button>
       <button class="ghost" id="whOrdXlsx">⬇️ نزّل الملف بدل كده</button>
     </div>
     <div class="sub" style="margin-top:6px">ده <b>نفس الرقم السري</b> اللي بتفتح بيه «شاشة الإدارة» في برنامج
       الطلبات — التطبيق بيسجّل دخول بيه لحظيًا وبعدين يبعت الرصيد. الرقم بيتحفظ على الجهاز ده بس
       (مش بيتبعت للسيرفر بتاعنا ولا بيتزامن مع أي جهاز تاني).</div>
     <div id="whOrdMsg" style="margin-top:8px"></div>
+    <div id="whOrdMatch" style="margin-top:10px"></div>
   </div>
 
   <div class="card">
@@ -1238,7 +1240,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v156';
+const APP_VERSION = 'v157';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -7510,9 +7512,92 @@ async function ordLogin(pin){
     : 'الدخول لبرنامج الطلبات مانجحش.');
 }
 // صفوف الرصيد بنفس شكل اللي بيترفع في برنامج الطلبات
+/* خريطة الأسماء بيننا وبين برنامج الطلبات.
+   المفتاح = اسمنا (normName)، القيمة = اسمهم بالظبط، و'' معناها «الصنف ده
+   مش بيتباع هناك — تجاهله». بتتزامن زي أي بيانات تانية (مفيهاش أي سر). */
+let ordMap = nkGet('ordMap', null) || {};
+const ordMapSave = ()=> nkSet('ordMap', ordMap);
+let ordCat = null;          // أسماء أصناف برنامج الطلبات (من نداء catalog العام)
+async function ordFetchCatalog(){
+  const r = await fetch(ORD_URL + '?action=catalog');
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const d = await r.json();
+  const items = (d && d.items) || [];
+  ordCat = items.map(x=> String(x.name || '').trim()).filter(Boolean);
+  return ordCat;
+}
+// اسمنا -> اسمهم. undefined = مالوش مطابقة محفوظة، '' = متجاهل
+function ordTheirName(our){
+  const k = normName(our);
+  return Object.prototype.hasOwnProperty.call(ordMap, k) ? ordMap[k] : undefined;
+}
+// بنطابق بالاسم بالظبط الأول، وبعدين بالبصمة (من غير مسافات وشرط ورموز)
+function ordMatchAll(store){
+  const names = Object.keys((whBalances[store] || {}).items || {});
+  const exactIdx = new Map(), fpIdx = new Map();
+  (ordCat || []).forEach(n=>{
+    exactIdx.set(n, n);
+    const f = itFingerprint(n);
+    if(f && !fpIdx.has(f)) fpIdx.set(f, n);
+  });
+  const out = {ok: [], auto: [], none: [], skip: []};
+  names.forEach(our=>{
+    const saved = ordTheirName(our);
+    if(saved === '') return out.skip.push(our);
+    if(saved){ return exactIdx.has(saved) ? out.ok.push(our) : out.none.push(our); }
+    if(exactIdx.has(our)) return out.ok.push(our);
+    const g = fpIdx.get(itFingerprint(our));
+    if(g) return out.auto.push({our, their: g});
+    out.none.push(our);
+  });
+  return out;
+}
+// الصفوف اللي هتتبعت — بالاسم بتاعهم، ومن غير المتجاهَل
 function ordStockRows(store){
   const items = (whBalances[store] || {}).items || {};
-  return Object.keys(items).map(n=> ({name: n, stock: Number(items[n]) || 0}));
+  const rows = [];
+  Object.keys(items).forEach(n=>{
+    const t = ordTheirName(n);
+    if(t === '') return;                       // متجاهل بطلبك
+    rows.push({name: t || n, stock: Number(items[n]) || 0});
+  });
+  return rows;
+}
+function whOrdMatchHtml(store){
+  const m = ordMatchAll(store);
+  const total = m.ok.length + m.auto.length + m.none.length + m.skip.length;
+  const dl = `<datalist id="whOrdNames">${(ordCat || []).slice(0, 4000)
+    .map(n=> `<option value="${esc(n)}">`).join('')}</datalist>`;
+  const sum = `<div class="sub" style="margin:2px 0 8px">من ${total} صنف في «${esc(store)}»:
+    <b style="color:var(--ok,#0a7a4a)">${m.ok.length}</b> متطابق ·
+    <b>${m.auto.length}</b> اقتراح ·
+    <b style="color:#b45309">${m.none.length}</b> محتاج تحديد ·
+    <b>${m.skip.length}</b> متجاهل.</div>`;
+  const auto = m.auto.length ? `
+    <div style="margin-top:8px"><div class="flex-between">
+      <b>اقتراحات (نفس الاسم بكتابة مختلفة)</b>
+      <button class="secondary" id="whOrdAccept" style="padding:4px 12px;font-size:12.5px">✅ اعتمد الكل</button></div>
+    <div class="tbl-wrap" style="margin-top:6px;max-height:240px"><table><thead><tr>
+      <th>عندنا</th><th>عندهم</th></tr></thead><tbody>${m.auto.map(x=> `<tr>
+      <td style="text-align:right">${esc(x.our)}</td>
+      <td style="text-align:right">${esc(x.their)}</td></tr>`).join('')}</tbody></table></div></div>` : '';
+  const none = m.none.length ? `
+    <div style="margin-top:12px"><div class="flex-between">
+      <b>مش موجودين عندهم — حدّد الاسم أو تجاهله</b>
+      <button class="secondary" id="whOrdSaveMap" style="padding:4px 12px;font-size:12.5px">💾 احفظ المطابقة</button></div>
+    <div class="sub" style="margin-top:4px">اكتب جزء من اسمهم وهتيجي لك اقتراحات، أو علّم «تجاهل»
+      لو الصنف ده مش بيتباع في برنامج الطلبات أصلًا (زي الأبواب وأصناف جيفز).</div>
+    <div class="tbl-wrap" style="margin-top:6px;max-height:320px"><table><thead><tr>
+      <th>عندنا</th><th>اسمه عندهم</th><th>تجاهل</th></tr></thead><tbody>${m.none.map((n, i)=> `<tr>
+      <td style="text-align:right">${esc(n)}</td>
+      <td><input type="text" list="whOrdNames" data-ordour="${esc(n)}" value="${esc(ordTheirName(n) || '')}"
+        style="min-width:220px;width:100%"></td>
+      <td><input type="checkbox" data-ordskip="${esc(n)}"></td></tr>`).join('')}</tbody></table></div></div>` : '';
+  const skip = m.skip.length ? `<div class="sub" style="margin-top:10px">
+    <b>${m.skip.length} صنف متجاهل</b> (مش بيتبعتوا):
+    ${esc(m.skip.slice(0, 12).join('، '))}${m.skip.length > 12 ? '...' : ''}
+    <button class="ghost" id="whOrdClearSkip" style="padding:2px 9px;font-size:12px">↩️ رجّعهم</button></div>` : '';
+  return `<div class="card" style="background:var(--panel2);margin:0">${sum}${auto}${none}${skip}${dl}</div>`;
 }
 function whOrdRefresh(){
   const sel = $('whOrdStore'); if(!sel) return;
@@ -7531,7 +7616,43 @@ function whOrdRefresh(){
   tok.onchange = ()=> ordSetTok(tok.value.trim());
   sh.onchange = ()=>{ tok.type = sh.checked ? 'text' : 'password'; };
   whOrdRefresh();
-  sel.onchange = whOrdRefresh;
+  sel.onchange = ()=>{ whOrdRefresh(); if(box() && box().innerHTML) drawMatch(); };
+  const box = ()=> $('whOrdMatch');
+  const drawMatch = ()=>{
+    box().innerHTML = whOrdMatchHtml(sel.value);
+    const acc = $('whOrdAccept');
+    if(acc) acc.onclick = ()=>{
+      ordMatchAll(sel.value).auto.forEach(x=>{ ordMap[normName(x.our)] = x.their; });
+      ordMapSave(); drawMatch();
+    };
+    const sv = $('whOrdSaveMap');
+    if(sv) sv.onclick = ()=>{
+      box().querySelectorAll('[data-ordour]').forEach(inp=>{
+        const our = inp.dataset.ordour;
+        const sk = box().querySelector(`[data-ordskip="${CSS.escape(our)}"]`);
+        const v = (inp.value || '').trim();
+        if(sk && sk.checked) ordMap[normName(our)] = '';
+        else if(v) ordMap[normName(our)] = v;
+        else delete ordMap[normName(our)];
+      });
+      ordMapSave(); drawMatch();
+    };
+    const cs = $('whOrdClearSkip');
+    if(cs) cs.onclick = ()=>{
+      Object.keys(ordMap).forEach(k=>{ if(ordMap[k] === '') delete ordMap[k]; });
+      ordMapSave(); drawMatch();
+    };
+  };
+  $('whOrdMatchBtn').onclick = async ()=>{
+    msg.innerHTML = '<div class="msg warn">بيجيب أصناف برنامج الطلبات...</div>';
+    try{
+      await ordFetchCatalog();
+      msg.innerHTML = `<div class="msg ok">قرا <b>${ordCat.length}</b> صنف من برنامج الطلبات.</div>`;
+      drawMatch();
+    }catch(e){
+      msg.innerHTML = '<div class="msg err">مقدرش يجيب أصناف برنامج الطلبات دلوقتي — جرّب تاني.</div>';
+    }
+  };
   $('whOrdXlsx').onclick = ()=>{
     const store = sel.value, rows = ordStockRows(store);
     if(!rows.length) return msg.innerHTML = '<div class="msg err">مفيش رصيد مرفوع للمخزن ده.</div>';
@@ -7565,9 +7686,12 @@ function whOrdRefresh(){
           : (d && d.error) || 'البرنامج التاني رفض الطلب.')}</div>`;
       }else{
         const nf = d.notFound || [];
+        if(box() && box().innerHTML) drawMatch();
         msg.innerHTML = `<div class="msg ok">تم: <b>${d.updated || 0}</b> صنف اتحدّث رصيده في برنامج الطلبات.</div>`
-          + (nf.length ? `<div class="msg warn"><b>${nf.length} صنف</b> مش موجودين عنده بنفس الاسم فاتساب زي ما هم:
-              ${esc(nf.slice(0, 10).join('، '))}${nf.length > 10 ? '...' : ''}</div>` : '');
+          + (nf.length ? `<div class="msg warn"><b>${nf.length} صنف</b> مش موجودين عنده بنفس الاسم فاتسابوا زي ما هم:
+              ${esc(nf.slice(0, 10).join('، '))}${nf.length > 10 ? '...' : ''}
+              <br>دوس <b>«🔍 طابق الأسماء»</b> فوق عشان تربطهم باسمهم عندهم مرة واحدة وخلاص،
+              أو تعلّم على اللي مش بيتباع هناك إنه يتجاهل.</div>` : '');
       }
     }catch(e){
       // رسالة ordLogin بتشرح السبب بالظبط؛ أي حاجة تانية = مشكلة اتصال
