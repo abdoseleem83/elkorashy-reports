@@ -164,6 +164,11 @@
   .it-pick{display:flex;align-items:center;gap:7px;padding:4px 2px;font-size:13px;cursor:pointer}
   .it-pick input{margin:0;flex:none}
   @media (max-width:640px){ .it-dups{grid-template-columns:1fr} }
+  /* فورم «ضيف صنف جديد» — خانات جنب بعض على الكمبيوتر وتحت بعض على الموبايل */
+  .it-add{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+  .it-f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted)}
+  .it-f input,.it-f select{width:100%}
+  @media (max-width:640px){ .it-add{grid-template-columns:1fr} }
   .kpi4{grid-template-columns:repeat(4,minmax(0,1fr))}
   .kpi4 .kpi-card{min-width:0;overflow:hidden}
   .kpi4 .kpi-title{font-size:13px;margin-bottom:6px}
@@ -1210,7 +1215,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v153';
+const APP_VERSION = 'v154';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -10193,7 +10198,146 @@ function itHtml(){
     </tr></thead><tbody>${body || `<tr><td colspan="${9+stores.length}" class="sub">مفيش أصناف مطابقة.</td></tr>`}</tbody></table></div>
     ${rows.length>600?`<div class="sub" style="margin-top:6px">بيعرض أول ٦٠٠ صنف — ضيّق البحث عشان تشوف الباقي.</div>`:''}
   </div>`;
-  return head + up + filters + table;
+  return head + itAddHtml() + up + filters + table;
+}
+
+// القيم الموجودة في الدليل عشان تختار منها بدل ما تكتبها كل مرة
+function itMains(){
+  const set = new Set();
+  Object.keys(whCatalog || {}).forEach(n=>{ const m = (whCatalog[n] || {}).main; if(m) set.add(m); });
+  return [...set].sort((a, b)=> a.localeCompare(b, 'ar'));
+}
+function itSubs(main){
+  const set = new Set(), mk = normName(main || '');
+  Object.keys(whCatalog || {}).forEach(n=>{
+    const c = whCatalog[n] || {};
+    if(!c.sub) return;
+    if(mk && normName(c.main || '') !== mk) return;
+    set.add(c.sub);
+  });
+  return [...set].sort((a, b)=> a.localeCompare(b, 'ar'));
+}
+function itColors(){
+  const set = new Set();
+  Object.keys(whCatalog || {}).forEach(n=>{ const c = (whCatalog[n] || {}).color; if(c) set.add(c); });
+  return [...set].sort((a, b)=> a.localeCompare(b, 'ar'));
+}
+
+// صنف واحد جه جديد؟ متضطرش ترفع الشيت كله — اكتبه هنا واختار مجموعته.
+function itAddHtml(){
+  const mains = itMains(), colors = itColors();
+  const opt = (v)=> `<option value="${esc(v)}">${esc(v)}</option>`;
+  return `
+  <div class="card">
+    <h2 style="margin:0">➕ ضيف صنف جديد</h2>
+    <div class="sub" style="margin-top:6px">اكتب اسم الصنف واختار مجموعته وهو بيتضاف لدليل الأصناف على طول —
+      من غير ما ترفع الشيت كله. كل الأقسام (المخازن · المبيعات · جيفز · البونص) هتشوفه.</div>
+    <div class="it-add" style="margin-top:10px">
+      <label class="it-f"><span>اسم الصنف *</span>
+        <input type="text" id="itNwName" placeholder="اكتب اسم الصنف بالظبط زي الشيت"></label>
+      <label class="it-f"><span>المجموعة الرئيسية *</span>
+        <select id="itNwMain">${mains.map(opt).join('')}<option value="__new">➕ مجموعة جديدة…</option></select></label>
+      <label class="it-f" id="itNwMainNewWrap" style="display:none"><span>اسم المجموعة الجديدة</span>
+        <input type="text" id="itNwMainNew" placeholder="مثال: كرافت لاين"></label>
+      <label class="it-f"><span>المجموعة الفرعية</span><select id="itNwSub"></select></label>
+      <label class="it-f" id="itNwSubNewWrap" style="display:none"><span>اسم الفرعية الجديدة</span>
+        <input type="text" id="itNwSubNew"></label>
+      <label class="it-f"><span>اللون</span>
+        <input type="text" id="itNwColor" list="itNwColors" placeholder="اختياري"></label>
+      <label class="it-f"><span>محتوى اللفة</span><input type="number" id="itNwRoll" step="any" placeholder="0"></label>
+      <label class="it-f"><span>الاسم الأساسي (من غير اللون)</span>
+        <input type="text" id="itNwBase" placeholder="اختياري — لمقارنة الألوان"></label>
+    </div>
+    <datalist id="itNwColors">${colors.map(c=> `<option value="${esc(c)}">`).join('')}</datalist>
+    <div class="sub" style="margin-top:12px">لو الصنف ده بيتطلب من <b>جيفز</b> كمان، عبّي الخانات دي (اختيارية):</div>
+    <div class="it-add" style="margin-top:6px">
+      <label class="it-f"><span>كود جيفز</span><input type="text" id="itNwCode"></label>
+      <label class="it-f"><span>وزن القطعة (كجم)</span><input type="number" id="itNwW" step="any"></label>
+      <label class="it-f"><span>سعر القطعة $</span><input type="number" id="itNwP" step="any"></label>
+      <label class="it-f"><span>محتوى الكرتونة</span><input type="number" id="itNwPcs" step="any"></label>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="secondary" id="itNwSave">💾 ضيف الصنف</button></div>
+    <div id="itNwMsg" style="margin-top:8px">${IT.nwMsg || ''}</div>
+  </div>`;
+}
+
+function itNwWire(){
+  const mainS = $('itNwMain'), subS = $('itNwSub'), btn = $('itNwSave');
+  if(!mainS || !subS || !btn) return;
+  const say = (h)=>{ IT.nwMsg = h; itSave(); const m = $('itNwMsg'); if(m) m.innerHTML = h; };
+  const curMain = ()=> mainS.value === '__new' ? (($('itNwMainNew') || {}).value || '') : mainS.value;
+  const fillSubs = ()=>{
+    const list = itSubs(curMain());
+    subS.innerHTML = '<option value="">— بدون —</option>'
+      + list.map(x=> `<option value="${esc(x)}">${esc(x)}</option>`).join('')
+      + '<option value="__new">➕ فرعية جديدة…</option>';
+    const w = $('itNwSubNewWrap'); if(w) w.style.display = 'none';
+  };
+  // مفيش مجموعات في الدليل لسه؟ يبقى أول اختيار لازم يكون «جديدة»
+  if(!mainS.value) mainS.value = '__new';
+  const syncMain = ()=>{
+    const w = $('itNwMainNewWrap');
+    if(w) w.style.display = mainS.value === '__new' ? '' : 'none';
+    fillSubs();
+  };
+  mainS.onchange = syncMain;
+  const mn = $('itNwMainNew'); if(mn) mn.onblur = fillSubs;
+  subS.onchange = ()=>{
+    const w = $('itNwSubNewWrap'); if(w) w.style.display = subS.value === '__new' ? '' : 'none';
+  };
+  syncMain();
+  btn.onclick = async ()=>{
+    const val = (id)=> normName(($(id) || {}).value || '');
+    const name = val('itNwName');
+    if(!name) return say('<div class="msg err">اكتب اسم الصنف الأول.</div>');
+    const main = normName(curMain());
+    if(!main) return say('<div class="msg err">اختار المجموعة الرئيسية أو اكتب واحدة جديدة.</div>');
+    const sub = subS.value === '__new' ? val('itNwSubNew') : normName(subS.value);
+    // نفس الاسم موجود = تعديل، واسم قريب منه = غالبًا الصنف نفسه مكتوب بشكل تاني
+    if(whCatalog[name]){
+      if(!confirm('«' + name + '» موجود في الدليل بالفعل. تحدّث بياناته؟')) return;
+    }else{
+      const near = itCatOf(name);
+      if(near && near.name !== name
+         && !confirm('فيه صنف قريب بالاسم: «' + near.name + '».\nتضيف «' + name + '» كصنف منفصل؟')) return;
+    }
+    btn.disabled = true;
+    say('<div class="msg warn">بيحفظ...</div>');
+    try{
+      whCatalog[name] = {main, sub, roll: nkN(($('itNwRoll') || {}).value),
+        color: val('itNwColor'), base: val('itNwBase')};
+      whMarkCatDirty(name);
+      itCatBump();
+      try{ await saveWhCatalog(); }
+      catch(e){ scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف'); }
+      whUpdateLocalCache();
+      // نسخة جيفز — بس لو عبّى حاجة من خاناتها
+      const code = val('itNwCode');
+      const w = nkN(($('itNwW') || {}).value), pr = nkN(($('itNwP') || {}).value),
+            pcs = nkN(($('itNwPcs') || {}).value);
+      let gvMsg = '';
+      if(code || w || pr || pcs){
+        GV.items = GV.items || [];
+        const gi = GV.items.findIndex(x=> normName(x.name || '') === name
+          || (code && normName(x.code || '') === normName(code)));
+        const rec = {code, name, pcs, weight: w, price: pr};
+        if(gi >= 0){ GV.items[gi] = Object.assign({}, GV.items[gi], rec); gvMsg = ' · اتحدّث في دليل جيفز'; }
+        else { GV.items.push(rec); gvMsg = ' · واتضاف لدليل جيفز'; }
+        gvSave();
+      }
+      ['itNwName','itNwMainNew','itNwSubNew','itNwColor','itNwRoll','itNwBase','itNwCode','itNwW','itNwP','itNwPcs']
+        .forEach(id=>{ const e = $(id); if(e) e.value = ''; });
+      say('<div class="msg ok">تم: <b>' + esc(name) + '</b> اتحفظ في دليل الأصناف ('
+        + esc(main) + (sub ? ' · ' + esc(sub) : '') + ')' + gvMsg
+        + ' — الإجمالي ' + Object.keys(whCatalog).length + ' صنف.</div>');
+      renderIT();
+      if(typeof renderWh === 'function' && document.getElementById('whApp')
+         && document.getElementById('whApp').style.display !== 'none'){ try{ renderWh(); }catch(e){} }
+    }catch(e){
+      say('<div class="msg err">' + esc(e.message) + '</div>');
+    }
+    const b2 = $('itNwSave'); if(b2) b2.disabled = false;
+  };
 }
 
 function itDupsHtml(dups){
@@ -10287,6 +10431,7 @@ function renderIT_impl(el){
       }
     };
   }
+  itNwWire();
   const ct = $('itCatTemplate');
   if(ct) ct.onclick = ()=>{ const b = document.getElementById('whCatTemplate'); if(b) b.click(); };
   el.querySelectorAll('[data-itunmerge]').forEach(btn=> btn.onclick = ()=>{
