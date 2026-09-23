@@ -3695,7 +3695,12 @@ function renderKpiCards(months){
   if(!box) return;
   // نفس اختيار "اجمع الجملة في صف واحد" اللي فوق الجدول
   const {html, note} = kpiCardsHtml(months, null, reportView.aggWholesale);
-  box.innerHTML = html ? html + `<div class="kpi-note">${esc(note)}</div>` : '';
+  if(!html){ box.innerHTML = ''; return; }
+  // كروت «أعلى ٣» بقت قسم منسدل — بتاخد شاشة كاملة على الموبايل قبل
+  // ما توصل للجدول، ومش دايمًا محتاجها مفتوحة.
+  box.innerHTML = nkSection('kpiTop3', '🏆 أعلى ٣', '',
+    html + `<div class="kpi-note">${esc(note)}</div>`);
+  nkWireSections(box);
 }
 
 // شاشة تقرير الأصناف بالقطاع
@@ -10728,6 +10733,36 @@ function qpSendColsOn(){
   return QP_SEND_COLS.map((_, k)=> c[k] === undefined ? QP_SEND_DEF[k] : c[k] !== false);
 }
 const qpBranches = ()=> [...new Set(QP.emps.map(e=> (e.branch || '').trim()).filter(Boolean))];
+/* كشف كل فرع في **ملف لوحده** — قبل كده كانوا كلهم في صورة واحدة،
+   فمكانش ينفع تبعت لفرع طنطا كشفه من غير ما تبعتله كشوف باقي الفروع
+   معاه. دلوقتي كل فرع ليه شريط أزرار خاص بيه: إرسال / إكسل / PDF / صورة. */
+function qpBranchRowsOf(br){
+  const c = qpCalc(QP.half);
+  return br === '' ? c.rows.filter(r=> !(r.branch || '').trim())
+                   : c.rows.filter(r=> (r.branch || '').trim() === br);
+}
+function qpBranchBars(){
+  const brs = qpBranches();
+  const none = qpCalc(QP.half).rows.some(r=> !(r.branch || '').trim());
+  const list = brs.concat(none ? [''] : []);
+  if(!list.length) return '';
+  let h = `<div class="sub" style="margin:14px 0 6px">🏢 <b>كل فرع لوحده</b> —
+    كل واحد بيطلع في ملف مستقل عشان تبعته للفرع بتاعه.</div>`;
+  list.forEach((br, i)=>{
+    const lbl = br || 'من غير فرع';
+    const rr = qpBranchRowsOf(br);
+    const net = rr.reduce((a, r)=> a + (r.net || 0), 0);
+    // المصدّر بيتسجّل مع كل رسمة — الترتيب ثابت فالمفتاح ثابت
+    NK_EXPORTERS['qpB' + i] = ()=>{
+      const rows = qpBranchRowsOf(br);
+      const t = `كشف مرتبات ${lbl} — ${QP_HALF_LBL(QP.half)}`;
+      return {blocks: [qpSendBlock(rows, t)], title: `${t} — ${QP.month}`,
+              subtitle: `${lbl} — ${QP_HALF_LBL(QP.half)} — ${QP.month}`};
+    };
+    h += nkBar('qpB' + i, `<span class="pill">🏢 ${esc(lbl)} — ${rr.length} موظف · صافي ${nkF(net, 0)}</span>`);
+  });
+  return h;
+}
 // أي عمود بينقص من المرتب (أحمر) وأي عمود بيزوّده (أخضر). الاسم هو
 // المفتاح عشان الترتيب لو اتغيّر ما يبوّظش الألوان.
 const QP_MINUS = ['غياب بإذن (أيام)','غياب بدون إذن (أيام)','تأخيرات (ساعات)','جزاءات (أيام)',
@@ -10774,9 +10809,7 @@ function qpBlocks(which){
 NK_EXPORTERS['qpAll'] = ()=> ({blocks: qpBlocks('all'),
   title: `كشف مرتبات القرشي ${QP.month} — ${QP_HALF_LBL(QP.half)}`,
   subtitle: QP_HALF_LBL(QP.half) + ' — ' + QP.month});
-NK_EXPORTERS['qpBr'] = ()=> ({blocks: qpBlocks('branches'),
-  title: `كشف مرتبات القرشي حسب الفرع ${QP.month} — ${QP_HALF_LBL(QP.half)}`,
-  subtitle: 'كل فرع على حدة — ' + QP_HALF_LBL(QP.half) + ' — ' + QP.month});
+
 
 // ---- استيراد شيت مرتبات القرشي ----
 // بيقرا "بيانات الموظفين" (اسم / فرع / راتب / النصف الأول؟ / النصف الثاني؟)
@@ -10929,7 +10962,7 @@ function renderQP_impl(el){
        <button class="btn sm" id="qpSnNone">✖️ ولا حاجة</button>`)}
     <div class="sub" style="margin:14px 0 6px">📤 «إرسال» بيفتح واتساب على طول من الموبايل بصورة الكشف.</div>
     ${nkBar('qpAll', '<span class="pill">📋 كشف كامل — كل الموظفين</span>')}
-    ${nkBar('qpBr', '<span class="pill">🏢 كشف كل فرع على حدة' + (qpBranches().length ? ' (' + qpBranches().length + ' فروع)' : '') + '</span>')}
+    ${qpBranchBars()}
   </div>
 
   <div class="card">
