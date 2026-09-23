@@ -1264,7 +1264,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v162';
+const APP_VERSION = 'v163';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2206,18 +2206,36 @@ async function monthPartsCount(month){
     return (v && v.__parts) ? Number(v.__parts) || 0 : 0;
   }catch(e){ return 0; }
 }
+// جزء واحد، بمحاولات إضافية: «unknown action» = الجسم ضاع في الطريق، وإعادة
+// المحاولة بتنجح في الغالب. بننتظر شوية بين المحاولة والتانية.
+async function setPartRetry(key, value, label){
+  let lastErr;
+  for(let a = 0; a < 4; a++){
+    try{ await setKey(key, value); return; }
+    catch(e){
+      lastErr = e;
+      const lost = /unknown action/i.test(e.message || '');
+      if(!lost && !isTransientError(e.message)) throw e;
+      const el = document.getElementById('uploadMsg');
+      if(el) el.innerHTML = `<div class="msg warn">${esc(label)} — الرفعة دي اتقطعت،
+        بيحاول تاني (${a + 2}/4)... متقفلش الصفحة.</div>`;
+      await new Promise(r=> setTimeout(r, 1500 * (a + 1)));
+    }
+  }
+  throw lastErr;
+}
 async function saveMonthParts(month, data){
   const key = 'month:' + month;
   const parts = splitByCustomer(data, MONTH_CHUNK_CHARS);
   const before = await monthPartsCount(month);
   for(let i = 0; i < parts.length; i++){
-    await setKey(key + '#' + (i + 1), JSON.stringify(parts[i]));
+    const label = `بيرفع ${monthLabel(month)} — جزء ${i + 1} من ${parts.length}`;
     const el = document.getElementById('uploadMsg');
-    if(el) el.innerHTML = `<div class="msg warn">بيرفع ${monthLabel(month)} على دفعات —
-      ${i + 1} من ${parts.length}... متقفلش الصفحة.</div>`;
+    if(el) el.innerHTML = `<div class="msg warn">${esc(label)}... متقفلش الصفحة.</div>`;
+    await setPartRetry(key + '#' + (i + 1), JSON.stringify(parts[i]), label);
   }
   // آخر خطوة: الفهرس. قبلها الشهر القديم لسه كامل على السيرفر.
-  await setKey(key, JSON.stringify({__parts: parts.length}));
+  await setPartRetry(key, JSON.stringify({__parts: parts.length}), 'بيحفظ فهرس ' + monthLabel(month));
   for(let i = parts.length + 1; i <= before; i++){
     try{ await window.storage.delete(key + '#' + i); }catch(e){}
   }
@@ -2234,57 +2252,19 @@ async function getMonthValue(month){
   }
   return out;
 }
-const MONTH_CHUNK_CHARS = 60000;
-/* الرفع على دفعات محتاج `merge` — والسيرفر القديم مابيعرفهاش وبيرد
-   «unknown action». فبنسأله مرة واحدة قبل ما نبدأ، بدل ما نكتشف ده في نص
-   الرفع ونسيب الشهر ناقص. */
-async function serverSupportsMerge(){
-  if(serverHasMerge !== null) return serverHasMerge;
-  try{
-    await window.storage.merge('__mergecheck', {});
-    serverHasMerge = true;
-    try{ await window.storage.delete('__mergecheck'); }catch(e){}
-  }catch(e){
-    if(/unknown action/i.test(e && e.message || '')) serverHasMerge = false;
-    else throw e;
-  }
-  return serverHasMerge;
-}
+const MONTH_CHUNK_CHARS = 30000;
+/* ⚠️ «unknown action» مش معناها إن السيرفر قديم — Code.gs نفسه بيشرحها:
+   Apps Script بيعمل redirect للـPOST، والـredirect أحيانًا بيحوّله GET من غير
+   جسم، فالسيرفر مايشوفش action أصلاً. ده بيحصل أكتر كل ما الجسم كبر والنت بطأ.
+   عشان كده الرفع بقى **أجزاء صغيرة بـset** بس — من غير merge خالص:
+   • كل جزء POST صغير لوحده، ولو وقع بيتعاد لوحده.
+   • الفهرس {"__parts":N} بيتكتب **آخر حاجة**، فنسخة الشهر القديمة تفضل كاملة
+     على السيرفر لحد ما الرفع كله ينجح — يعني مفيش شهر بنصّه أبدًا. */
 async function saveMonthChunked(month, data){
   const key = 'month:' + month;
   const full = JSON.stringify(data);
-  if(full.length <= MONTH_CHUNK_CHARS) return setKey(key, full);
-  // سيرفر قديم (مايعرفش merge): بنكتب الأجزاء في مفاتيح جنبية وآخر حاجة
-  // بنكتب «الفهرس» في المفتاح الأصلي. لحد ما الفهرس يتكتب، القديم لسه سليم
-  // على السيرفر — يعني مفيش شهر نصّه ضايع لو الرفع وقع في النص.
-  if(!(await serverSupportsMerge())) return saveMonthParts(month, data);
-  const custs = Object.keys(data);
-  let batch = {}, len = 2, first = true, done = 0;
-  const flush = async ()=>{
-    const n = Object.keys(batch).length;
-    if(!n) return;
-    if(first){ await setKey(key, JSON.stringify(batch)); first = false; }
-    else { await window.storage.merge(key, batch); bumpVersion(key); }
-    done += n;
-    const el = document.getElementById('uploadMsg');
-    if(el) el.innerHTML = `<div class="msg warn">بيرفع ${monthLabel(month)} على دفعات —
-      ${done} من ${custs.length} عميل... متقفلش الصفحة.</div>`;
-    batch = {}; len = 2;
-  };
-  try{
-    for(const c of custs){
-      const s2 = JSON.stringify(data[c]);
-      if(len + s2.length > MONTH_CHUNK_CHARS) await flush();
-      batch[c] = data[c];
-      len += s2.length + c.length + 4;
-    }
-    await flush();
-  }catch(e){
-    // وقع في نص الدفعات: الشهر على السيرفر ناقص. لازم يتقال بصراحة —
-    // إعادة الرفع بتبدأ من الأول (set) فبتصلّحه.
-    throw new Error(`الرفع وقف بعد ${done} من ${custs.length} عميل — الشهر على السيرفر ناقص دلوقتي. `
-      + `ارفع نفس الملف تاني وهو هيبدأ من الأول ويكمّله. (${e.message})`);
-  }
+  if(full.length <= MONTH_CHUNK_CHARS){ await setKey(key, full); return; }
+  return saveMonthParts(month, data);
 }
 async function saveMonths(changedMonths){
   // مهم: الفهرس بيشمل الشهور اللي فشل تحميلها كمان. من غير كده أول حفظ بعد
@@ -10648,7 +10628,7 @@ function itHtml(){
   if(tab === 'dups') return head + up + itDupsHtml(dups);
 
   const filters = `
-  <div class="card">
+  <div class="card" data-fold-skip>
     <div class="row" style="flex-wrap:wrap;gap:8px">
       <input type="text" id="itSearch" placeholder="🔍 دوّر بالاسم أو الكود" value="${esc(IT.q||'')}" style="min-width:200px;flex:1">
       <label class="chk" style="gap:6px">القسم
