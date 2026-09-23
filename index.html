@@ -840,6 +840,7 @@
   <div id="reportSectorsPanel" class="row" style="display:none;margin-bottom:12px;padding:10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px">
   </div>
 
+  <div id="doorsFixCard"></div>
   <div id="kpiCards"></div>
   <div id="reportArea"><div class="sub">ارفع أول ملف عشان يظهر التقرير.</div></div>
 </div>
@@ -1266,7 +1267,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v164';
+const APP_VERSION = 'v165';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -3726,6 +3727,7 @@ function rowsForMetric(metric, build){
 function renderReport(){
   renderReportClassFilter();
   renderItemsSheetOptions();
+  try{ renderDoorsFix(); }catch(e){}
   $('reportSearch').placeholder = activeTab === 'items' ? 'بحث باسم الصنف...' : 'بحث باسم العميل...';
   const months = visibleMonths();
   const anyMonths = activeMonths();
@@ -5216,6 +5218,54 @@ function itemActualSectors(itemName){
   return {sectors: out, forcedBy: Array.from(forcedBy)};
 }
 
+/* الأبواب اللي لسه مالهاش مقاس: المطلوب ما يفضلش عندنا عمود اسمه «ابواب»
+   عام — كل باب لازم يبقى تحت ٧٠ / ٨٠ / ٩٠ / متر (أو اكسسوارات أبواب).
+   اللي التطبيق ما عرفش مقاسه من اسمه ولا من شيت الأصناف بيتعرض هنا عشان
+   تحدده بإيدك مرة واحدة، وبيتحفظ زي أي تصنيف يدوي. */
+function isGenericDoorSector(sec){
+  return /^ابواب\s*wpc$/i.test(normName(sec || '').replace(/[أإآ]/g, 'ا'));
+}
+function doorsNeedingSize(){
+  return allItemsWithTotals()
+    .filter(o=> isGenericDoorSector(itemSector(o.item)))
+    .sort((a, b)=> b.total - a.total);
+}
+function renderDoorsFix(){
+  const box = $('doorsFixCard'); if(!box) return;
+  const list = doorsNeedingSize();
+  if(!list.length){ box.innerHTML = ''; return; }
+  const opts = (cur)=> DOOR_SECTORS.map(x=>
+    `<option value="${esc(x)}"${cur === x ? ' selected' : ''}>${esc(x)}</option>`).join('');
+  box.innerHTML = `
+  <div class="card" style="background:#fff7ed;border-color:#fdba74" data-fold-open>
+    <div class="flex-between">
+      <h2 style="margin:0">🚪 أبواب من غير مقاس</h2>
+      <span class="badge">${list.length}</span>
+    </div>
+    <div class="sub" style="margin-top:6px">الأصناف دي بتتحسب على «ابواب WPC» العام لأن التطبيق
+      ما لقاش مقاسها لا في اسمها ولا في شيت الأصناف. حدّد المقاس وهو بيتحفظ ويتحدّث في كل التقارير.</div>
+    <div class="tbl-wrap" style="margin-top:8px;max-height:340px"><table><thead><tr>
+      <th>الصنف</th><th>الإجمالي</th><th>حدّد التصنيف</th></tr></thead><tbody>
+      ${list.slice(0, 200).map(o=> `<tr>
+        <td style="text-align:right">${esc(o.item)}</td>
+        <td class="num">${Math.round(o.total).toLocaleString('en-US')}</td>
+        <td><select class="doorFixSel" data-door="${encodeURIComponent(o.item)}">
+          <option value="">— اختار —</option>${opts('')}</select></td>
+      </tr>`).join('')}
+    </tbody></table></div>
+    ${list.length > 200 ? '<div class="sub" style="margin-top:6px">بيعرض أول ٢٠٠.</div>' : ''}
+  </div>`;
+  box.querySelectorAll('.doorFixSel').forEach(sel=>{
+    sel.onchange = ()=>{
+      if(!sel.value) return;
+      const item = decodeURIComponent(sel.dataset.door);
+      itemOverride[item] = ensureSector(sel.value);
+      updateLocalCache();
+      scheduleSave('itemOverride', saveItemOverride, 'قطاعات الأصناف');
+      renderReport();
+    };
+  });
+}
 function allItemsWithTotals(){
   const map = {}; // item -> {cat, total}
   Object.values(monthsData).forEach(custMap=>{
