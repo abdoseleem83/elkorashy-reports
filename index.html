@@ -908,13 +908,14 @@
       أصناف جديدة وما بيلمسش سعر ولا أي عمود تاني. مش محتاج ترفع الملف مرتين.</div>
     <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
       <label class="chk" style="gap:6px">المخزن <select id="whOrdStore"></select></label>
-      <input type="password" id="whOrdTok" placeholder="توكن الإدارة بتاع برنامج الطلبات" style="min-width:220px;flex:1">
+      <input type="password" id="whOrdTok" placeholder="الرقم السري لشاشة الإدارة في برنامج الطلبات" style="min-width:250px;flex:1">
       <label class="chk" style="gap:6px"><input type="checkbox" id="whOrdShow"> إظهار</label>
       <button class="secondary" id="whOrdSend">🚀 ابعت الرصيد</button>
       <button class="ghost" id="whOrdXlsx">⬇️ نزّل الملف بدل كده</button>
     </div>
-    <div class="sub" style="margin-top:6px">التوكن بيتحفظ على الجهاز ده بس (مش بيتبعت للسيرفر بتاعنا
-      ولا بيتزامن مع أي جهاز تاني) — هو نفس توكن الإدارة اللي بتدخل بيه شاشة الإدارة هناك.</div>
+    <div class="sub" style="margin-top:6px">ده <b>نفس الرقم السري</b> اللي بتفتح بيه «شاشة الإدارة» في برنامج
+      الطلبات — التطبيق بيسجّل دخول بيه لحظيًا وبعدين يبعت الرصيد. الرقم بيتحفظ على الجهاز ده بس
+      (مش بيتبعت للسيرفر بتاعنا ولا بيتزامن مع أي جهاز تاني).</div>
     <div id="whOrdMsg" style="margin-top:8px"></div>
   </div>
 
@@ -1237,7 +1238,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v155';
+const APP_VERSION = 'v156';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -7493,6 +7494,21 @@ const ORD_URL = 'https://script.google.com/macros/s/AKfycbwRMd_ZIrXC_UQL1zc_YM8g
 const ORD_TOK_KEY = 'ordManageToken';   // على الجهاز بس — عمدًا مش nkSet
 function ordTok(){ try{ return localStorage.getItem(ORD_TOK_KEY) || ''; }catch(e){ return ''; } }
 function ordSetTok(t){ try{ t ? localStorage.setItem(ORD_TOK_KEY, t) : localStorage.removeItem(ORD_TOK_KEY); }catch(e){} }
+/* توكن الإدارة هناك مش حاجة تتنسخ — السيرفر بيصدّره لما تدخل بالرقم السري
+   وبينتهي بعد ١٢ ساعة. فبناخد الرقم السري من المستخدم، ونسجّل دخول لحظي
+   قبل كل إرسال ونجيب توكن طازة. */
+async function ordLogin(pin){
+  const r = await fetch(ORD_URL + '?action=manageLogin&pin=' + encodeURIComponent(pin));
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const d = await r.json();
+  if(d && d.ok && d.token) return d.token;
+  const why = d && d.reason;
+  throw new Error(
+    why === 'wrong_pin' ? 'الرقم السري غلط — ده نفس رقم «شاشة الإدارة» في برنامج الطلبات.'
+    : why === 'locked' ? 'برنامج الطلبات قفل المحاولات مؤقتًا بعد محاولات غلط كتير — استنى شوية وجرّب تاني.'
+    : why === 'not_configured' ? 'برنامج الطلبات لسه ما اتظبطش عليه رقم إدارة.'
+    : 'الدخول لبرنامج الطلبات مانجحش.');
+}
 // صفوف الرصيد بنفس شكل اللي بيترفع في برنامج الطلبات
 function ordStockRows(store){
   const items = (whBalances[store] || {}).items || {};
@@ -7530,19 +7546,22 @@ function whOrdRefresh(){
     const store = sel.value, rows = ordStockRows(store);
     const t = (tok.value || '').trim();
     if(!rows.length) return msg.innerHTML = '<div class="msg err">مفيش رصيد مرفوع للمخزن ده — ارفعه فوق الأول.</div>';
-    if(!t){ ordSetTok(''); return msg.innerHTML = '<div class="msg err">اكتب توكن الإدارة بتاع برنامج الطلبات.</div>'; }
+    if(!t){ ordSetTok(''); return msg.innerHTML = '<div class="msg err">اكتب الرقم السري بتاع شاشة الإدارة في برنامج الطلبات.</div>'; }
     if(!confirm(`هيتبعت رصيد ${rows.length} صنف من «${store}» لبرنامج الطلبات ويحل محل الرصيد الحالي هناك. تكمل؟`)) return;
     ordSetTok(t);
     send.disabled = true;
     msg.innerHTML = '<div class="msg warn">بيبعت...</div>';
     try{
+      msg.innerHTML = '<div class="msg warn">بيسجّل دخول على برنامج الطلبات...</div>';
+      const tk = await ordLogin(t);
+      msg.innerHTML = '<div class="msg warn">بيبعت الرصيد...</div>';
       const res = await fetch(ORD_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify({action:'manageUploadCatalog', token: t, mode:'stock', rows})});
+        body: JSON.stringify({action:'manageUploadCatalog', token: tk, mode:'stock', rows})});
       if(!res.ok) throw new Error('HTTP ' + res.status);
       const d = await res.json();
       if(!d || d.ok === false){
         msg.innerHTML = `<div class="msg err">${esc(d && d.error === 'unauthorized'
-          ? 'التوكن مش صالح — افتح شاشة الإدارة في برنامج الطلبات وهات التوكن من هناك.'
+          ? 'برنامج الطلبات رفض العملية — جرّب تاني، ولو فضلت الرسالة قولّي.'
           : (d && d.error) || 'البرنامج التاني رفض الطلب.')}</div>`;
       }else{
         const nf = d.notFound || [];
@@ -7551,7 +7570,10 @@ function whOrdRefresh(){
               ${esc(nf.slice(0, 10).join('، '))}${nf.length > 10 ? '...' : ''}</div>` : '');
       }
     }catch(e){
-      msg.innerHTML = '<div class="msg err">مفيش اتصال ببرنامج الطلبات دلوقتي — جرب تاني، أو نزّل الملف وارفعه هناك.</div>';
+      // رسالة ordLogin بتشرح السبب بالظبط؛ أي حاجة تانية = مشكلة اتصال
+      msg.innerHTML = `<div class="msg err">${esc(/^HTTP|Failed|NetworkError|Load failed/.test(e.message || '')
+        ? 'مفيش اتصال ببرنامج الطلبات دلوقتي — جرّب تاني، أو نزّل الملف وارفعه هناك.'
+        : e.message)}</div>`;
     }
     send.disabled = false;
   };
