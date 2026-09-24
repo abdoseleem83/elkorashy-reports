@@ -1273,7 +1273,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v168';
+const APP_VERSION = 'v169';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -3503,7 +3503,15 @@ function renderReportSectorsPanel(){
         style="width:14px;height:14px"> ${esc(sec)}
     </label>`).join('') +
     `<button class="ghost" id="reportSecAll" style="margin-right:auto">تحديد الكل</button>`
-    + `<button class="ghost" id="reportSecNone">شيل الكل</button>`;
+    + `<button class="ghost" id="reportSecNone">شيل الكل</button>`
+    /* القطاعات اللي مالهاش مبيعات في الشهور المعروضة: بنقولها صراحةً بدل ما
+       المستخدم يدوّر على عمود «ابواب 70» ويفتكر إن فيه باج — العمود مش ظاهر
+       لأن مفيش مبيعات عليه في الشهور دي. */
+    + (()=>{
+        const zero = SECTORS.filter(x=> all.indexOf(x) < 0);
+        return zero.length ? `<div class="sub" style="flex-basis:100%;margin-top:6px;font-size:11.5px">
+          مفيش مبيعات في الشهور المعروضة على: ${esc(zero.join(' · '))} — عشان كده أعمدتها مش ظاهرة.</div>` : '';
+      })();
   box.querySelectorAll('.reportSecChk').forEach(chk=>{
     chk.addEventListener('change', ()=>{
       const sec = chk.value;
