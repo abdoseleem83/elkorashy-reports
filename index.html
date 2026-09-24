@@ -1273,7 +1273,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v170';
+const APP_VERSION = 'v171';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -8576,6 +8576,15 @@ function finIncomeView(){
   if(!months.length) return {html:'<div class="sub">مفيش بيانات للفترة دي.</div>', count:''};
   const I = finIncome(months, finUnitSel);
   const period = finPeriodLabel(months) + (finUnitSel ? ' — ' + finUnitSel : '');
+  /* القائمة بتجمع حركة الشهور المختارة زي ما هي. لو الاختيار فيه أكتر من سنة
+     (زي ديسمبر ٢٠٢٥ + شهور ٢٠٢٦) الرقم بيبقى مجموع السنتين — وده مقصود، بس
+     لازم يتقال عشان ما يتقارنش بالغلط مع «الأرباح المرحلة» في المركز المالي
+     اللي بتتحسب للسنة المعروضة. */
+  const yrs = [...new Set(months.map(m => String(m).slice(0,4)))].sort();
+  const yearNote = yrs.length > 1
+    ? `<div class="msg warn">الفترة دي فيها <b>${yrs.length} سنين</b> (${esc(yrs.join(' + '))}) —
+       صافي الربح تحت هو <b>مجموع حركة كل الشهور المختارة</b>. لو عايز سنة لوحدها اختارها
+       من «الفترة» فوق.</div>` : '';
   const netItems = finNetSalesItems(I);
   const expItems = [].concat(I.expenses, I.othExp);
   const othItems = [].concat(I.othVar, I.othDisc, I.othFreight, I.othRev);
@@ -8591,7 +8600,7 @@ function finIncomeView(){
       <div class="kpi-sum" style="color:${I.netProfit>=0?'var(--accent2)':'var(--danger)'}">${finFmt(I.netProfit)}</div></div>
   </div>`;
   finGidSeq = 0;
-  let t = `<div class="tbl-wrap"><table id="finIncomeTbl"><thead><tr><th>البند</th><th>القيمة</th><th>% من إجمالي البند</th></tr></thead><tbody>`;
+  let t = yearNote + `<div class="tbl-wrap"><table id="finIncomeTbl"><thead><tr><th>البند</th><th>القيمة</th><th>% من إجمالي البند</th></tr></thead><tbody>`;
   // 1) صافي المبيعات — النسبة من إجمالي صافي المبيعات
   t += finSectionFold('1) صافي المبيعات (بعد خصم المردود)', netItems, I.netSales, 'صافي المبيعات', I.netSales);
   // 2) التكلفة — النسبة من إجمالي التكلفة
