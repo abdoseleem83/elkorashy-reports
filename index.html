@@ -1273,7 +1273,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v169';
+const APP_VERSION = 'v170';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2193,11 +2193,7 @@ function renderArchivePanel(){
   });
 }
 $on('archiveBtn').addEventListener('click', ()=>{
-  $('customersPanel').style.display = 'none';
-  $('sectorsPanel').style.display = 'none';
-  $('itemsPanel').style.display = 'none';
-  $('pdfPanel').style.display = 'none';
-  $('archivePanel').style.display = 'block';
+  openPanel('archivePanel');
   renderArchivePanel();
 });
 $on('closeArchiveBtn').addEventListener('click', ()=> $('archivePanel').style.display='none');
@@ -2909,7 +2905,11 @@ $on('processBtn').addEventListener('click', async ()=>{
 });
 
 function showUnmatched(list){
-  $('unmatchedCard').style.display = 'block';
+  // نفس قصة اللوحات: لازم تتفتح مش تتعرض وهي مطوية
+  const uc = $('unmatchedCard');
+  uc.style.display = 'block';
+  uc.classList.remove('folded');
+  if(typeof setFold === 'function') setFold(uc, false, true);
   // الخيار الفاضي مهم: قبل كده كان أول خيار (جملة الإسكندرية) هو الافتراضي،
   // فأي عميل المستخدم ما راجعوش كان بيتصنّف غلط من غير ما ياخد باله.
   $('unmatchedList').innerHTML = list.map((name)=>`
@@ -3434,8 +3434,12 @@ function buildTableHtml(tabType, months, rows, sortMode, opts){
       const sums = cols.map(s => (r.sectors||{})[s]||0);
       const total = sums.reduce((a,b)=>a+b,0);
       const qs = withQty && r.sectorsQty ? cols.map(sc => (r.sectorsQty||{})[sc]||0) : null;
+      /* في مقارنة الأبواب التلوين بيبقى **بالصف** مش بالعمود: الكود الواحد
+         عايز تعرف أنهي مقاس هو الأكتر وأنهي الأقل. بالعمود كان بيطلع أحمر
+         على رقم أكبر من اللي جنبه (لأنه الأقل في عموده هو) — وده بيلخبط. */
+      const rowStat = opts.heat === 'row' ? colMinMax(sums) : null;
       const cells = sums.map((v,si)=>{
-        const st = colStats[si];
+        const st = opts.heat === 'row' ? rowStat : colStats[si];
         let style = '';
         if(st && v > 0){
           if(v === st.max) style = `background:${CELL_HI_BG}`;
@@ -3492,6 +3496,19 @@ function renderItemsSheetOptions(){
 // أعمدة "مقارنة المبيعات بالقطاع": تختار اللي يظهر واللي يتخفي.
 // الجدول بيبقى عريض جدًا لما كل القطاعات تظهر، والمستخدم غالبًا بيهمه
 // كام قطاع بس (وشتر وبلسيه مثلًا مش محتاجه).
+/* ترتيب ثابت لأعمدة الأبواب: ٧٠ ← ٨٠ ← ٩٠ ← متر ← حلوق ← برور ← اكسسوارات.
+   من غير كده الترتيب بيطلع عشوائي حسب أول ما القطاع اتضاف للقايمة. */
+function orderSectors(list){
+  if(!list.some(x=> DOOR_SECTORS.indexOf(x) >= 0)) return list.slice();
+  const doors = DOOR_SECTORS.filter(d=> list.indexOf(d) >= 0);
+  const before = [], after = [];
+  let seen = false;
+  list.forEach(x=>{
+    if(DOOR_SECTORS.indexOf(x) >= 0){ seen = true; return; }
+    (seen ? after : before).push(x);
+  });
+  return before.concat(doors, after);
+}
 let reportSecCandidates = [];   // القطاعات اللي ليها أرقام في التبويب الحالي
 function renderReportSectorsPanel(){
   const box = $('reportSectorsPanel'); if(!box) return;
@@ -3831,7 +3848,8 @@ function renderReport(){
      والشتر لأنها تابعة لشيتات خاصة، فالمستخدم كان بيشوف أعمدة أبواب في الجدول
      ومش لاقيها في «القطاعات المعروضة» عشان يتحكم فيها. */
   if(activeTab === 'sector'){
-    reportSecCandidates = SECTORS.filter(sec => baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
+    reportSecCandidates = orderSectors(
+      SECTORS.filter(sec => baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0)));
     renderReportSectorsPanel();
   }
   const secCols = activeTab === 'sector'
@@ -4041,7 +4059,15 @@ function renderItemsSectorTab(months, metric, qtyMissing){
   });
   const baseRows = built.rows;
   metric = built.metric;
-  const cols = (secList || SECTORS).filter(sec => baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0));
+  /* «كود الباب» = مقارنة أبواب: الأعمدة مقاسات بس (٧٠/٨٠/٩٠/متر).
+     الحلوق والبرور والاكسسوارات مالهمش لازمة في المقارنة دي. */
+  const sizesOnly = ['ابواب 70','ابواب 80','ابواب 90','ابواب متر'];
+  let cols = orderSectors(
+    (secList || SECTORS).filter(sec => baseRows.some(r => ((r.sectors||{})[sec]||0) !== 0)));
+  if(reportView.itemsByCode){
+    const sizes = cols.filter(sec => sizesOnly.indexOf(sec) >= 0);
+    if(sizes.length) cols = sizes;
+  }
   const rows = sortRowsForTable('sector', baseRows, cols);
   const total = rows.reduce((a,r)=> a + rowGrandTotal('sector', r, cols), 0);
   const note = metric === 'qty' ? ' — الأرقام كمية مش قيمة'
@@ -4057,6 +4083,7 @@ function renderItemsSectorTab(months, metric, qtyMissing){
     ? buildTableHtml('sector', months, rows, null, {
         sortable:true, showClass: reportView.showClass, allRows: rows,
         sectorCols: cols, showAllSectorCols: true, qty: metric === 'both',
+        heat: reportView.itemsByCode ? 'row' : 'col',
         ranks: reportView.ranks && reportView.sortKey === 'total' && reportView.sortDir === 'desc',
         labelHead: reportView.itemsByCode ? 'كود الباب' : 'الصنف',
       })
@@ -4985,12 +5012,22 @@ function renderCustomersList(){
   });
 }
 
+/* اللوحات دي (العملاء/القطاعات/الأصناف/الأرشيف/التصدير) كروت مخفية بتتفتح
+   من أزرار «الشهور المحفوظة». بعد ما كل الكروت بقت منسدلة والافتراضي مطوي،
+   كان بيحصل إن اللوحة تتعرض **وهي مطوية** — فالمستخدم يدوس ومايشوفش حاجة غير
+   إن الشاشة اترجّت. فبنفك طيّها ونزحلق ليها كمان. */
+const NK_PANELS = ['customersPanel','sectorsPanel','itemsPanel','pdfPanel','archivePanel'];
+function openPanel(id){
+  NK_PANELS.forEach(x=>{ const el = $(x); if(el && x !== id) el.style.display = 'none'; });
+  const el = $(id); if(!el) return;
+  el.style.display = 'block';
+  el.classList.remove('folded');
+  if(typeof setFold === 'function') setFold(el, false, true);
+  if(typeof nkFoldAllBtnSync === 'function') nkFoldAllBtnSync();
+  try{ el.scrollIntoView({behavior:'smooth', block:'start'}); }catch(e){ el.scrollIntoView(); }
+}
 $on('manageCustomersBtn').addEventListener('click', ()=>{
-  $('customersPanel').style.display = 'block';
-  $('sectorsPanel').style.display = 'none';
-  $('itemsPanel').style.display = 'none';
-  $('pdfPanel').style.display = 'none';
-  $('archivePanel').style.display = 'none';
+  openPanel('customersPanel');
   renderCustomersList();
 });
 $on('closeCustomersBtn').addEventListener('click', ()=> $('customersPanel').style.display='none');
@@ -5259,11 +5296,7 @@ $on('addSectorBtn').addEventListener('click', async ()=>{
   renderOwnSectorsList();
 });
 $on('manageSectorsBtn').addEventListener('click', ()=>{
-  $('sectorsPanel').style.display = 'block';
-  $('customersPanel').style.display = 'none';
-  $('itemsPanel').style.display = 'none';
-  $('pdfPanel').style.display = 'none';
-  $('archivePanel').style.display = 'none';
+  openPanel('sectorsPanel');
   renderOwnSectorsList();
 });
 $on('closeSectorsBtn').addEventListener('click', ()=> $('sectorsPanel').style.display='none');
@@ -5424,11 +5457,7 @@ function renderItemsList(){
 }
 
 $on('manageItemsBtn').addEventListener('click', ()=>{
-  $('itemsPanel').style.display = 'block';
-  $('customersPanel').style.display = 'none';
-  $('sectorsPanel').style.display = 'none';
-  $('pdfPanel').style.display = 'none';
-  $('archivePanel').style.display = 'none';
+  openPanel('itemsPanel');
   renderItemsList();
 });
 $on('closeItemsBtn').addEventListener('click', ()=> $('itemsPanel').style.display='none');
@@ -5554,17 +5583,12 @@ function updateGrowthHint(){
 
 function openExportPanel(){
   flushSaves(); // أي تعديل لسه مستني يتبعت قبل ما نصدّر
-  $('customersPanel').style.display = 'none';
-  $('sectorsPanel').style.display = 'none';
-  $('itemsPanel').style.display = 'none';
-  $('archivePanel').style.display = 'none';
-  $('pdfPanel').style.display = 'block';
+  openPanel('pdfPanel');
   renderPdfMonthsList();
   renderPdfGroupsList();
   $('exportTitle').value = exportTitle;
   updateExportNote();
   updateGrowthHint();
-  $('pdfPanel').scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 $on('exportPdfBtn').addEventListener('click', ()=> openExportPanel());
 $on('closePdfBtn').addEventListener('click', ()=> $('pdfPanel').style.display='none');
@@ -7410,7 +7434,7 @@ function whCountView(){
   // الجرد ممكن يتعمل في إكسل بره (على الموبايل في المخزن) ويترفع هنا،
   // بدل ما المستخدم يكتب ألف صنف بإيده.
   let html = `<div class="msg warn" style="margin-bottom:12px">
-    <b>تقدر ترفع الجرد من إكسل:</b> نزّل ورقة الجرد من "تصدير Excel" فوق، املا عمود
+    <b>تقدر ترفع الجرد من إكسل:</b> نزّل ورقة الجرد من «📤 تصدير الجرد» تحت، املا عمود
     <b>الجرد الفعلي</b>، وارفع الملف هنا تاني.
     <div class="row" style="margin-top:8px">
       <input type="file" id="whCountFile" accept=".xls,.xlsx">
@@ -7433,7 +7457,9 @@ function whCountView(){
     <button class="fam-btn${whCountMode === 'result' ? '' : ' ghost'}" data-cmode="result">📊 نتيجة الجرد
       <span class="fam-n"${whCountMode === 'result' ? '' : ' style="background:var(--panel2)"'}>${shortItems + overItems}</span></button>
   </div>
-  ${nkSection('whCntExp', '📤 تصدير الجرد', `عجز ${shortItems} · زيادة ${overItems}`,
+`;
+  // التصدير بيتحط **تحت** الجدول (تحت اللي بتصدّره)، مش فوقه
+  const cntExport = nkSection('whCntExp', '📤 تصدير الجرد', `عجز ${shortItems} · زيادة ${overItems}`,
     `<div class="sub" style="margin:0 0 8px">كل زرار بيطلّع ملفه على طول — مش محتاج تظبط حاجة قبله.</div>
      <div class="nk-exp" style="margin:0">
        <div class="nk-exp-lbl"><span class="pill">🔻🔺 العجز والزيادة بس (${shortItems + overItems} صنف)</span></div>
@@ -7450,9 +7476,10 @@ function whCountView(){
          <button class="nk-x" data-cxp="all.pdf"><span>📄</span>PDF</button>
          <button class="nk-x" data-cxp="all.img"><span>🖼️</span>صورة</button>
        </div>
-     </div>`)}`;
+     </div>`);
   if(whCountMode === 'result'){
-    return {html: html + whCountResultHtml(detail), count: `عجز ${shortItems} · زيادة ${overItems}`};
+    return {html: html + whCountResultHtml(detail) + cntExport,
+            count: `عجز ${shortItems} · زيادة ${overItems}`};
   }
   // الجدول بيحترم "اخفي الأصناف اللي رصيدها صفر"، بس أي صنف انت جردته فعلًا
   // بيفضل ظاهر عشان تقدر تعدّله أو تشيله.
@@ -7487,6 +7514,7 @@ function whCountView(){
       <td class="wh-num whCountDiff" style="${dCol}">${dTxt}</td></tr>`;
   });
   html += '</tbody></table></div>';
+  html += cntExport;
   return {html, count: `${tblRows.length} صنف — اتجرد ${counted}`};
 }
 
@@ -8383,6 +8411,11 @@ function finBalance(month){
   // لو المستخدم رفع نص السنة بس، والقائمة بتتوازن من غير فروق وهمية.
   const pl = leaves.filter(r => /^[34]/.test(r[0]));
   const retained = -pl.reduce((a,r)=> a + finClose(r), 0);
+  /* أرصدة «أول المدة» لحسابات ٣ و٤: دي أرباح فترة **قبل** أول شهر مرفوع
+     (السنة المالية بدأت قبله، أو البرنامج مرحّل رصيد). الفرق بين الأرباح
+     المرحلة في الميزان وأرباح الشهور المرفوعة بيساويها بالظبط — فبدل ما
+     نقول «فيه شهور ناقصة» بالتخمين، بنقول الرقم وسببه. */
+  const openProfit = -pl.reduce((a,r)=> a + ((Number(r[3])||0) - (Number(r[2])||0)), 0);
   const inc = finIncome(months);
 
   const equity = [
@@ -8414,7 +8447,7 @@ function finBalance(month){
   return {month: last, fixed: fx, cur: cr2, equity: eq2, liab: lb2,
     tFixed, tCur, tAssets: tFixed + tCur, tEq, tLiab, tEqLiab: tEq + tLiab,
     diff: (tFixed + tCur) - (tEq + tLiab),
-    retained, periodProfit: inc.netProfit, stray: inc.stray};
+    retained, periodProfit: inc.netProfit, openProfit, months, stray: inc.stray};
 }
 
 
@@ -8669,8 +8702,21 @@ function finBalanceView(){
     <td class="wh-num" style="color:${Math.abs(B.diff)<1?'inherit':'var(--danger)'}">${finFmt(B.diff)}</td><td></td></tr>`;
   h += '</tbody></table></div>';
   let note = finWarn(B);
-  if(Math.abs(B.retained - B.periodProfit) > 1){
-    note += `<div class="msg warn">الأرباح المرحلة في الميزان (${finFmt(B.retained)}) مختلفة عن أرباح الشهور المرفوعة (${finFmt(B.periodProfit)}) — يعني فيه شهور من نفس السنة لسه مترفعتش.</div>`;
+  const gap = B.retained - B.periodProfit;
+  if(Math.abs(gap) > 1){
+    const explained = Math.abs(gap - B.openProfit) < 1;
+    const first = (B.months && B.months.length) ? finMonthLabel(B.months[0]) : '';
+    note += `<div class="msg ${explained ? 'warn' : 'err'}">
+      <b>الأرباح المرحلة في الميزان ${finFmt(B.retained)}</b> = رصيد حسابات الإيرادات والمصروفات
+      آخر ${esc(finMonthLabel(B.month))}، و<b>أرباح الشهور المرفوعة ${finFmt(B.periodProfit)}</b>
+      = حركة الشهور دي بس. الفرق <b>${finFmt(gap)}</b>.`
+      + (explained
+        ? `<br>الفرق ده = <b>أرصدة «أول المدة»</b> لحسابات ٣ و٤ (${finFmt(B.openProfit)})، يعني
+           أرباح فترة <b>قبل ${esc(first)}</b> — أول شهر مرفوع. لو عايز الرقمين يتطابقوا،
+           ارفع الشهور من بداية السنة المالية.`
+        : `<br>أرصدة «أول المدة» لحسابات ٣ و٤ = ${finFmt(B.openProfit)}، والباقي
+           (${finFmt(gap - B.openProfit)}) مش مفسّر — غالبًا فيه شهر من نفس السنة لسه مترفعش.`)
+      + `</div>`;
   }
   return {html: note + h, count: `المركز المالي كما في ${finMonthLabel(B.month)}`};
 }
@@ -10321,13 +10367,30 @@ function gvCalc(o){
     {qty:0, cart:0, w:0, v:0});
   return {rows, t};
 }
+/* وحدة التصدير: الطلبية ممكن تتبعت للمورد بالقطعة أو بالكرتونة —
+   المستخدم بيختار قبل ما يصدّر، والاختيار بيتحفظ. */
+const GV_UNIT_LABEL = {pieces: 'بالقطعة', cartons: 'بالكرتونة', both: 'الاتنين'};
+function gvUnit(){ return GV.expUnit || 'both'; }
+function gvOrderCols(){
+  const u = gvUnit();
+  const q = u === 'cartons' ? [] : ['الكمية (قطعة)'];
+  const k = u === 'pieces' ? [] : ['عدد الكراتين'];
+  return ['م','الكود CODE','اسم الصنف'].concat(q, ['محتوى الكرتونة'], k,
+    ['وزن القطعة (كجم)','اجمالي الوزن (كجم)']);
+}
 const GV_ORDER_COLS = ['م','الكود CODE','اسم الصنف','الكمية (قطعة)','محتوى الكرتونة','عدد الكراتين','وزن القطعة (كجم)','اجمالي الوزن (كجم)'];
 function gvOrderBlocks(o){
   const c = gvCalc(o);
-  const rows = c.rows.map((r, i)=> [i+1, r.code, r.name, nkR(r.qty, 2), nkR(r.pcs, 2), nkR(r.cartons, 2), nkR(r.weight, 4), nkR(r.totalW, 2)]);
-  const tot = ['', '', 'الإجمالي', nkR(c.t.qty, 2), '', nkR(c.t.cart, 2), '', nkR(c.t.w, 2)];
+  const u = gvUnit();
+  const rows = c.rows.map((r, i)=> [i+1, r.code, r.name]
+    .concat(u === 'cartons' ? [] : [nkR(r.qty, 2)], [nkR(r.pcs, 2)],
+            u === 'pieces' ? [] : [nkR(r.cartons, 2)], [nkR(r.weight, 4), nkR(r.totalW, 2)]));
+  const tot = ['', '', 'الإجمالي']
+    .concat(u === 'cartons' ? [] : [nkR(c.t.qty, 2)], [''],
+            u === 'pieces' ? [] : [nkR(c.t.cart, 2)], ['', nkR(c.t.w, 2)]);
   tot.__cls = 'total-row'; rows.push(tot);
-  return [{title: `طلبية جيفيز رقم ${o.no} — ${nkDateAr(o.date)}`, head: GV_ORDER_COLS, rows}];
+  return [{title: `طلبية جيفيز رقم ${o.no} — ${nkDateAr(o.date)} (${GV_UNIT_LABEL[u]})`,
+           head: gvOrderCols(), rows}];
 }
 NK_EXPORTERS['gvOrd'] = ()=> ({blocks: gvOrderBlocks(gvOrder()), title: `طلبية جيفيز ${gvOrder().no}`, subtitle: `طلبية رقم ${gvOrder().no} — ${nkDateAr(gvOrder().date)}`});
 
@@ -11270,7 +11333,12 @@ function gvOrdersHtml(){
         <td></td><td class="wh-num">${nkF(c.t.w, 2)}</td><td></td></tr>
     </tbody></table></div>`}
     <div class="row" style="margin-top:8px"><button id="gvAddRow">+ سطر صنف</button></div>
-    ${nkBar('gvOrd')}
+    ${nkBar('gvOrd', `<label class="chk" style="gap:6px">وحدة التصدير
+      <select id="gvExpUnit" style="padding:4px 8px">
+        <option value="both"${gvUnit()==='both'?' selected':''}>الاتنين (قطعة + كرتونة)</option>
+        <option value="pieces"${gvUnit()==='pieces'?' selected':''}>بالقطعة بس</option>
+        <option value="cartons"${gvUnit()==='cartons'?' selected':''}>بالكرتونة بس</option>
+      </select></label>`)}
   </div>`;
 }
 
@@ -11387,6 +11455,9 @@ function gvWire(el, refresh){
      على الأزرار **جوه الشاشة اللي بنربطها** مش بـ id في الصفحة كلها، وإلا
      أزرار شاشة بتشتغل على خانات الشاشة التانية المخفية. */
   const one = (k)=> el.querySelector(`[data-gvi="${k}"]`);
+
+  const eu = el.querySelector('#gvExpUnit');
+  if(eu) eu.onchange = ()=>{ GV.expUnit = eu.value; gvSave(); refresh(); };
 
   // ---- تاب الأصناف ----
   const q = one('q');
