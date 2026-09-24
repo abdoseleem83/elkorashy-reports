@@ -1273,7 +1273,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v171';
+const APP_VERSION = 'v172';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -10891,14 +10891,18 @@ function itHtml(){
       <td style="text-align:right">${esc(r.sector||'—')}</td>
       ${stores.map(st=>`<td class="wh-num">${r.bal[st]?whFmt(r.bal[st]):''}</td>`).join('')}
       <td class="wh-num">${r.sales?whFmt(Math.round(r.sales)):''}</td>
+      <td style="white-space:nowrap">
+        <button class="ghost" data-itedit="${esc(r.name)}" title="تعديل الصنف" style="padding:3px 9px">✏️</button>
+        <button class="ghost" data-itdel="${esc(r.name)}" title="شيل الصنف من الدليل" style="padding:3px 9px">🗑</button>
+      </td>
     </tr>`).join('');
   const table = `
   <div class="card" data-fold="📋 جدول الأصناف" data-fold-open>
     <div class="tbl-wrap" style="max-height:620px"><table><thead><tr>
       <th>م</th><th>الصنف</th><th>موجود في</th><th>المجموعة</th><th>الفرعية</th>
       <th>اللون</th><th>اللفة</th><th>القطاع</th>
-      ${stores.map(s=>`<th>${esc(s)}</th>`).join('')}<th>مبيعات</th>
-    </tr></thead><tbody>${body || `<tr><td colspan="${9+stores.length}" class="sub">مفيش أصناف مطابقة.</td></tr>`}</tbody></table></div>
+      ${stores.map(s=>`<th>${esc(s)}</th>`).join('')}<th>مبيعات</th><th>تعديل</th>
+    </tr></thead><tbody>${body || `<tr><td colspan="${10+stores.length}" class="sub">مفيش أصناف مطابقة.</td></tr>`}</tbody></table></div>
     ${rows.length>600?`<div class="sub" style="margin-top:6px">بيعرض أول ٦٠٠ صنف — ضيّق البحث عشان تشوف الباقي.</div>`:''}
     <div class="nk-exp" style="margin-top:12px">
       <div class="nk-exp-lbl">تصدير الجدول المعروض</div>
@@ -10933,17 +10937,30 @@ function itColors(){
 }
 
 // صنف واحد جه جديد؟ متضطرش ترفع الشيت كله — اكتبه هنا واختار مجموعته.
+/* نفس الكارت بيشتغل «إضافة» و«تعديل»: زرار ✏️ في الجدول بيحمّل الصنف جواه
+   وبيفتحه. الاسم لو اتغيّر بنربط القديم بالجديد (IT.alias) عشان المبيعات
+   والأرصدة القديمة تفضل تتبع الصنف. */
+var itEditName = null;
 function itAddHtml(){
   const mains = itMains(), colors = itColors();
   const opt = (v)=> `<option value="${esc(v)}">${esc(v)}</option>`;
+  const ed = itEditName ? (whCatalog[itEditName] || {}) : null;
+  const gv = itEditName ? ((GV.items || []).find(x=> normName(x.name) === normName(itEditName)) || {}) : {};
+  const V = (v)=> v === undefined || v === null ? '' : esc(v);
   return `
-  <div class="card">
-    <h2 style="margin:0">➕ ضيف صنف جديد</h2>
-    <div class="sub" style="margin-top:6px">اكتب اسم الصنف واختار مجموعته وهو بيتضاف لدليل الأصناف على طول —
-      من غير ما ترفع الشيت كله. كل الأقسام (المخازن · المبيعات · جيفز · البونص) هتشوفه.</div>
+  <div class="card"${ed ? ' data-fold-open' : ''}>
+    <div class="flex-between">
+      <h2 style="margin:0">${ed ? '✏️ تعديل الصنف' : '➕ ضيف صنف جديد'}</h2>
+      ${ed ? '<button class="ghost" id="itNwCancel">✖️ إلغاء التعديل</button>' : ''}
+    </div>
+    <div class="sub" style="margin-top:6px">${ed
+      ? 'بتعدّل: <b>' + esc(itEditName) + '</b> — غيّر اللي تحب ودوس «حفظ التعديل». لو غيّرت الاسم،'
+        + ' التطبيق هيربط الاسم القديم بالجديد عشان المبيعات والأرصدة القديمة ما تضيعش.'
+      : 'اكتب اسم الصنف واختار مجموعته وهو بيتضاف لدليل الأصناف على طول —'
+        + ' من غير ما ترفع الشيت كله. كل الأقسام (المخازن · المبيعات · جيفز · البونص) هتشوفه.'}</div>
     <div class="it-add" style="margin-top:10px">
       <label class="it-f"><span>اسم الصنف *</span>
-        <input type="text" id="itNwName" placeholder="اكتب اسم الصنف بالظبط زي الشيت"></label>
+        <input type="text" id="itNwName" value="${itEditName ? V(itEditName) : ''}" placeholder="اكتب اسم الصنف بالظبط زي الشيت"></label>
       <label class="it-f"><span>المجموعة الرئيسية *</span>
         <select id="itNwMain">${mains.map(opt).join('')}<option value="__new">➕ مجموعة جديدة…</option></select></label>
       <label class="it-f" id="itNwMainNewWrap" style="display:none"><span>اسم المجموعة الجديدة</span>
@@ -10952,27 +10969,53 @@ function itAddHtml(){
       <label class="it-f" id="itNwSubNewWrap" style="display:none"><span>اسم الفرعية الجديدة</span>
         <input type="text" id="itNwSubNew"></label>
       <label class="it-f"><span>اللون</span>
-        <input type="text" id="itNwColor" list="itNwColors" placeholder="اختياري"></label>
-      <label class="it-f"><span>محتوى اللفة</span><input type="number" id="itNwRoll" step="any" placeholder="0"></label>
+        <input type="text" id="itNwColor" list="itNwColors" value="${ed ? V(ed.color) : ''}" placeholder="اختياري"></label>
+      <label class="it-f"><span>محتوى اللفة</span><input type="number" id="itNwRoll" step="any" value="${ed ? V(ed.roll) : ''}" placeholder="0"></label>
       <label class="it-f"><span>الاسم الأساسي (من غير اللون)</span>
-        <input type="text" id="itNwBase" placeholder="اختياري — لمقارنة الألوان"></label>
+        <input type="text" id="itNwBase" value="${ed ? V(ed.base) : ''}" placeholder="اختياري — لمقارنة الألوان"></label>
     </div>
     <datalist id="itNwColors">${colors.map(c=> `<option value="${esc(c)}">`).join('')}</datalist>
     <div class="sub" style="margin-top:12px">لو الصنف ده بيتطلب من <b>جيفز</b> كمان، عبّي الخانات دي (اختيارية):</div>
     <div class="it-add" style="margin-top:6px">
-      <label class="it-f"><span>كود جيفز</span><input type="text" id="itNwCode"></label>
-      <label class="it-f"><span>وزن القطعة (كجم)</span><input type="number" id="itNwW" step="any"></label>
-      <label class="it-f"><span>سعر القطعة $</span><input type="number" id="itNwP" step="any"></label>
-      <label class="it-f"><span>محتوى الكرتونة</span><input type="number" id="itNwPcs" step="any"></label>
+      <label class="it-f"><span>كود جيفز</span><input type="text" id="itNwCode" value="${V(gv.code)}"></label>
+      <label class="it-f"><span>وزن القطعة (كجم)</span><input type="number" id="itNwW" step="any" value="${V(gv.weight)}"></label>
+      <label class="it-f"><span>سعر القطعة $</span><input type="number" id="itNwP" step="any" value="${V(gv.price)}"></label>
+      <label class="it-f"><span>محتوى الكرتونة</span><input type="number" id="itNwPcs" step="any" value="${V(gv.pcs)}"></label>
     </div>
-    <div class="row" style="margin-top:12px"><button class="secondary" id="itNwSave">💾 ضيف الصنف</button></div>
+    <div class="row" style="margin-top:12px"><button class="secondary" id="itNwSave">💾 ${ed ? 'حفظ التعديل' : 'ضيف الصنف'}</button></div>
     <div id="itNwMsg" style="margin-top:8px">${IT.nwMsg || ''}</div>
   </div>`;
 }
 
 function itNwWire(){
   const mainS = $('itNwMain'), subS = $('itNwSub'), btn = $('itNwSave');
+  // أزرار السطور (شغالة حتى لو الكارت نفسه مش موجود)
+  document.querySelectorAll('#itApp [data-itedit]').forEach(b=> b.onclick = ()=>{
+    itEditName = b.dataset.itedit;
+    IT.nwMsg = '';
+    renderIT();
+    const card = [...document.querySelectorAll('#itApp .card')]
+      .find(c=> /تعديل الصنف/.test((c.querySelector('h2')||{}).textContent || ''));
+    if(card){
+      card.classList.remove('folded');
+      if(typeof setFold === 'function') setFold(card, false, true);
+      try{ card.scrollIntoView({behavior:'smooth', block:'start'}); }catch(e){}
+    }
+  });
+  document.querySelectorAll('#itApp [data-itdel]').forEach(b=> b.onclick = async ()=>{
+    const nm = b.dataset.itdel;
+    if(!whCatalog[nm]) return alert('الصنف ده مش في دليل الأصناف (جاي من المبيعات أو جيفز) — مفيش حاجة تتشال.');
+    if(!confirm('تشيل «' + nm + '» من دليل الأصناف؟\nمبيعاته وأرصدته القديمة مش هتتمسح، بس مجموعته واللفة هيضيعوا.')) return;
+    delete whCatalog[nm];
+    whMarkCatDirty(nm); itCatBump();
+    try{ await saveWhCatalog(); }catch(e){ scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف'); }
+    whUpdateLocalCache();
+    if(itEditName === nm) itEditName = null;
+    renderIT();
+  });
   if(!mainS || !subS || !btn) return;
+  const cancel = $('itNwCancel');
+  if(cancel) cancel.onclick = ()=>{ itEditName = null; IT.nwMsg = ''; renderIT(); };
   const say = (h)=>{ IT.nwMsg = h; itSave(); const m = $('itNwMsg'); if(m) m.innerHTML = h; };
   const curMain = ()=> mainS.value === '__new' ? (($('itNwMainNew') || {}).value || '') : mainS.value;
   const fillSubs = ()=>{
@@ -10981,7 +11024,11 @@ function itNwWire(){
       + list.map(x=> `<option value="${esc(x)}">${esc(x)}</option>`).join('')
       + '<option value="__new">➕ فرعية جديدة…</option>';
     const w = $('itNwSubNewWrap'); if(w) w.style.display = 'none';
+    if(edRow && edRow.sub && [...subS.options].some(o=> o.value === edRow.sub)) subS.value = edRow.sub;
   };
+  // في وضع التعديل: القوايم تفتح على مجموعة الصنف وفرعيته
+  const edRow = itEditName ? (whCatalog[itEditName] || {}) : null;
+  if(edRow && edRow.main && [...mainS.options].some(o=> o.value === edRow.main)) mainS.value = edRow.main;
   // مفيش مجموعات في الدليل لسه؟ يبقى أول اختيار لازم يكون «جديدة»
   if(!mainS.value) mainS.value = '__new';
   const syncMain = ()=>{
@@ -11003,7 +11050,10 @@ function itNwWire(){
     if(!main) return say('<div class="msg err">اختار المجموعة الرئيسية أو اكتب واحدة جديدة.</div>');
     const sub = subS.value === '__new' ? val('itNwSubNew') : normName(subS.value);
     // نفس الاسم موجود = تعديل، واسم قريب منه = غالبًا الصنف نفسه مكتوب بشكل تاني
-    if(whCatalog[name]){
+    const editing = itEditName;
+    if(editing){
+      // تعديل صريح — مفيش أسئلة
+    }else if(whCatalog[name]){
       if(!confirm('«' + name + '» موجود في الدليل بالفعل. تحدّث بياناته؟')) return;
     }else{
       const near = itCatOf(name);
@@ -11016,6 +11066,15 @@ function itNwWire(){
       whCatalog[name] = {main, sub, roll: nkN(($('itNwRoll') || {}).value),
         color: val('itNwColor'), base: val('itNwBase')};
       whMarkCatDirty(name);
+      // اتغيّر الاسم؟ نشيل القديم ونربطه بالجديد عشان المبيعات/الأرصدة تتبعه
+      if(editing && normName(editing) !== normName(name)){
+        delete whCatalog[editing];
+        whMarkCatDirty(editing);
+        IT.alias[normName(editing)] = name;
+        itSave();
+        (GV.items || []).forEach(x=>{ if(normName(x.name) === normName(editing)) x.name = name; });
+        gvSave();
+      }
       itCatBump();
       try{ await saveWhCatalog(); }
       catch(e){ scheduleSave('whCatalog', saveWhCatalog, 'دليل الأصناف'); }
@@ -11034,9 +11093,13 @@ function itNwWire(){
         else { GV.items.push(rec); gvMsg = ' · واتضاف لدليل جيفز'; }
         gvSave();
       }
-      ['itNwName','itNwMainNew','itNwSubNew','itNwColor','itNwRoll','itNwBase','itNwCode','itNwW','itNwP','itNwPcs']
-        .forEach(id=>{ const e = $(id); if(e) e.value = ''; });
-      say('<div class="msg ok">تم: <b>' + esc(name) + '</b> اتحفظ في دليل الأصناف ('
+      if(!editing){
+        ['itNwName','itNwMainNew','itNwSubNew','itNwColor','itNwRoll','itNwBase','itNwCode','itNwW','itNwP','itNwPcs']
+          .forEach(id=>{ const e = $(id); if(e) e.value = ''; });
+      }
+      itEditName = null;
+      say('<div class="msg ok">تم: <b>' + esc(name) + '</b> '
+        + (editing ? 'اتعدّل' : 'اتحفظ') + ' في دليل الأصناف ('
         + esc(main) + (sub ? ' · ' + esc(sub) : '') + ')' + gvMsg
         + ' — الإجمالي ' + Object.keys(whCatalog).length + ' صنف.</div>');
       renderIT();
