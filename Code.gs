@@ -70,18 +70,64 @@ function runs_(rowNums){
   return out;
 }
 
-function findRows_(sh, key){
-  if(sh.getLastRow() < 2) return [];
-  var n = sh.getLastRow() - 1;
-  // مهم: نقرا العمودين A و B لوحدهم، والعمود D لوحده — من غير ما نلمس عمود
-  // القيمة (C) اللي فيه ملايين الحروف.
-  var head = sh.getRange(2, 1, n, 2).getValues();
-  var vers = sh.getRange(2, 4, n, 1).getValues();
-  var rows = [];
-  for(var i = 0; i < head.length; i++){
-    if(head[i][0] === key){
-      rows.push({row: i + 2, idx: Number(head[i][1]) || 0, ver: String((vers[i] && vers[i][0]) || '')});
+/* ---- فهرس المفاتيح (key -> أرقام صفوفه) ----
+   قبل كده findRows_ كان بيقرا عمود A كامل (كل صفوف الشيت) في **كل** get/set/merge/union
+   — يعني كل ما البيانات تكبر (شهور أكتر، مخازن أكتر) كل عملية بقت بتاخد وقت أطول،
+   وده أكبر سبب في إن الحفظ بقى بطيء وبيوصل لمهلة السيرفر (وبالتبعية بيانات تتضيع
+   بسبب طلبات بتقطع في نصها). دلوقتي بنبني فهرس {key: [rows...]} مرة، ونخزنه في
+   CacheService (6 ساعات)، وبعد كده كل عملية بتروح على طول لصفوفها من غير ما تمسح
+   الشيت كله. الفهرس بيتحدّث تلقائي مع كل كتابة (kvSetLocked_/kvDelete_). */
+var INDEX_CACHE_KEY_ = 'kv_index_v1';
+
+function rebuildIndex_(sh){
+  var idx = {};
+  var last = sh.getLastRow();
+  if(last >= 2){
+    var n = last - 1;
+    var head = sh.getRange(2, 1, n, 1).getValues();
+    for(var i = 0; i < head.length; i++){
+      var k = head[i][0];
+      if(!k) continue; // صف متفضّي (تومبستون) من مسح/تصغير قديم
+      (idx[k] = idx[k] || []).push(i + 2);
     }
+  }
+  saveIndex_(idx);
+  return idx;
+}
+
+function saveIndex_(idx){
+  try{ CacheService.getScriptCache().put(INDEX_CACHE_KEY_, JSON.stringify(idx), 21600); }catch(e){}
+}
+
+function loadIndex_(sh){
+  try{
+    var raw = CacheService.getScriptCache().get(INDEX_CACHE_KEY_);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return rebuildIndex_(sh);
+}
+
+// بيرجع صفوف مفتاح معيّن. بيستخدم الفهرس (نداء واحد بدل مسح الشيت كله)، وبيتحقق
+// إن عمود A لسه فعلًا نفس المفتاح في الصفوف دي (دفاعًا عن فهرس قديم/كاش فاضل من
+// قبل تعديل حصل من نداء تاني) — لو مش متطابق بيعيد بناء الفهرس مرة واحدة ويجرب تاني.
+function findRows_(sh, key, _retried){
+  var idx = loadIndex_(sh);
+  var rowNums = (idx[key] || []).slice().sort(function(a,b){ return a - b; });
+  if(!rowNums.length) return [];
+  var rr = runs_(rowNums);
+  var rows = [];
+  var stale = false;
+  for(var r = 0; r < rr.length; r++){
+    var head = sh.getRange(rr[r].start, 1, rr[r].len, 2).getValues(); // A,B
+    var vers = sh.getRange(rr[r].start, 4, rr[r].len, 1).getValues(); // D
+    for(var i = 0; i < rr[r].len; i++){
+      if(head[i][0] !== key){ stale = true; continue; }
+      rows.push({row: rr[r].start + i, idx: Number(head[i][1]) || 0, ver: String((vers[i] && vers[i][0]) || '')});
+    }
+  }
+  if(stale && !_retried){
+    rebuildIndex_(sh);
+    return findRows_(sh, key, true);
   }
   rows.sort(function(a,b){ return a.idx - b.idx; });
   return rows;
@@ -150,9 +196,21 @@ function kvSet_(key, value){
 // نفس الكتابة بالظبط بس من غير ما تاخد القفل — بتتنادى من جوه قفل مأخود
 // أصلًا (زي action=merge). القفل مش reentrant مضمون في Apps Script، فأخذه
 // مرتين في نفس التنفيذ ممكن يعلّق لحد المهلة.
+// بيمسح مجموعة صفوف (تمسح محتواها بس، من غير deleteRow) — دفعة واحدة لكل
+// مجموعة متتالية. أهم حاجة: ما بتزحلقش أرقام صفوف المفاتيح التانية.
+function blankRows_(sh, rowNums){
+  var rr = runs_(rowNums);
+  for(var r = 0; r < rr.length; r++){
+    var blanks = [];
+    for(var i = 0; i < rr[r].len; i++) blanks.push(['', 0, '', '']);
+    sh.getRange(rr[r].start, 1, rr[r].len, 4).setValues(blanks);
+  }
+}
+
 function kvSetLocked_(key, value){
   {
     var sh = getSheet_();
+    var idx = loadIndex_(sh);
     var str = String(value);
     var raw = [];
     for(var p = 0; p < str.length; p += CHUNK_SIZE){
@@ -165,9 +223,8 @@ function kvSetLocked_(key, value){
     for(var q = 0; q < raw.length; q++) chunks.push([key, q, raw[q], ver]);
 
     // بنكتب فوق صفوف المفتاح نفسه بس، وباقي الشيت ما بيتلمسش.
-    // النسخة القديمة كانت بتقرا وتعيد كتابة كل الشيت في كل حفظ — مع بيانات كتير
-    // ده كان بيقرّب من مهلة الـ6 دقايق بتاعة Apps Script ويخاطر بضياع بيانات مفاتيح تانية
-    // لو الاستدعاء اتقطع في النص.
+    // own جاي من الفهرس، مش من مسح الشيت كله (findRows_ بيتحقق ويصلّح الفهرس
+    // لوحده لو كان قديم).
     var own = findRows_(sh, key).map(function(r){ return r.row; });
     own.sort(function(a,b){ return a - b; });
     var reuse = Math.min(own.length, chunks.length);
@@ -179,14 +236,21 @@ function kvSetLocked_(key, value){
       sh.getRange(wr[w].start, 1, wr[w].len, 4).setValues(chunks.slice(done, done + wr[w].len));
       done += wr[w].len;
     }
+    var finalRows = used.slice();
     if(chunks.length > own.length){
       var extra = chunks.slice(own.length);
-      sh.getRange(sh.getLastRow() + 1, 1, extra.length, 4).setValues(extra);
+      var startRow = sh.getLastRow() + 1;
+      sh.getRange(startRow, 1, extra.length, 4).setValues(extra);
+      for(var e = 0; e < extra.length; e++) finalRows.push(startRow + e);
     } else if(own.length > chunks.length){
-      // الصفوف الزيادة تتمسح من تحت لفوق عشان أرقام الصفوف ما تتزحلقش
-      var surplus = own.slice(chunks.length).sort(function(a,b){ return b - a; });
-      for(var j = 0; j < surplus.length; j++) sh.deleteRow(surplus[j]);
+      // الصفوف الزيادة تتفضّى بس (تومبستون) — مش تتمسح بـdeleteRow. مسح الصف
+      // بيزحلق كل الصفوف اللي تحته صف لفوق، وده كان بيبوّظ فهرس أي مفتاح تاني
+      // مخزّن بعده في الشيت. الصف الفاضي بيرجع يتلمّ لوحده مع action=compact.
+      var surplus = own.slice(chunks.length);
+      blankRows_(sh, surplus);
     }
+    idx[key] = finalRows;
+    saveIndex_(idx);
     SpreadsheetApp.flush();
   }
 }
@@ -196,8 +260,11 @@ function kvDelete_(key){
   lock.waitLock(30000);
   try{
     var sh = getSheet_();
-    var rows = findRows_(sh, key).map(function(r){ return r.row; }).sort(function(a,b){ return b - a; });
-    for(var i = 0; i < rows.length; i++) sh.deleteRow(rows[i]);
+    var idx = loadIndex_(sh);
+    var rows = findRows_(sh, key).map(function(r){ return r.row; });
+    if(rows.length) blankRows_(sh, rows);
+    delete idx[key];
+    saveIndex_(idx);
   } finally {
     lock.releaseLock();
   }
@@ -205,18 +272,36 @@ function kvDelete_(key){
 
 function kvList_(prefix){
   var sh = getSheet_();
-  if(sh.getLastRow() < 2) return [];
-  var values = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
-  var seen = {};
+  var idx = loadIndex_(sh);
   var keys = [];
-  for(var i = 0; i < values.length; i++){
-    var k = values[i][0];
-    if(k && !seen[k] && (!prefix || String(k).indexOf(prefix) === 0)){
-      seen[k] = true;
-      keys.push(k);
-    }
+  for(var k in idx){
+    if(idx[k] && idx[k].length && (!prefix || String(k).indexOf(prefix) === 0)) keys.push(k);
   }
   return keys;
+}
+
+// صيانة اختيارية (action=compact): بتلمّ الصفوف الفاضية اللي خلّفها التومبستون
+// فعليًا (deleteRow حقيقي) وتعيد بناء الفهرس. مش لازم تتنادى كل مرة — الفهرس
+// شغال عادي من غيرها. شغّلها من وقت للتاني (مرة كل شهرين مثلًا) لو حابب تقلّل
+// حجم الشيت. بتاخد قفل كامل عشان ماتتعارضش مع حفظ شغال في نفس اللحظة.
+function compact_(){
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try{
+    var sh = getSheet_();
+    var last = sh.getLastRow();
+    if(last < 2) return {ok:true, removed:0};
+    var n = last - 1;
+    var keys = sh.getRange(2, 1, n, 1).getValues();
+    var removed = 0;
+    for(var i = n; i >= 1; i--){
+      if(!keys[i - 1][0]){ sh.deleteRow(i + 1); removed++; }
+    }
+    rebuildIndex_(sh);
+    return {ok:true, removed: removed};
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function jsonOut_(obj){
@@ -353,6 +438,12 @@ function handle_(e, method){
     if(!req.key) return jsonOut_({ok:false, error:'المسح وصل من غير مفتاح'});
     kvDelete_(req.key);
     return jsonOut_({ok:true, key:req.key});
+  }
+  // صيانة اختيارية: ?action=compact — بتلمّ الصفوف الفاضية وتقلّل حجم الشيت.
+  // مش لازمة للتشغيل العادي، شغّلها بنفسك من وقت للتاني لو حابب.
+  if(action === 'compact'){
+    var res = compact_();
+    return jsonOut_({ok:true, removedRows: res.removed});
   }
   // رسالة تشخيصية: بتقول الطلب وصل إزاي وكان فيه إيه، بدل "unknown action" الجافة
   return jsonOut_({
