@@ -762,7 +762,9 @@
   <div class="flex-between">
     <h2 style="margin:0;font-size:14px">الشهور المطلوب مقارنتها</h2>
     <div class="row">
-      <button class="ghost" id="pdfMonthsAll">تحديد الكل</button>
+      <button class="ghost" id="pdfMonthsAll">كل الشهور</button>
+      <span id="pdfYearBtns" class="row" style="gap:4px"></span>
+      <button class="ghost" id="pdfMonthsLast">آخر شهر</button>
       <button class="ghost" id="pdfMonthsNone">إلغاء الكل</button>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
         تجميع الأعمدة:
@@ -775,6 +777,7 @@
     </div>
   </div>
   <div id="pdfMonthsList" class="row" style="margin-top:8px"></div>
+  <div id="pdfMonthsMissing" style="margin-top:8px"></div>
   <div id="pdfMonthsNote" style="margin-top:10px"></div>
 
   <div class="row" style="margin-top:16px">
@@ -1273,7 +1276,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v172';
+const APP_VERSION = 'v173';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -5550,6 +5553,28 @@ function renderPdfGroupsList(){
 
 function renderPdfMonthsList(){
   const months = activeMonths();
+  /* أزرار سنة جاهزة: «لو مختار سنة يقرا عليها هي». وكمان تحذير لو فيه شهور
+     على السيرفر مش متحمّلة دلوقتي — من غيره التقرير بيطلع بشهور أقل من غير
+     ما حد ياخد باله (بيحصل لما الكاش المحلي يضيق فبيسيب آخر ٦ شهور بس). */
+  const yb = $('pdfYearBtns');
+  if(yb){
+    const years = [...new Set(months.map(m=> String(m).slice(0,4)))].sort();
+    yb.innerHTML = years.map(y=> `<button class="ghost" data-pdfyear="${y}" style="padding:4px 10px">سنة ${y}</button>`).join('');
+    yb.querySelectorAll('[data-pdfyear]').forEach(b=> b.onclick = ()=>{
+      const y = b.dataset.pdfyear;
+      pdfMonthsChoice = months.filter(m=> String(m).slice(0,4) === y);
+      document.querySelectorAll('.pdfMonthChk').forEach(el=>{ el.checked = pdfMonthsChoice.includes(el.value); });
+      updateGrowthHint(); renderPdfGroupsList();
+    });
+  }
+  const miss = (indexedMonths || []).filter(m=> !months.includes(m));
+  const warnBox = $('pdfMonthsMissing');
+  if(warnBox){
+    warnBox.innerHTML = miss.length
+      ? `<div class="msg warn">فيه <b>${miss.length} شهر</b> محفوظ على السيرفر بس <b>مش متحمّل</b> دلوقتي
+         (${esc(miss.map(monthLabel).join('، '))}) — التقرير هيطلع من غيرهم.
+         دوس «🔄 تحديث» فوق أو «حمّلهم تاني» وبعدين صدّر.</div>` : '';
+  }
   $('pdfMonthsList').innerHTML = months.map(m => {
     const on = !pdfMonthsChoice || pdfMonthsChoice.includes(m);
     return `<label class="chk" style="font-size:12.5px;padding:5px 9px">
@@ -5600,6 +5625,13 @@ $on('pdfMonthsAll').addEventListener('click', ()=>{
 $on('pdfMonthsNone').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfMonthChk').forEach(el=> el.checked = false);
   pdfMonthsChoice = [];
+});
+$on('pdfMonthsLast').addEventListener('click', ()=>{
+  const ms = activeMonths();
+  const last = ms[ms.length - 1];
+  pdfMonthsChoice = last ? [last] : [];
+  document.querySelectorAll('.pdfMonthChk').forEach(el=>{ el.checked = el.value === last; });
+  updateGrowthHint(); renderPdfGroupsList();
 });
 $on('pdfGroupsAll').addEventListener('click', ()=>{
   document.querySelectorAll('.pdfGroupChk').forEach(el=> el.checked = true);
