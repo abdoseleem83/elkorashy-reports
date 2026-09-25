@@ -572,7 +572,7 @@
   <div class="row" style="margin-top:10px">
     <div>
       <label>ملف المحاسبة (.xls)</label><br>
-      <input type="file" id="fileInput" accept=".xls,.xlsx">
+      <input type="file" id="fileInput" accept=".xls,.xlsx" multiple>
     </div>
     <div>
       <label>الشهر (لو الملف مفيهوش تاريخ)</label><br>
@@ -2803,26 +2803,88 @@ $on('fileInput').addEventListener('change', ()=>{
   $('processBtn').disabled = !$('fileInput').files.length;
 });
 
+// دمج نتيجة ملف جديد (byMonth) فوق المجموع الكلي (target) — نفس منطق تجميع
+// الأرقام اللي في commitAll، بس هنا بيحصل قبل أي حفظ عشان نقدر نرفّع كذا ملف
+// (شهور مختلفة أو حتى نفس الشهر مقسّم على أكتر من ملف) في رفعة واحدة.
+function mergeByMonthInto(target, src){
+  Object.keys(src).forEach(month=>{
+    if(!target[month]) target[month] = {};
+    Object.keys(src[month]).forEach(cust=>{
+      if(!target[month][cust]) target[month][cust] = {};
+      Object.keys(src[month][cust]).forEach(item=>{
+        const s = src[month][cust][item];
+        if(!target[month][cust][item]) target[month][cust][item] = {cat:'-', net:0, wh:{}};
+        const d = target[month][cust][item];
+        d.net += s.net;
+        d.cat = s.cat;
+        if(!d.wh) d.wh = {};
+        Object.keys(s.wh||{}).forEach(w=>{ d.wh[w] = (d.wh[w]||0) + s.wh[w]; });
+        if(s.q !== undefined){
+          d.q = (d.q || 0) + s.q;
+          if(s.wq){ if(!d.wq) d.wq = {}; Object.keys(s.wq).forEach(w=>{ d.wq[w] = (d.wq[w]||0) + s.wq[w]; }); }
+        }
+      });
+    });
+  });
+  return target;
+}
+
 $on('processBtn').addEventListener('click', async ()=>{
-  const file = $('fileInput').files[0];
+  const files = Array.from($('fileInput').files);
   const fallbackMonth = $('monthInput').value || null;
-  if(!file) return;
-  $('uploadMsg').innerHTML = '<div class="msg warn">بيتم التحليل...</div>';
+  if(!files.length) return;
+  $('uploadMsg').innerHTML = `<div class="msg warn">بيتم تحليل ${files.length > 1 ? files.length + ' ملفات' : 'الملف'}...</div>`;
   try{
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, {type:'array'});
-    const sheetName = wb.SheetNames[0];
-    // التطبيق بيقبل شكلين: تصدير التفاصيل (صف لكل صنف) وتصدير رؤوس
-    // الفواتير (صف لكل فاتورة). بنعرف الشكل من العناوين ونقرا بالمناسب.
-    const rows0 = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:''});
-    const parsed = looksLikeInvoiceHeaders(rows0)
-      ? parseInvoiceHeaders(wb, sheetName, fallbackMonth)
-      : parseFlatWorkbook(wb, sheetName, fallbackMonth);
-    const {byMonth, newItems, skippedRows, noMonthRows, qtyCol, headerNames} = parsed;
-    const {fileTotalVout, sumVout} = parsed;
+    // تجميع كل الملفات في نتيجة واحدة قبل ما نعرض أي رسالة أو نطلب تصنيف —
+    // بالنسبالنا رفع ٣ ملفات مع بعض زي رفع ملف واحد فيه بيانات الثلاثة.
+    const byMonth = {};
+    let newItemsAll = [], skippedRows = 0, noMonthRows = 0, sumVout = 0;
+    let qtyCol = null, headerNames = [];
+    let fileTotalVout = null, totalsKnownForAll = true;
+    let headersOnly = false, invoicesTotal = 0, warehousesAll = [];
+    const perFileNotes = [];
+    for(const file of files){
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, {type:'array'});
+      const sheetName = wb.SheetNames[0];
+      // التطبيق بيقبل شكلين: تصدير التفاصيل (صف لكل صنف) وتصدير رؤوس
+      // الفواتير (صف لكل فاتورة). بنعرف الشكل من العناوين ونقرا بالمناسب.
+      const rows0 = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:''});
+      const parsed = looksLikeInvoiceHeaders(rows0)
+        ? parseInvoiceHeaders(wb, sheetName, fallbackMonth)
+        : parseFlatWorkbook(wb, sheetName, fallbackMonth);
+
+      if(!Object.keys(parsed.byMonth).length){
+        perFileNotes.push(`<div class="msg err"><b>${esc(file.name)}</b>: مقدرش يوصل لشهر لأي صف فيه — اتشال من الرفعة.</div>`);
+        continue;
+      }
+      mergeByMonthInto(byMonth, parsed.byMonth);
+      newItemsAll = newItemsAll.concat(parsed.newItems || []);
+      skippedRows += parsed.skippedRows || 0;
+      noMonthRows += parsed.noMonthRows || 0;
+      sumVout += parsed.sumVout || 0;
+      if(parsed.fileTotalVout !== null && parsed.fileTotalVout !== undefined){
+        fileTotalVout = (fileTotalVout || 0) + parsed.fileTotalVout;
+      } else totalsKnownForAll = false;
+      if(!qtyCol && parsed.qtyCol) qtyCol = parsed.qtyCol;
+      (parsed.headerNames || []).forEach(h => { if(!headerNames.includes(h)) headerNames.push(h); });
+      if(parsed.headersOnly){
+        headersOnly = true;
+        invoicesTotal += parsed.invoices || 0;
+        (parsed.warehouses || []).forEach(w => { if(!warehousesAll.includes(w)) warehousesAll.push(w); });
+      }
+      if(files.length > 1){
+        perFileNotes.push(`<div class="msg ok">${esc(file.name)}: ${Object.keys(parsed.byMonth).sort().map(monthLabel).join('، ')}</div>`);
+      }
+    }
+    // لو ملف واحد بس مالوش إجمالي داخلي، أو أكتر من ملف واختلفوا، الإجمالي
+    // المجمّع مش موثوق فيه فبنسيبه من غير مقارنة بدل ما نعرض فرق غلط.
+    if(!totalsKnownForAll) fileTotalVout = null;
+    const newItems = Array.from(new Set(newItemsAll));
 
     if(!Object.keys(byMonth).length){
-      $('uploadMsg').innerHTML = `<div class="msg err">مقدرتش أوصل لشهر لأي صف — الملف مفيهوش تاريخ صالح أو مش بنفس تنسيق ملفات المحاسبة المعروفة، ومحددتش شهر يدوي. جرب اختار الشهر يدوي وأعد المحاولة.</div>`;
+      $('uploadMsg').innerHTML = perFileNotes.join('')
+        + `<div class="msg err">مقدرتش أوصل لشهر لأي صف من${files.length > 1 ? ' أي ملف من' : ''} اللي رفعته — الملف مفيهوش تاريخ صالح أو مش بنفس تنسيق ملفات المحاسبة المعروفة، ومحددتش شهر يدوي. جرب اختار الشهر يدوي وأعد المحاولة.</div>`;
       return;
     }
 
@@ -2838,7 +2900,8 @@ $on('processBtn').addEventListener('click', async ()=>{
     Object.values(byMonth).forEach(cm => Object.keys(cm).forEach(c => allCustomers.add(c)));
     const unmatched = Array.from(allCustomers).filter(c => !classification[c]);
 
-    let msg = `<div class="msg ok">لقيت بيانات لشهور: ${Object.keys(byMonth).sort().map(monthLabel).join('، ')} (${allCustomers.size} عميل).</div>`;
+    let msg = perFileNotes.join('')
+      + `<div class="msg ok">${files.length > 1 ? `${files.length} ملفات اترفعوا مع بعض — ` : ''}لقيت بيانات لشهور: ${Object.keys(byMonth).sort().map(monthLabel).join('، ')} (${allCustomers.size} عميل).</div>`;
     if(duplicateMonths.length){
       msg += `<div class="msg warn">
         <b>تنبيه:</b> شهور محفوظة عندك خلاص: ${duplicateMonths.sort().map(monthLabel).join('، ')}.<br>
@@ -2847,14 +2910,14 @@ $on('processBtn').addEventListener('click', async ()=>{
         <label style="display:block"><input type="radio" name="dupMode" value="append"> <b>إضافة فوق القديم</b> — اجمع الأرقام (استخدمه بس لو الملف ده جزء تاني من نفس الشهر)</label>
       </div>`;
     }
-    if(parsed.headersOnly){
+    if(headersOnly){
       // مهم: بنضيف التوضيح، مابنستبدلش الرسالة — تحذير الشهور المكررة
       // (اللي بيمنع مضاعفة المبيعات) لازم يفضل ظاهر.
-      msg += `<div class="msg warn"><b>الملف ده تصدير رؤوس الفواتير</b> (${parsed.invoices} فاتورة) — فيه إجمالي كل فاتورة `
+      msg += `<div class="msg warn"><b>${files.length > 1 ? 'فيه ملف أو أكتر' : 'الملف ده'} تصدير رؤوس الفواتير</b> (${invoicesTotal} فاتورة) — فيه إجمالي كل فاتورة `
         + `من غير أصناف. يعني هيشتغل معاك: <b>المبيعات الشهرية والمقارنات وتقارير `
         + `العملاء والمخازن</b>. ومش هيشتغل: <b>تقارير الأصناف والكميات</b> لأن `
         + `الأصناف مش في الملف أصلًا.<br>القطاع اتاخد من المخزن `
-        + `(${parsed.warehouses.map(esc).join(' · ') || 'مفيش مخزن'}) — تقدر تغيّره من شاشة القطاعات.<br>`
+        + `(${warehousesAll.map(esc).join(' · ') || 'مفيش مخزن'}) — تقدر تغيّره من شاشة القطاعات.<br>`
         + `لو عايز تقارير الأصناف، صدّر <b>تفاصيل الفواتير</b> (فيه c_name و Item_Name و vout).</div>`;
     } else if(newItems.length){
       // الأصناف اللي في شيت الأصناف بتاخد قطاعها منه — مش تخمين.
