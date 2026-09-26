@@ -374,7 +374,10 @@
   @media (max-width:560px){ .opt-grid{grid-template-columns:1fr} }
   label.chk{display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--text);
     background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer}
-  label.chk input{width:16px;height:16px;cursor:pointer}
+  /* كان بيشمل أي input جوه label.chk، فحقول الأرقام (زي مصاريف جيفز)
+     اللي بتستعير الكلاس ده للتنسيق كانت بتترص في صندوق ١٦×١٦ بكسل —
+     زي الشيك بوكس تمامًا. خصّصناها بس على الشيك بوكس الحقيقي. */
+  label.chk input[type=checkbox]{width:16px;height:16px;cursor:pointer}
 
   /* ---- طيّ كروت الرفع على الموبايل ----
      شاشة الموبايل كانت بتبدأ بكارت "رفع الملفات" اللي بياخد الشاشة كلها،
@@ -711,12 +714,10 @@
         <option value="both">قيمة وكمية</option>
       </select>
     </label>
-    <label class="chk"><input type="checkbox" id="pdfGrowth"> تقرير النمو المفصّل</label>
   </div>
 
   <div class="opt-sec">أعمدة وتفاصيل الجداول</div>
   <div class="opt-grid">
-    <label class="chk"><input type="checkbox" id="pdfGrowthCols" checked> عمودَي الفرق والنمو %</label>
     <label class="chk"><input type="checkbox" id="pdfShowClass"> عمود التصنيف</label>
     <label class="chk"><input type="checkbox" id="pdfRanks" checked> ميداليات لأعلى 10</label>
     <label class="chk" style="gap:6px">المعروض
@@ -1220,7 +1221,13 @@ function tokenParam(){ return SHARED_TOKEN ? `&token=${encodeURIComponent(SHARED
 
 window.storage = {
   async get(key){
-    const data = await apiFetch(`${APPS_SCRIPT_URL}?action=get&key=${encodeURIComponent(key)}${tokenParam()}`);
+    // مهم جدًا: من غير رقم فريد في الرابط وno-store، الموبايل (وأي بروكسي شبكة
+    // بتاع شركة الاتصالات) بيخزّن رد GET القديم بنفس الرابط ويرجّعه تاني وتاني
+    // حتى بعد ما نصلّح البيانات على السيرفر — وده بالظبط اللي كان بيسبب فرق
+    // النتيجة بين الكمبيوتر (اللي مسح الكاش) والموبايل (اللي فاضل شايل رد قديم).
+    const data = await apiFetch(
+      `${APPS_SCRIPT_URL}?action=get&key=${encodeURIComponent(key)}${tokenParam()}&_t=${Date.now()}`,
+      {cache:'no-store'});
     if(!data.ok){
       if(/unauthorized/i.test(data.error || '')) askAppToken();
       throw new Error(data.error || 'not found');
@@ -1264,7 +1271,9 @@ window.storage = {
     return {key, deleted:true, shared:true};
   },
   async list(prefix){
-    const data = await apiFetch(`${APPS_SCRIPT_URL}?action=list&prefix=${encodeURIComponent(prefix||'')}${tokenParam()}`);
+    const data = await apiFetch(
+      `${APPS_SCRIPT_URL}?action=list&prefix=${encodeURIComponent(prefix||'')}${tokenParam()}&_t=${Date.now()}`,
+      {cache:'no-store'});
     if(!data.ok) throw new Error(data.error || 'list failed');
     return {keys: data.keys || [], prefix, shared:true};
   }
@@ -1286,7 +1295,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v174';
+const APP_VERSION = 'v176';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -4863,8 +4872,10 @@ function generateExcel(includeMonthly, includeSector, opts){
   opts = opts || {};
   const allMonths = activeMonths();
   if(!allMonths.length){ alert('مفيش بيانات لسه'); return; }
-  const includeGrowth = opts.allGroups ? true : $('pdfGrowth').checked;
-  const withGrowthCols = opts.allGroups ? true : $('pdfGrowthCols').checked;
+  // شيلنا الشيك بوكسات دي من واجهة الإعدادات؛ سيبنا القيم الافتراضية القديمة
+  // بتاعتها ثابتة (تقرير النمو المفصّل مقفول، عمودي الفرق والنمو % مفتوحين).
+  const includeGrowth = false;
+  const withGrowthCols = true;
   const withShowClass = $('pdfShowClass') ? $('pdfShowClass').checked : false;
   const includeItems = $('pdfItems') ? $('pdfItems').checked : false;
   if(!includeMonthly && !includeSector && !includeGrowth && !includeItems){
@@ -6111,8 +6122,10 @@ async function generatePdf(includeMonthly, includeSector, opts){
   opts = opts || {};
   const allMonths = activeMonths();
   if(!allMonths.length){ alert('مفيش بيانات لسه'); return; }
-  const includeGrowth = opts.allGroups ? true : $('pdfGrowth').checked;
-  const withGrowthCols = opts.allGroups ? true : $('pdfGrowthCols').checked;
+  // شيلنا الشيك بوكسات دي من واجهة الإعدادات؛ سيبنا القيم الافتراضية القديمة
+  // بتاعتها ثابتة (تقرير النمو المفصّل مقفول، عمودي الفرق والنمو % مفتوحين).
+  const includeGrowth = false;
+  const withGrowthCols = true;
   const withShowClass = $('pdfShowClass') ? $('pdfShowClass').checked : false;
   const withRanks = $('pdfRanks') ? $('pdfRanks').checked : true;
   const includeItems = $('pdfItems') ? $('pdfItems').checked : false;
@@ -6320,7 +6333,6 @@ $on('pdfGenerateBtn').addEventListener('click', ()=>{
   generatePdf($('pdfMonthly').checked, $('pdfSector').checked, {});
 });
 // لو المستخدم فتح تبويب النمو وغيّر الفترتين، اللوحة لازم توضّح الجديد
-$on('pdfGrowth').addEventListener('change', updateGrowthHint);
 $on('exportTitle').addEventListener('input', (e)=>{ exportTitle = e.target.value; });
 $on('exportTitleReset').addEventListener('click', ()=>{
   exportTitle = '';
@@ -7082,8 +7094,8 @@ async function pullChanged(){
   try{
     let srv;
     try{
-      const r = await apiFetch(`${APPS_SCRIPT_URL}?action=get&key=dataVersions${tokenParam()}`,
-                               null, {retries:0});
+      const r = await apiFetch(`${APPS_SCRIPT_URL}?action=get&key=dataVersions${tokenParam()}&_t=${Date.now()}`,
+                               {cache:'no-store'}, {retries:0});
       if(!r || !r.ok) return false;
       srv = JSON.parse(r.value) || {};
     }catch(e){ return false; }
