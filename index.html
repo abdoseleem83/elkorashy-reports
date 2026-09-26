@@ -1145,7 +1145,12 @@ function askAppToken(){
   showTokenNeeded();
 }
 const NET_TIMEOUT_MS = 90000;   // السيرفر ممكن ياخد ٢٠+ ثانية لرد صغير وقت الزحمة
-const NET_RETRIES = 2;
+// كانت 2. رابط الـecho المؤقت بتاع Apps Script (script.googleusercontent.com/macros/echo)
+// بيرجّع 404 عابر لما الرد يكون كبير أو لسه قريب من عملية نشر جديدة — وده مش خطأ
+// حقيقي، بس هيوّز محتاج وقت أطول شوية عشان يستقر. رفعناها لـ4 محاولات وزودنا
+// التباعد بين المحاولات (تحت) عشان النوع ده من الفشل العابر ما يوصلش لحد
+// "مفيش اتصال" ويضيّع شهور موجودة فعلًا على السيرفر.
+const NET_RETRIES = 4;
 
 // أخطاء عابرة بتتحل بإعادة المحاولة. أهمها "unknown action": Apps Script بيعمل
 // redirect للـPOST، والـredirect ساعات بيحوّل الطلب لـGET من غير جسم فالسيرفر
@@ -1201,7 +1206,12 @@ async function apiFetch(url, options, opts){
         ? new Error(`الطلب أخد وقت أطول من ${Math.round(timeoutMs/1000)} ثانية — جرّب وانت على نت أحسن`)
         : e;
       if(looksOffline(lastErr)) networkDown = true;
-      if(attempt < retries) await new Promise(r=> setTimeout(r, 800 * Math.pow(2, attempt)));
+      // 404 من رابط الـecho المؤقت (مش من script.google.com نفسه) غالبًا معناه
+      // "لسه مستقر" مش "مفيش رابط" — نعطيه تباعد أطول من الفشل العادي
+      // (١.٥ ثانية، ٣، ٦، ١٢) بدل (٠.٨، ١.٦، ٣.٢) عشان يلحق يستقر قبل ما نستسلم.
+      const isEchoTransient = /HTTP 404/.test((lastErr && lastErr.message) || '');
+      const baseDelay = isEchoTransient ? 1500 : 800;
+      if(attempt < retries) await new Promise(r=> setTimeout(r, baseDelay * Math.pow(2, attempt)));
     }finally{ clearTimeout(timer); }
   }
   throw lastErr;
@@ -1276,7 +1286,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v173';
+const APP_VERSION = 'v174';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -3082,6 +3092,10 @@ function renderMonthPills(){
     note.innerHTML = excludedMonthsNote({hiddenMonths: reportView.hiddenMonths});
     bindExcludedNote(note);
   }
+  // مهم: الرسالة الفاضية كانت واحدة سواء الحساب فعلًا لسه مفيهوش شهور، أو
+  // القراءة من السيرفر فشلت (نت/رد عابر) والكاش المحلي فاضي — والمستخدم كان
+  // يقرا "لسه معندكش شهور محفوظة" ويصدّقها مع إن الشهور موجودة على السيرفر
+  // فعليًا وبس التحميل فشل. دلوقتي بنفرّق بين الحالتين برسالة وزرار إعادة تحميل.
   $('monthsPills').innerHTML = months.length
     ? months.map(m=>{
         const archived = archivedYears.includes(yearOf(m));
@@ -3089,7 +3103,11 @@ function renderMonthPills(){
         const note = archived ? ' <span class="badge">مؤرشف</span>' : '';
         return `<span class="${cls}">${monthLabel(m)}${note} <span class="ghost" style="cursor:pointer" onclick="deleteMonth('${m}')">✕</span></span>`;
       }).join('')
-    : '<span class="badge">لسه معندكش شهور محفوظة</span>';
+    : (offlineMode
+        ? `<span class="badge" style="background:#fdecea;color:#c0392b">تعذر تحميل الشهور من السيرفر (مفيش اتصال أو رد بطيء) —
+           دوس <span class="ghost" style="cursor:pointer;text-decoration:underline" onclick="location.reload()">🔄 تحديث</span>
+           قبل ما تفتكر إن الشهور اتمسحت.</span>`
+        : '<span class="badge">لسه معندكش شهور محفوظة</span>');
 }
 
 async function deleteMonth(m){
