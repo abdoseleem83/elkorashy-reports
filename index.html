@@ -153,6 +153,17 @@ function saveItem(id){
 function delItem(id){ if(!confirm('حذف الصنف؟')) return; items=items.filter(x=>x.id!==id); save('items_v1',items); render(); }
 
 function renderItems(m){
+  const tabs=['الأصناف','أكواد جيفز','الوحدات'];
+  const st = load('_itemsTab_',0);
+  m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px">
+    ${tabs.map((t,i)=>`<button class="tab ${st===i?'active':''}" onclick="setItemsTab(${i})" style="flex:1;padding:9px;border-radius:9px;background:${st===i?'var(--blue)':'var(--panel2)'};color:${st===i?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13px">${t}</button>`).join('')}
+  </div><div id="it_content"></div>`;
+  if(st===0) renderItemsList($('#it_content'));
+  else if(st===1) renderGvCodes($('#it_content'));
+  else renderUnits($('#it_content'));
+}
+function setItemsTab(n){ save('_itemsTab_',n); render(); }
+function renderItemsList(m){
   const list = items.filter(i => !q || i.name.includes(q) || i.mainGroup.includes(q));
   const groups = [...new Set(list.map(i=>i.mainGroup||'بدون'))];
   if(q) groups.forEach(g=>openGroups.add(g));
@@ -170,8 +181,83 @@ function renderItems(m){
           <div class="act"><button onclick="editItem('${i.id}')">✏️</button><button onclick="delItem('${i.id}')">🗑️</button></div></div>`).join('')}</div></div>`;
     }).join('') : `<div class="empty">لا يوجد أصناف</div>`}
   `;
-  $('#q').oninput=e=>{ q=e.target.value; renderItems(m); };
+  $('#q').oninput=e=>{ q=e.target.value; renderItemsList(m); };
   $('#impItems').onchange=e=>{ if(e.target.files[0]) importItems(e.target.files[0]); };
+}
+function renderGvCodes(m){
+  const list = gvcodes.filter(i => !q || i.name.includes(q) || i.code.includes(q));
+  m.innerHTML = `
+    <div class="impbar">
+      <label>📥 استيراد أكواد جيفز<input type="file" id="impGv" accept=".xlsx,.xls" style="display:none"></label>
+    </div>
+    <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
+    ${list.length? list.map(i=>`<div class="card"><div class="info"><div class="name">${esc(i.name)}</div>
+      <div class="sub">كود: ${esc(i.code||'—')} · القطعة/كرتونة: ${esc(i.perCarton||'—')} · وزن: ${esc(i.weight||'—')}</div></div>
+      <div class="act"><button onclick="editGvCode('${i.id}')">✏️</button><button onclick="delGvCode('${i.id}')">🗑️</button></div></div>`).join('') : `<div class="empty">لا توجد أكواد</div>`}
+  `;
+  $('#q').oninput=e=>{ q=e.target.value; renderGvCodes(m); };
+  $('#impGv').onchange=e=>{ if(e.target.files[0]) importGvCodes(e.target.files[0]); };
+}
+function renderUnits(m){
+  m.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      ${units.length? units.map(u=>`<span class="chip">${esc(u)} <button onclick="delUnit('${esc(u).replace(/'/g,"\\'")}')">✕</button></span>`).join('') : ''}
+    </div>
+    <button class="btn-save" onclick="promptAddUnit()" style="width:100%;padding:10px">➕ إضافة وحدة جديدة</button>
+    ${!units.length? `<div class="empty" style="margin-top:20px">لا توجد وحدات</div>`:''}
+  `;
+}
+function promptAddUnit(){
+  openSheet(`<h3>إضافة وحدة جديدة</h3>
+    <div class="f-row"><label>اسم الوحدة *</label><input id="u_name"></div>
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+    <button class="btn-save" onclick="saveUnit()">حفظ</button></div>`);
+}
+function saveUnit(){
+  const v=$('#u_name').value.trim();
+  if(!v){ toast('اكتب اسم الوحدة'); return; }
+  if(units.includes(v)){ toast('الوحدة موجودة بالفعل'); return; }
+  units.push(v); save('units_v1',units); closeSheet(); render(); toast('تمت الإضافة');
+}
+function delUnit(u){ if(!confirm('حذف الوحدة "'+u+'"؟')) return; units=units.filter(x=>x!==u); save('units_v1',units); render(); }
+function editGvCode(id){
+  const it = id ? gvcodes.find(x=>x.id===id) : {id:'',name:'',code:'',perCarton:'',weight:'',price:''};
+  openSheet(`<h3>${id?'تعديل كود جيفز':'إضافة كود جيفز'}</h3>
+    <div class="f-row"><label>اسم الصنف *</label><input id="g_name" value="${esc(it.name)}"></div>
+    <div class="f-row"><label>الكود</label><input id="g_code" value="${esc(it.code)}"></div>
+    <div class="f-row"><label>عدد القطع بالكرتونة</label><input id="g_pc" type="number" value="${esc(it.perCarton)}"></div>
+    <div class="f-row"><label>وزن القطعة (كجم)</label><input id="g_w" type="number" step="0.001" value="${esc(it.weight)}"></div>
+    <div class="f-row"><label>سعر القطعة ($)</label><input id="g_p" type="number" step="0.001" value="${esc(it.price)}"></div>
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+    <button class="btn-save" onclick="saveGvCode('${id}')">حفظ</button></div>`);
+}
+function saveGvCode(id){
+  const name=$('#g_name').value.trim();
+  if(!name){ toast('اكتب اسم الصنف'); return; }
+  const obj={id:id||uid(), name, code:$('#g_code').value.trim(), perCarton:$('#g_pc').value, weight:$('#g_w').value, price:$('#g_p').value};
+  if(id){ const i=gvcodes.findIndex(x=>x.id===id); gvcodes[i]=obj; } else gvcodes.unshift(obj);
+  save('gvcodes_v1',gvcodes); closeSheet(); render(); toast('تم الحفظ');
+}
+function delGvCode(id){ if(!confirm('حذف الكود؟')) return; gvcodes=gvcodes.filter(x=>x.id!==id); save('gvcodes_v1',gvcodes); render(); }
+function importGvCodes(file){
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets['اكواد جيفز'],{header:1,defval:''});
+      let list=[];
+      for(let i=1;i<rows.length;i++){ const r2=rows[i]; if(!r2[0]) continue;
+        list.push({id:uid(), name:String(r2[0]).trim(), code:String(r2[1]||'').trim(),
+          perCarton:r2[2]||'', weight:r2[3]||'', price:r2[4]||''}); }
+      if(!list.length){ toast('لا توجد بيانات'); return; }
+      pendingImport={type:'gvcodes', list};
+      openSheet(`<h3>تأكيد الاستيراد</h3><p style="font-size:13.5px;color:var(--muted)">
+        ${list.length} كود جيفز — هيتم استبدال القائمة الحالية.</p>
+        <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+        <button class="btn-save" onclick="commitImport()">💾 حفظ</button></div>`);
+    }catch(err){ toast('خطأ في الملف'); }
+  };
+  r.readAsArrayBuffer(file);
 }
 function toggleGroup(g){ if(openGroups.has(g)) openGroups.delete(g); else openGroups.add(g); render(); }
 function importItems(file){
@@ -395,6 +481,7 @@ function renderPayroll(m){ m.innerHTML=`<div class="empty">🚧 قيد البن�
 function commitImport(){
   if(!pendingImport) return;
   if(pendingImport.type==='items'){ items=pendingImport.list; itemsByName={}; items.forEach(i=>itemsByName[i.name]=i); save('items_v1',items); }
+  else if(pendingImport.type==='gvcodes'){ gvcodes=pendingImport.list; save('gvcodes_v1',gvcodes); }
   else if(pendingImport.type==='customers'){ customers=pendingImport.list; save('customers_v1',customers); }
   pendingImport=null; closeSheet(); render(); toast('تم الحفظ');
 }
