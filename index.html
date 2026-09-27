@@ -512,7 +512,10 @@
 
 <div class="app-bar">
   <img id="appLogo" alt="ELKORASHI">
-  <h1>تقارير مبيعات القرشي <span class="badge" id="appVersionBadge" style="font-size:10px;font-weight:400"></span></h1>
+  <h1>تقارير مبيعات القرشي <span class="badge" id="appVersionBadge" style="font-size:10px;font-weight:400"></span>
+    <span id="nkSyncIcon" title="حالة المزامنة (كل الشاشات)" style="cursor:pointer;font-size:15px;margin-right:4px"
+      onclick="document.getElementById('nkSyncPanel').style.display = document.getElementById('nkSyncPanel').style.display === 'none' ? 'block' : 'none';">⏳</span>
+  </h1>
   <button type="button" id="nkFoldAll" class="fold-all" title="طيّ كل الأقسام أو فتحها">🗂 طيّ الكل</button>
 </div>
 <!-- التطبيق قسمين: المبيعات والمخازن. كل واحد بشاشاته وتقاريره. -->
@@ -1048,10 +1051,10 @@
   </div>
 </div><!-- /finApp -->
 
-<!-- شريط صغير جدًا بأيقونات بس بدل الكارت الكبير، وفي آخر الصفحة مش فوق -->
+<!-- شريط صغير جدًا بأيقونات بس بدل الكارت الكبير — الأيقونة الأساسية بقت فوق
+     جنب رقم الإصدار عشان تبقى ظاهرة في كل الشاشات من غير ما تنزل لتحت. -->
 <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin:22px 0 8px;padding:8px;
   font-size:11px;color:var(--muted)">
-  <span id="nkSyncIcon" title="حالة المزامنة" style="cursor:pointer;font-size:16px" onclick="document.getElementById('nkSyncPanel').style.display = document.getElementById('nkSyncPanel').style.display === 'none' ? 'block' : 'none';">⏳</span>
   <span>مزامنة</span>
   <span style="opacity:.4">|</span>
   <span title="نسخة احتياطية / إعدادات" style="cursor:pointer;font-size:16px" onclick="document.getElementById('nkSyncPanel').style.display = document.getElementById('nkSyncPanel').style.display === 'none' ? 'block' : 'none';">⚙️</span>
@@ -1295,7 +1298,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v177';
+const APP_VERSION = 'v179';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -1993,6 +1996,7 @@ async function loadStorage(){
 
   // لو المزامنة فشلت، منكتبش فوق الكاش المحلي بنسخة ناقصة
   offlineMode = netFailed;
+  if(typeof nkSyncBadge === 'function') nkSyncBadge();  // نحدّث الأيقونة الموحّدة فوق فورًا
   if(!netFailed){
     // الكاش بقى مطابق لأختام السيرفر — بس للمفاتيح اللي وصلت فعلًا.
     // أي مفتاح فشل تحميله بيفضل "قديم" عشان نجيبه المرة الجاية.
@@ -9449,21 +9453,21 @@ function whOrderSheetHtml(store, rows, title){
   let html = `<div class="blk" style="font-family:Arial,'Arial Unicode MS','Liberation Sans',Helvetica,sans-serif">
     <div class="grp-title" style="font-size:18px">${esc(title)} — ${esc(store)}</div>
     <div class="tbl-wrap"><table style="font-size:15.5px"><thead><tr>
-      <th style="width:8%;padding:6px 5px">م</th><th style="width:64%;padding:6px 5px">الصنف</th>
-      <th style="width:28%;padding:6px 5px">الكمية المطلوبة</th>
+      <th style="width:8%;padding:6px 5px">م</th><th style="width:52%;padding:6px 5px">الصنف</th>
+      <th style="width:22%;padding:6px 5px">الكمية المطلوبة</th><th style="width:18%;padding:6px 5px">الوحدة</th>
     </tr></thead><tbody>`;
   let lastKey = null, n = 0;
   const totals = {};   // إجمالي اللفف لكل مجموعة رئيسية
   rows.forEach(r=>{
     const key = r.sub || r.main;
     if(key !== lastKey){
-      html += `<tr class="grp-row"><td colspan="3" style="text-align:right;padding:4px 6px">${esc(key)}</td></tr>`;
+      html += `<tr class="grp-row"><td colspan="4" style="text-align:right;padding:4px 6px">${esc(key)}</td></tr>`;
       lastKey = key;
     }
     n++;
     html += `<tr><td style="padding:5px">${n}</td><td style="text-align:right;padding:5px 6px">${esc(r.name)}</td>
-      <td style="padding:5px"><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(r.want)}</span>
-        ${esc(whOrderUnit(r.name))}</td></tr>`;
+      <td style="padding:5px"><span style="direction:ltr;display:inline-block;font-weight:700">${whFmt(r.want)}</span></td>
+      <td style="padding:5px">${esc(whOrderUnit(r.name))}</td></tr>`;
     // الإجمالي بيتجمّع لكل مجموعة × وحدة (مش كل حاجة "لفة")
     const u = whOrderUnit(r.name);
     const tk = r.main + '|' + u;
@@ -9540,9 +9544,15 @@ $on('whImgBtn').addEventListener('click', async ()=>{
       for(const fam of order){
         const t = whFamilyTitle(fam);
         btn.textContent = `بيجهّز ${t}...`;
-        await whDownloadImage(whOrderSheetHtml(store, byFam[fam], 'طلب النواقص — ' + t),
-          'طلب النواقص — ' + t, `نواقص-${t}-${store}`);
-        await new Promise(r=>setTimeout(r, 400));   // المتصفح بيرفض تنزيلات متلاصقة
+        // مهم: كل عائلة في try/catch لوحدها. قبل كده لو مشاركة عائلة (زي
+        // اكسسوارات) فشلت لأي سبب (مثلًا نظام المشاركة لسه مشغول بعائلة
+        // اللي قبلها)، الخطأ كان بيوقف الحلقة كلها فتفضل العائلات اللي
+        // بعدها (ومنها اكسسوارات لو مش الأول) من غير صورة خالص بصمت.
+        try{
+          await whDownloadImage(whOrderSheetHtml(store, byFam[fam], 'طلب النواقص — ' + t),
+            'طلب النواقص — ' + t, `نواقص-${t}-${store}`);
+        }catch(e){ console.error('فشلت صورة', t, e); }
+        await new Promise(r=>setTimeout(r, 600));   // المتصفح بيرفض تنزيلات/مشاركات متلاصقة
       }
     } else {
       const {aoa, title} = whExportAoa();
@@ -10116,6 +10126,21 @@ function nkSet(k, v){
   try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){}
   nkLocalWriteAt[k] = Date.now(); nkCloudPush(k);
 }
+// لما مساحة المتصفح (~5 ميجا لكل الموقع) تخلص وأي حفظ محلي بيفشل، أكبر
+// حاجة شاغلة مساحة هي نسخة كاملة من كل شهور المبيعات القديمة مخزّنة
+// محليًا (cache:monthsData) — ودي أصلًا نسخة ثانية زيادة عن الحاجة، لأن
+// السيرفر بقى فيه نفس البيانات وبيتسحب منه بأمان (بعد تصحيح الكاش).
+// فبدل ما نفضل عالقين برسايل quota، نمسحها ونسيب البيانات المهمة
+// (جيفز/المرتبات/قوائم مالية) تاخد مكانها.
+function nkFreeSomeSpace(skipKey){
+  try{
+    if(localStorage.getItem('cache:monthsData')){
+      localStorage.removeItem('cache:monthsData');
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
 
 // ---- مزامنة جيفز/المرتبات/بونص اكسا بين الأجهزة — بنفس التخزين المركزي
 // (Google Sheets عبر Apps Script) اللي بيشتغل بيه المبيعات والمخازن.
@@ -10135,6 +10160,14 @@ function nkSyncBadge(){
   nkServerModeBadge();
   const icon = document.getElementById('nkSyncIcon');
   const el = document.getElementById('nkSyncStatus');
+  // بقى شامل حالة تحميل شاشة "المبيعات" نفسها كمان (offlineMode)، مش بس
+  // جيفز/المرتبات/قوائم مالية — عشان الأيقونة الواحدة دي فوق تبقى صورة
+  // حقيقية لكل الشاشات مجمّعة، مش بس جزء منها.
+  if(typeof offlineMode !== 'undefined' && offlineMode){
+    if(icon) icon.textContent = '⚠️';
+    if(el){ el.textContent = '⚠️ المبيعات: تعذر التحميل من السيرفر (نت/رد بطيء) — دوس تحديث'; el.style.color = 'var(--danger)'; }
+    return;
+  }
   if(nkSyncState.ok === null){
     if(icon) icon.textContent = '⏳';
     if(el){ el.textContent = '⏳ لسه ما اتزامنش'; el.style.color = 'var(--muted)'; }
@@ -10188,32 +10221,51 @@ async function nkCloudPullAll(silent){
         // النسخة الجاية من السيرفر أقدم من اللي عندنا؟ ما نلمسش حاجة —
         // ونرفع بتاعتنا تاني عشان السيرفر يلحق.
         let srvOld = false;
+        let parsed = null;
         try{
           const sv = JSON.parse(r.value), lv = local ? JSON.parse(local) : null;
+          parsed = sv;
           nkNoteRev(k, nkRev(sv)); nkNoteRev(k, nkRev(lv));
           if(lv && nkRev(sv) < nkRev(lv)) srvOld = true;
         }catch(e){}
         if(srvOld){ nkCloudPush(k); continue; }
         if(r.value !== local){
+          // مهم جدًا: بيانات السيرفر الصحيحة كانت بتوصل هنا فعليًا، بس لو
+          // فشل حفظها محليًا (المساحة خلصت)، الكود القديم كان بيوقف بالكامل
+          // (throw) قبل ما يوصل لتحديث المتغيّر ويعرض البيانات — يعني
+          // الشاشة تفضل فاضية مع إن السيرفر معاه البيانات الصحيحة فعلًا.
+          // دلوقتي: نحدّث المتغيّر ونعرض البيانات على الشاشة **الأول**، وبعد
+          // كده نجرب نخزّنها محليًا كخطوة إضافية (best-effort) من غير ما
+          // فشلها يمنع العرض.
           let toStore = r.value;
+          let cacheOk = true;
           try{ localStorage.setItem(k, toStore); }
           catch(qe){
+            cacheOk = false;
             // مساحة المتصفح خلصت — نقلّم بيانات الشهور القديمة من النسخة الجاية من السيرفر ونجرب تاني
-            if(!/quota/i.test((qe && qe.message) || '')) throw qe;
-            try{
-              const tmp = JSON.parse(toStore);
-              if(tmp.data) nkPruneByMonth(tmp.data, NK_KEEP_MONTHS);
-              if(tmp.att) nkPruneByMonth(tmp.att, NK_KEEP_MONTHS);
-              if(tmp.pay) nkPruneByMonth(tmp.pay, NK_KEEP_MONTHS);
-              toStore = JSON.stringify(tmp);
-              localStorage.setItem(k, toStore);
-            }catch(qe2){ throw qe; }
+            if(/quota/i.test((qe && qe.message) || '')){
+              try{
+                const tmp = JSON.parse(toStore);
+                if(tmp.data) nkPruneByMonth(tmp.data, NK_KEEP_MONTHS);
+                if(tmp.att) nkPruneByMonth(tmp.att, NK_KEEP_MONTHS);
+                if(tmp.pay) nkPruneByMonth(tmp.pay, NK_KEEP_MONTHS);
+                toStore = JSON.stringify(tmp);
+                localStorage.setItem(k, toStore);
+                cacheOk = true;
+              }catch(qe2){ /* لسه مش هينزّل — مش مشكلة، هنعرض من غير كاش */ }
+            }
           }
-          if(k === 'gvData') GV = nkGet('gvData', GV);
-          if(k === 'qpData') QP = nkGet('qpData', QP);
-          if(k === 'fpData') FP = nkGet('fpData', FP);
-          if(k === 'axData') AX = nkGet('axData', AX);
-        if(k === 'itData'){ IT = nkGet('itData', IT); if(!IT.alias) IT.alias = {}; }
+          if(!cacheOk){
+            // نفضّي مساحة من أكبر مفتاح تاني عشان محاولة الحفظ الجاية (لأي
+            // مفتاح) تنجح، بدل ما نفضل عالقين في quota ممتلئ للأبد.
+            try{ nkFreeSomeSpace(k); }catch(e){}
+          }
+          if(parsed == null){ try{ parsed = JSON.parse(toStore); }catch(e){} }
+          if(k === 'gvData') GV = (parsed != null ? parsed : nkGet('gvData', GV));
+          if(k === 'qpData') QP = (parsed != null ? parsed : nkGet('qpData', QP));
+          if(k === 'fpData') FP = (parsed != null ? parsed : nkGet('fpData', FP));
+          if(k === 'axData') AX = (parsed != null ? parsed : nkGet('axData', AX));
+          if(k === 'itData'){ IT = (parsed != null ? parsed : nkGet('itData', IT)); if(!IT.alias) IT.alias = {}; }
           // القسم المقفول مالوش لزمة يترسم — بيترسم أصلًا أول ما تفتحه.
           // الرسم وهو مقفول شغل ضايع، والرسم وهو مفتوح بينط بالشاشة.
           const vis = (id)=>{ const e = document.getElementById(id); return !!(e && e.style.display !== 'none'); };
