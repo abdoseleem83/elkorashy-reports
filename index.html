@@ -76,7 +76,7 @@ table.rep td:first-child,table.rep th:first-child{text-align:right}
 </style>
 </head>
 <body>
-<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.0</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.4</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -121,6 +121,7 @@ const SECTOR_MAP={
 
 let module='items', q='', openGroups=new Set(), pendingImport=null;
 let whFilterMain=new Set(), whFilterSub=new Set();
+let shortMain='', shortSub='';
 
 // nav
 const modules=[{id:'items',icon:'📦',name:'الأصناف'},{id:'warehouses',icon:'🏭',name:'المخازن'},{id:'sales',icon:'🧾',name:'المبيعات'},{id:'gv',icon:'📋',name:'جيفز'},{id:'payroll',icon:'💰',name:'المرتبات'}];
@@ -417,42 +418,64 @@ function importStock(file, whId){
   };
   r.readAsArrayBuffer(file);
 }
-function setOrderQty(whId, name, val){
+function setOrderQty(whId, name, val, unit){
   val=(val||'').trim();
   whShortage[whId]=whShortage[whId]||{};
-  if(!val){ delete whShortage[whId][name]; } else { whShortage[whId][name]={order:val, note:(whShortage[whId][name]||{}).note||''}; }
+  if(!val){ delete whShortage[whId][name]; } else { whShortage[whId][name]={order:val, unit:unit||'', note:(whShortage[whId][name]||{}).note||''}; }
   save('whShortage_v1',whShortage);
 }
+function setOrderUnit(whId, name, unit){
+  if(whShortage[whId] && whShortage[whId][name]){ whShortage[whId][name].unit=unit; save('whShortage_v1',whShortage); }
+}
+function setShortMain(whId, val){ shortMain = val||''; shortSub=''; render(); }
+function setShortSub(whId, val){ shortSub = val||''; render(); }
+function setOrderDate(whId, val){ const d=load('whOrderDate_v1',{}); d[whId]=val; save('whOrderDate_v1',d); }
 function renderWhShortage(m, whId){
   const w=warehouses.find(x=>x.id===whId);
   const stock = whStock[whId] || {};
   const showZero = load('_whShowZero_', true);
   const allMain = [...new Set(items.map(i=>i.mainGroup).filter(Boolean))];
-  let list = whFilterMain.size ? items.filter(i=>whFilterMain.has(i.mainGroup)) : [];
-  if(whFilterSub.size) list = list.filter(i=>whFilterSub.has(i.subGroup));
+  const curMain = shortMain;
+  const allSub = curMain? [...new Set(items.filter(i=>i.mainGroup===curMain).map(i=>i.subGroup).filter(Boolean))] : [];
+  const curSub = shortSub;
+  let list = curMain ? items.filter(i=>i.mainGroup===curMain) : [];
+  if(curSub) list = list.filter(i=>i.subGroup===curSub);
   if(q) list = list.filter(i=>i.name.includes(q));
   if(!showZero) list = list.filter(i=>(stock[i.name]?.balance||0) > 0);
-  const groups = [...new Set(list.map(i=>i.mainGroup))];
-  if(q) groups.forEach(g=>openGroups.add(g));
+  const dates = load('whOrderDate_v1',{});
+  const today = new Date().toISOString().slice(0,10);
+  const orderDate = dates[whId] || today;
   m.innerHTML = `
+    <div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--border)">
+      📦 طلبية نواقص <b>${esc(w.name)}</b> بتاريخ
+      <input type="date" value="${orderDate}" onchange="setOrderDate('${whId}', this.value)" style="border:1px solid var(--border);border-radius:6px;padding:2px 6px;background:var(--panel);color:var(--text)">
+    </div>
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
-    ${groupFilterHtml(allMain, whId)}
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <select onchange="setShortMain('${whId}', this.value)" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px">
+        <option value="">-- المجموعة الرئيسية --</option>
+        ${allMain.map(g=>`<option value="${esc(g)}" ${g===curMain?'selected':''}>${esc(g)}</option>`).join('')}
+      </select>
+      ${curMain? `<select onchange="setShortSub('${whId}', this.value)" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px">
+        <option value="">-- كل الفرعية --</option>
+        ${allSub.map(g=>`<option value="${esc(g)}" ${g===curSub?'selected':''}>${esc(g)}</option>`).join('')}
+      </select>`:''}
+    </div>
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-bottom:10px">
       <input type="checkbox" ${showZero?'checked':''} onchange="save('_whShowZero_', this.checked); render();"> إظهار الأصناف رصيدها صفر
     </label>
-    ${!whFilterMain.size? `<div class="empty">اختار مجموعة رئيسية واحدة أو أكتر من الفلتر فوق عشان تبدأ تكتب طلب الوردر</div>` :
-      groups.length? groups.map(g=>{
-        const rows=list.filter(i=>i.mainGroup===g); const open=openGroups.has(g);
-        return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup('${g}')">
-          <span>${esc(g)} <span class="cnt">(${rows.length})</span></span><span class="arrow">▾</span></div>
-          <div class="grp-body">${rows.map(it=>{
-            const bal = stock[it.name]?.balance || 0;
-            const cur = (whShortage[whId]||{})[it.name]?.order || '';
-            return `<div class="card"><div class="info"><div class="name">${esc(it.name)}</div>
-              <div class="sub">الرصيد: ${bal} ${esc(it.unit||'')}</div></div>
-              <input type="number" placeholder="طلب الوردر" value="${esc(cur)}" style="width:90px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px"
-                onchange="setOrderQty('${whId}','${it.name.replace(/'/g,"\\'")}', this.value)"></div>`;
-          }).join('')}</div></div>`;
+    ${!curMain? `<div class="empty">اختار مجموعة رئيسية من فوق عشان تبدأ تكتب طلب الوردر</div>` :
+      list.length? list.map(it=>{
+        const bal = stock[it.name]?.balance || 0;
+        const rec = (whShortage[whId]||{})[it.name] || {};
+        const unitOpts = units.length? units : [it.unit].filter(Boolean);
+        return `<div class="card"><div class="info"><div class="name">${esc(it.name)}</div>
+          <div class="sub">الرصيد: ${bal} ${esc(it.unit||'')}</div></div>
+          <input type="number" placeholder="الكمية" value="${esc(rec.order||'')}" style="width:70px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px"
+            onchange="setOrderQty('${whId}','${it.name.replace(/'/g,"\\'")}', this.value, document.getElementById('u_${it.id}').value)">
+          <select id="u_${it.id}" onchange="setOrderUnit('${whId}','${it.name.replace(/'/g,"\\'")}', this.value)" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px">
+            ${unitOpts.map(u=>`<option ${((rec.unit||it.unit)===u)?'selected':''}>${esc(u)}</option>`).join('')}
+          </select></div>`;
       }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
     <div class="impbar" style="margin-top:14px">
       <button onclick="exportShortPdf('${whId}')">🖨️ PDF (تفصيلي)</button>
@@ -464,8 +487,8 @@ function renderWhShortage(m, whId){
   $('#q').oninput=e=>{ q=e.target.value; renderWhShortage(m, whId); };
 }
 function unmarkShort(whId,name){ if(!whShortage[whId]) return; delete whShortage[whId][name]; save('whShortage_v1',whShortage); render(); }
+function getOrderDate(whId){ const d=load('whOrderDate_v1',{}); return d[whId] || new Date().toISOString().slice(0,10); }
 function exportOrderSummary(whId){
-
   const w=warehouses.find(x=>x.id===whId);
   const list = Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد طلبات'); return; }
@@ -475,7 +498,7 @@ function exportOrderSummary(whId){
   const html=`<html dir="rtl"><head><meta charset="utf-8"><title>طلب أوردر ${w.name}</title>
     <style>body{font-family:Tahoma,Arial;padding:20px}h2{text-align:center}table{width:100%;border-collapse:collapse;margin-top:16px}
     th,td{border:1px solid #999;padding:10px;text-align:center}th{background:#eee}</style></head><body>
-    <h2>طلب أوردر النواقص</h2><p style="text-align:center">الفرع: ${esc(w.name)} — التاريخ: ${new Date().toLocaleDateString('en-GB')}</p>
+    <h2>طلب أوردر النواقص</h2><p style="text-align:center">الفرع: ${esc(w.name)} — التاريخ: ${getOrderDate(whId)}</p>
     <table><tr>${groups.map(g=>`<th>${esc(g)}</th>`).join('')}</tr><tr>${groups.map(g=>`<td>${byGroup[g]}</td>`).join('')}</tr></table>
     </body></html>`;
   const win=window.open('','_blank'); win.document.write(html); win.document.close();
@@ -485,7 +508,8 @@ function exportShortExcel(whId){
   const w=warehouses.find(x=>x.id===whId);
   const list = Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد نواقص'); return; }
-  const data=[['الصنف','طلب الوردر','ملاحظة'], ...list.map(([n,s])=>[n,s.order,s.note||''])];
+  const data=[['طلبية نواقص '+w.name+' بتاريخ '+getOrderDate(whId)],[],['الصنف','طلب الوردر','الوحدة','ملاحظة'],
+    ...list.map(([n,s])=>[n,s.order,s.unit||'',s.note||''])];
   const ws=XLSX.utils.aoa_to_sheet(data); const wbk=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wbk, ws, 'نواقص');
   XLSX.writeFile(wbk, 'نواقص_'+w.name+'.xlsx');
@@ -497,8 +521,8 @@ function exportShortPdf(whId){
   const html = `<html dir="rtl"><head><meta charset="utf-8"><title>نواقص ${w.name}</title>
     <style>body{font-family:Tahoma,Arial;padding:20px}h2{text-align:center}table{width:100%;border-collapse:collapse}
     th,td{border:1px solid #999;padding:8px;text-align:center}th{background:#eee}</style></head><body>
-    <h2>طلب النواقص - مخزن ${w.name}</h2><table><tr><th>الصنف</th><th>طلب الوردر</th><th>ملاحظة</th></tr>
-    ${list.map(([n,s])=>`<tr><td>${esc(n)}</td><td>${esc(s.order)}</td><td>${esc(s.note||'—')}</td></tr>`).join('')}
+    <h2>طلبية نواقص ${esc(w.name)} بتاريخ ${getOrderDate(whId)}</h2><table><tr><th>الصنف</th><th>طلب الوردر</th><th>الوحدة</th><th>ملاحظة</th></tr>
+    ${list.map(([n,s])=>`<tr><td>${esc(n)}</td><td>${esc(s.order)}</td><td>${esc(s.unit||'—')}</td><td>${esc(s.note||'—')}</td></tr>`).join('')}
     </table></body></html>`;
   const win=window.open('','_blank'); win.document.write(html); win.document.close();
   setTimeout(()=>win.print(), 300);
@@ -512,10 +536,12 @@ function exportShortImage(whId){
     s.onload=()=>exportShortImage(whId); document.head.appendChild(s); return; }
   const el=document.createElement('div');
   el.style.cssText='position:fixed;left:-9999px;top:0;background:#fff;padding:16px;direction:rtl';
-  el.innerHTML=`<table style="border-collapse:collapse;font-family:Tahoma,Arial"><tr>
+  el.innerHTML=`<h3 style="font-family:Tahoma,Arial;text-align:center">طلبية نواقص ${esc(w.name)} بتاريخ ${getOrderDate(whId)}</h3>
+    <table style="border-collapse:collapse;font-family:Tahoma,Arial"><tr>
     <th style="border:1px solid #999;padding:8px;background:#eee">الصنف</th>
-    <th style="border:1px solid #999;padding:8px;background:#eee">طلب الوردر</th></tr>
-    ${list.map(([n,s])=>`<tr><td style="border:1px solid #999;padding:8px">${esc(n)}</td><td style="border:1px solid #999;padding:8px">${esc(s.order)}</td></tr>`).join('')}
+    <th style="border:1px solid #999;padding:8px;background:#eee">طلب الوردر</th>
+    <th style="border:1px solid #999;padding:8px;background:#eee">الوحدة</th></tr>
+    ${list.map(([n,s])=>`<tr><td style="border:1px solid #999;padding:8px">${esc(n)}</td><td style="border:1px solid #999;padding:8px">${esc(s.order)}</td><td style="border:1px solid #999;padding:8px">${esc(s.unit||'—')}</td></tr>`).join('')}
     </table>`;
   document.body.appendChild(el);
   html2canvas(el,{backgroundColor:'#fff'}).then(canvas=>{
