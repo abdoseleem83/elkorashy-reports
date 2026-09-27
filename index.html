@@ -161,15 +161,16 @@ function delItem(id){ if(!confirm('حذف الصنف؟')) return; items=items.fi
 
 function renderItems(m){
   const tabs=['الأصناف','أكواد جيفز','الوحدات'];
-  const st = load('_itemsTab_',0);
+  const st = load('_itemsTab_',null);
   m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px">
     ${tabs.map((t,i)=>`<button class="tab ${st===i?'active':''}" onclick="setItemsTab(${i})" style="flex:1;padding:9px;border-radius:9px;background:${st===i?'var(--blue)':'var(--panel2)'};color:${st===i?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13px">${t}</button>`).join('')}
   </div><div id="it_content"></div>`;
-  if(st===0) renderItemsList($('#it_content'));
+  if(st===null) $('#it_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
+  else if(st===0) renderItemsList($('#it_content'));
   else if(st===1) renderGvCodes($('#it_content'));
   else renderUnits($('#it_content'));
 }
-function setItemsTab(n){ save('_itemsTab_',n); render(); }
+function setItemsTab(n){ const cur=load('_itemsTab_',null); save('_itemsTab_', cur===n?null:n); q=''; render(); }
 function renderItemsList(m){
   const list = items.filter(i => !q || i.name.includes(q) || i.mainGroup.includes(q));
   const groups = [...new Set(list.map(i=>i.mainGroup||'بدون'))];
@@ -306,44 +307,60 @@ function saveWarehouse(id){
 function delWarehouse(id){ if(!confirm('حذف المخزن؟')) return; warehouses=warehouses.filter(x=>x.id!==id); save('warehouses_v1',warehouses); render(); }
 
 function renderWarehouses(m){
-  const whTab = load('_whTab_', 'compare');
+  const whTab = load('_whTab_', null);
   const tabs = [{id:'compare',name:'⚖️ مقارنة الفروع'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
   m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
     ${tabs.map(t=>`<button class="tab ${whTab===t.id?'active':''}" onclick="setWhTab('${t.id}')" style="flex:0 0 auto;padding:9px 12px;border-radius:9px;background:${whTab===t.id?'var(--blue)':'var(--panel2)'};color:${whTab===t.id?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:12.5px;white-space:nowrap">${t.name}</button>`).join('')}
   </div><div id="wh_content"></div>`;
-  if(whTab==='compare') renderWhCompare($('#wh_content'));
+  if(whTab===null) $('#wh_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
+  else if(whTab==='compare') renderWhCompare($('#wh_content'));
   else renderWhDetail($('#wh_content'), whTab);
 }
-function setWhTab(id){ save('_whTab_',id); save('_whSub_',0); render(); }
+function setWhTab(id){ const cur=load('_whTab_',null); save('_whTab_', cur===id?null:id); save('_whSub_',null); render(); }
 
 function renderWhDetail(m, whId){
   const w = warehouses.find(x=>x.id===whId);
   if(!w){ m.innerHTML=`<div class="empty">المخزن غير موجود</div>`; return; }
-  const sub = load('_whSub_',0);
+  const sub = load('_whSub_',null);
   m.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px">
     <button onclick="setWhSub(0)" style="flex:1;padding:9px;border-radius:9px;background:${sub===0?'var(--blue)':'var(--panel2)'};color:${sub===0?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13px">📊 الأرصدة</button>
     <button onclick="setWhSub(1)" style="flex:1;padding:9px;border-radius:9px;background:${sub===1?'var(--blue)':'var(--panel2)'};color:${sub===1?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13px">🧾 طلب النواقص</button>
   </div><div id="wh_sub"></div>`;
-  if(sub===0) renderWhStock($('#wh_sub'), whId); else renderWhShortage($('#wh_sub'), whId);
+  if(sub===null) $('#wh_sub').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
+  else if(sub===0) renderWhStock($('#wh_sub'), whId); else renderWhShortage($('#wh_sub'), whId);
 }
-function setWhSub(n){ save('_whSub_',n); render(); }
+function setWhSub(n){ const cur=load('_whSub_',null); save('_whSub_', cur===n?null:n); render(); }
 
+function groupFilterHtml(allMain, whId){
+  return `<details style="margin-bottom:10px;border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:8px 10px">
+    <summary style="cursor:pointer;font-weight:700;font-size:13px">🔍 فلتر المجموعات ${whFilterMain.size?`(${whFilterMain.size} مختارة)`:''}</summary>
+    <div style="font-size:12px;color:var(--muted);margin:8px 0 4px">المجموعة الرئيسية:</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:8px">
+      ${allMain.map(g=>`<label style="display:flex;align-items:center;gap:5px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px">
+        <input type="checkbox" ${whFilterMain.has(g)?'checked':''} onchange="toggleWhFilter('main','${esc(g).replace(/'/g,"\\'")}','${whId}')"> ${esc(g)}</label>`).join('')}
+    </div>
+    ${whFilterMain.size? (()=>{
+      const allSub=[...new Set(items.filter(i=>whFilterMain.has(i.mainGroup)).map(i=>i.subGroup).filter(Boolean))];
+      return allSub.length? `<div style="font-size:12px;color:var(--muted);margin:8px 0 4px">المجموعة الفرعية:</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
+        ${allSub.map(g=>`<label style="display:flex;align-items:center;gap:5px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px">
+          <input type="checkbox" ${whFilterSub.has(g)?'checked':''} onchange="toggleWhFilter('sub','${esc(g).replace(/'/g,"\\'")}','${whId}')"> ${esc(g)}</label>`).join('')}
+      </div>` : '';
+    })() : ''}
+  </details>`;
+}
 function renderWhStock(m, whId){
   const stock = whStock[whId] || {};
   let list = Object.entries(stock).filter(([name])=>!q || name.includes(q));
   const allMain = [...new Set(Object.keys(stock).map(name=>(itemsByName[name]||{}).mainGroup||'غير مصنف'))];
   if(whFilterMain.size) list = list.filter(([name])=>whFilterMain.has((itemsByName[name]||{}).mainGroup||'غير مصنف'));
-  const allSub = [...new Set(list.map(([name])=>(itemsByName[name]||{}).subGroup).filter(Boolean))];
   if(whFilterSub.size) list = list.filter(([name])=>whFilterSub.has((itemsByName[name]||{}).subGroup));
   const groups = [...new Set(list.map(([name])=>(itemsByName[name]||{}).mainGroup||'غير مصنف'))];
   if(q) groups.forEach(g=>openGroups.add(g));
   m.innerHTML = `
     <div class="impbar"><label>📥 استيراد شيت الأرصدة<input type="file" id="impStock" accept=".xlsx,.xls" style="display:none"></label></div>
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الرئيسية (اختار أكتر من واحدة):</div>
-    <div style="margin-bottom:8px">${allMain.map(g=>`<span class="pill ${whFilterMain.has(g)?'on':''}" onclick="toggleWhFilter('main','${esc(g).replace(/'/g,"\\'")}',  '${whId}')">${esc(g)}</span>`).join('')}</div>
-    ${allSub.length? `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الفرعية:</div>
-    <div style="margin-bottom:8px">${allSub.map(g=>`<span class="pill ${whFilterSub.has(g)?'on':''}" onclick="toggleWhFilter('sub','${esc(g).replace(/'/g,"\\'")}', '${whId}')">${esc(g)}</span>`).join('')}</div>`:''}
+    ${groupFilterHtml(allMain, whId)}
     ${groups.length? groups.map(g=>{
       const rows=list.filter(([name])=>((itemsByName[name]||{}).mainGroup||'غير مصنف')===g); const open=openGroups.has(g);
       return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup('${g}')">
@@ -400,40 +417,55 @@ function importStock(file, whId){
   };
   r.readAsArrayBuffer(file);
 }
-function markShort(whId, name){
-  const cur = (whShortage[whId]||{})[name] || {order:'',note:''};
-  openSheet(`<h3>طلب أوردر: ${esc(name)}</h3>
-    <div class="f-row"><label>طلب الوردر (الكمية) *</label><input id="sh_order" type="number" value="${esc(cur.order)}"></div>
-    <div class="f-row"><label>ملاحظة</label><input id="sh_note" value="${esc(cur.note)}"></div>
-    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
-    <button class="btn-save" onclick="saveShort('${whId}','${name.replace(/'/g,"\\'")}')">حفظ</button></div>`);
-}
-function saveShort(whId, name){
-  const order=$('#sh_order').value.trim(); if(!order){ toast('اكتب الكمية'); return; }
+function setOrderQty(whId, name, val){
+  val=(val||'').trim();
   whShortage[whId]=whShortage[whId]||{};
-  whShortage[whId][name]={order, note:$('#sh_note').value.trim()};
-  save('whShortage_v1',whShortage); closeSheet(); toast('تم تسجيل الطلب');
+  if(!val){ delete whShortage[whId][name]; } else { whShortage[whId][name]={order:val, note:(whShortage[whId][name]||{}).note||''}; }
+  save('whShortage_v1',whShortage);
 }
-function unmarkShort(whId,name){ if(!confirm('حذف من طلب النواقص؟')) return; delete whShortage[whId][name]; save('whShortage_v1',whShortage); render(); }
 function renderWhShortage(m, whId){
   const w=warehouses.find(x=>x.id===whId);
-  const list = Object.entries(whShortage[whId]||{});
+  const stock = whStock[whId] || {};
+  const showZero = load('_whShowZero_', true);
+  const allMain = [...new Set(items.map(i=>i.mainGroup).filter(Boolean))];
+  let list = whFilterMain.size ? items.filter(i=>whFilterMain.has(i.mainGroup)) : [];
+  if(whFilterSub.size) list = list.filter(i=>whFilterSub.has(i.subGroup));
+  if(q) list = list.filter(i=>i.name.includes(q));
+  if(!showZero) list = list.filter(i=>(stock[i.name]?.balance||0) > 0);
+  const groups = [...new Set(list.map(i=>i.mainGroup))];
+  if(q) groups.forEach(g=>openGroups.add(g));
   m.innerHTML = `
-    <div class="impbar">
+    <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
+    ${groupFilterHtml(allMain, whId)}
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-bottom:10px">
+      <input type="checkbox" ${showZero?'checked':''} onchange="save('_whShowZero_', this.checked); render();"> إظهار الأصناف رصيدها صفر
+    </label>
+    ${!whFilterMain.size? `<div class="empty">اختار مجموعة رئيسية واحدة أو أكتر من الفلتر فوق عشان تبدأ تكتب طلب الوردر</div>` :
+      groups.length? groups.map(g=>{
+        const rows=list.filter(i=>i.mainGroup===g); const open=openGroups.has(g);
+        return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup('${g}')">
+          <span>${esc(g)} <span class="cnt">(${rows.length})</span></span><span class="arrow">▾</span></div>
+          <div class="grp-body">${rows.map(it=>{
+            const bal = stock[it.name]?.balance || 0;
+            const cur = (whShortage[whId]||{})[it.name]?.order || '';
+            return `<div class="card"><div class="info"><div class="name">${esc(it.name)}</div>
+              <div class="sub">الرصيد: ${bal} ${esc(it.unit||'')}</div></div>
+              <input type="number" placeholder="طلب الوردر" value="${esc(cur)}" style="width:90px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px"
+                onchange="setOrderQty('${whId}','${it.name.replace(/'/g,"\\'")}', this.value)"></div>`;
+          }).join('')}</div></div>`;
+      }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
+    <div class="impbar" style="margin-top:14px">
       <button onclick="exportShortPdf('${whId}')">🖨️ PDF (تفصيلي)</button>
       <button onclick="exportShortExcel('${whId}')">📊 إكسل</button>
       <button onclick="exportShortImage('${whId}')">🖼️ صورة</button>
     </div>
     <div class="impbar"><button onclick="exportOrderSummary('${whId}')" style="background:var(--blue);color:#fff">🖨️ طباعة الأوردر (ملخّص بالمجموعات)</button></div>
-    <div id="short_table">
-    ${list.length? `<table class="rep" id="short_print"><tr><th>الصنف</th><th>طلب الوردر</th><th>ملاحظة</th><th></th></tr>
-      ${list.map(([name,s])=>`<tr><td>${esc(name)}</td><td>${esc(s.order)}</td><td>${esc(s.note||'—')}</td>
-        <td><button onclick="unmarkShort('${whId}','${name.replace(/'/g,"\\'")}')" style="border:none;background:none;color:var(--danger);cursor:pointer">✕</button></td></tr>`).join('')}
-      </table>` : `<div class="empty">لا يوجد نواقص مسجّلة — من تاب الأرصدة دوس ⚠️ جنب أي صنف لتسجيل طلب أوردر له</div>`}
-    </div>
   `;
+  $('#q').oninput=e=>{ q=e.target.value; renderWhShortage(m, whId); };
 }
+function unmarkShort(whId,name){ if(!whShortage[whId]) return; delete whShortage[whId][name]; save('whShortage_v1',whShortage); render(); }
 function exportOrderSummary(whId){
+
   const w=warehouses.find(x=>x.id===whId);
   const list = Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد طلبات'); return; }
@@ -472,12 +504,23 @@ function exportShortPdf(whId){
   setTimeout(()=>win.print(), 300);
 }
 function exportShortImage(whId){
+  const w=warehouses.find(x=>x.id===whId);
+  const list = Object.entries(whShortage[whId]||{});
+  if(!list.length){ toast('لا يوجد نواقص'); return; }
   if(!window.html2canvas){ toast('جاري تحميل مكتبة الصور...'); const s=document.createElement('script');
     s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
     s.onload=()=>exportShortImage(whId); document.head.appendChild(s); return; }
-  const el=$('#short_print'); if(!el){ toast('لا يوجد نواقص'); return; }
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;left:-9999px;top:0;background:#fff;padding:16px;direction:rtl';
+  el.innerHTML=`<table style="border-collapse:collapse;font-family:Tahoma,Arial"><tr>
+    <th style="border:1px solid #999;padding:8px;background:#eee">الصنف</th>
+    <th style="border:1px solid #999;padding:8px;background:#eee">طلب الوردر</th></tr>
+    ${list.map(([n,s])=>`<tr><td style="border:1px solid #999;padding:8px">${esc(n)}</td><td style="border:1px solid #999;padding:8px">${esc(s.order)}</td></tr>`).join('')}
+    </table>`;
+  document.body.appendChild(el);
   html2canvas(el,{backgroundColor:'#fff'}).then(canvas=>{
-    const link=document.createElement('a'); link.download='نواقص.png'; link.href=canvas.toDataURL(); link.click();
+    const link=document.createElement('a'); link.download='نواقص_'+w.name+'.png'; link.href=canvas.toDataURL(); link.click();
+    el.remove();
   });
 }
 function renderWhCompare(m){
@@ -523,15 +566,16 @@ function renderSales(m){
     m.innerHTML=`<div class="empty">ابدأ باستيراد عملاء ومبيعات</div>`; return; 
   }
   const tabs=['عملاء','استيراد','مقارنة'];
-  const st = load('_salesTab_',0);
+  const st = load('_salesTab_',null);
   m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px">
     ${tabs.map((t,i)=>`<button class="tab ${st===i?'active':''}" onclick="setSalesTab(${i})" style="flex:1;padding:9px;border-radius:9px;background:${st===i?'var(--blue)':'var(--panel2)'};color:${st===i?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700">${t}</button>`).join('')}
   </div><div id="st_content"></div>`;
-  if(st===0) renderSalesCustomers($('#st_content'));
+  if(st===null) $('#st_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
+  else if(st===0) renderSalesCustomers($('#st_content'));
   else if(st===1) renderSalesImport($('#st_content'));
   else renderSalesReport($('#st_content'));
 }
-function setSalesTab(n){ save('_salesTab_',n); render(); }
+function setSalesTab(n){ const cur=load('_salesTab_',null); save('_salesTab_', cur===n?null:n); q=''; render(); }
 function renderSalesCustomers(m){
   const list = customers.filter(c=>!q || c.name.includes(q));
   const allGroups=['غير مصنف',...CLS_OPTS];
