@@ -1298,7 +1298,7 @@ function migrateClassification(cls){
   });
   return out;
 }
-const APP_VERSION = 'v179';
+const APP_VERSION = 'v180';
 
 // ---- القطاعات ----
 // "ابواب WPC" و"شتر وبلسيه" بتتفصل في شيت لوحدها في كل تقرير (PDF/إكسل)، وبتتستبعد من
@@ -2181,18 +2181,18 @@ function activeMonths(){
   return Object.keys(monthsData).filter(m => !archivedYears.includes(yearOf(m))).sort();
 }
 function allYears(){
-  return Array.from(new Set(Object.keys(monthsData).map(yearOf))).sort();
+  return Array.from(new Set(indexedMonths.map(yearOf))).sort();
 }
 function renderArchivePanel(){
   const years = allYears();
   const available = years.filter(y => !archivedYears.includes(y));
   $('archivableYears').innerHTML = available.map(y=>{
-    const count = Object.keys(monthsData).filter(m=>yearOf(m)===y).length;
+    const count = indexedMonths.filter(m=>yearOf(m)===y).length;
     return `<button class="secondary" data-archive-year="${y}">أرشف ${y} (${count} شهر)</button>`;
   }).join('') || '<span class="badge">مفيش سنين متاحة للأرشفة</span>';
 
   $('archivedYears').innerHTML = archivedYears.slice().sort().map(y=>{
-    const count = Object.keys(monthsData).filter(m=>yearOf(m)===y).length;
+    const count = indexedMonths.filter(m=>yearOf(m)===y).length;
     return `<span class="pill done" style="display:inline-flex;align-items:center;gap:8px">
       ${y} (${count} شهر) <button class="ghost" data-restore-year="${y}" style="padding:2px 8px">رجّعها</button>
     </span>`;
@@ -2204,6 +2204,9 @@ function renderArchivePanel(){
       if(!confirm(`تأرشف سنة ${y}؟ هتختفي من التقرير الحالي بس هتفضل محفوظة وتقدر ترجّعها في أي وقت.`)) return;
       archivedYears.push(y);
       try{ await saveArchivedYears(); }catch(e){ alert('حفظ الأرشفة فشل: ' + e.message); archivedYears = archivedYears.filter(x=>x!==y); return; }
+      // نفضّي المساحة فورًا لحظة الأرشفة (مش بس وقت الضيق) — الشهور دي
+      // فضلت محفوظة كاملة على السيرفر، فمن السهل نجيبها تاني بزرار "رجّعها".
+      Object.keys(monthsData).filter(m=>yearOf(m)===y).forEach(m=> delete monthsData[m]);
       updateLocalCache();
       renderArchivePanel(); renderMonthPills(); renderReport();
     });
@@ -2213,6 +2216,15 @@ function renderArchivePanel(){
       const y = btn.getAttribute('data-restore-year');
       archivedYears = archivedYears.filter(x=>x!==y);
       try{ await saveArchivedYears([y]); }catch(e){ alert('الاستعادة فشلت: ' + e.message); archivedYears.push(y); return; }
+      // البيانات كانت اتشالت من الذاكرة وقت الأرشفة (لتوفير المساحة) —
+      // نجيبها تاني من السيرفر دلوقتي بعد ما رجّعناها.
+      const yearMonths = indexedMonths.filter(m=>yearOf(m)===y);
+      btn.textContent = 'بيرجّع...';
+      for(const m of yearMonths){
+        if(monthsData[m]) continue;
+        try{ monthsData[m] = await getMonthValue(m); }
+        catch(e){ failedMonths.push(m); }
+      }
       updateLocalCache();
       renderArchivePanel(); renderMonthPills(); renderReport();
     });
@@ -9423,7 +9435,12 @@ const WH_UNITS = ['لفة','قطعة','كرتونة','كيس','عود'];
 function whOrderUnit(name){
   const it = whItem(name);
   const u = it && it.unit;
-  return (u && WH_UNITS.includes(u)) ? u : (whRoll(name) > 0 ? 'لفة' : 'قطعة');
+  if(u && WH_UNITS.includes(u)) return u;          // عدّلها المستخدم بإيده — لها الأولوية دايمًا
+  if(whRoll(name) > 0) return 'لفة';
+  // الافتراضي: كرتونة لأي صنف في مجموعة الاكسسوارات (لو مش لفة ومالوش
+  // تعديل يدوي)، وقطعة لغيرها — زي ما طلب صاحب الشغل.
+  const fam = whFamilyOf(it && it.main);
+  return fam === 'acc' ? 'كرتونة' : 'قطعة';
 }
 
 // صفوف الأوردر المطلوبة فعلًا (اللي المستخدم كتب قدامها رقم)
