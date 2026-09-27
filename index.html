@@ -76,7 +76,7 @@ table.rep td:first-child,table.rep th:first-child{text-align:right}
 </style>
 </head>
 <body>
-<header><h1>🧾 تقارير القرشي</h1><span class="ver">v1.0</span></header>
+<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.0</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -102,6 +102,12 @@ let itemsByName = {}; items.forEach(i=>{ itemsByName[i.name]=i; });
 let gvcodes = load('gvcodes_v1', []);
 let units = load('units_v1', ['لفة','عود','متر','كرتونة','قطعة','كيلو','كيس']);
 let warehouses = load('warehouses_v1', []);
+if(!warehouses.length){
+  warehouses=[{id:uid(),name:'طنطا',location:'',type:'مخزن رئيسي'},{id:uid(),name:'الاسكندرية',location:'',type:'مخزن رئيسي'}];
+  save('warehouses_v1',warehouses);
+}
+let whStock = load('whStock_v1', {});      // {whId:{itemName:{balance,rolls,rods}}}
+let whShortage = load('whShortage_v1', {}); // {whId:{itemName:{needed,note}}}
 let customers = load('customers_v1', []);
 let monthlySales = load('monthlySales_v1', {});
 let monthlySector = load('monthlySector_v1', {});
@@ -288,42 +294,175 @@ function editWarehouse(id){
   openSheet(`<h3>${id?'تعديل مخزن':'إضافة مخزن'}</h3>
     <div class="f-row"><label>اسم المخزن *</label><input id="w_name" value="${esc(w.name)}"></div>
     <div class="f-row"><label>الموقع</label><input id="w_location" value="${esc(w.location)}"></div>
-    <div class="f-row"><label>النوع *</label><select id="w_type">
-      <option ${w.type==='مخزن رئيسي'?'selected':''}>مخزن رئيسي</option>
-      <option ${w.type==='فرع'?'selected':''}>فرع</option>
-      <option ${w.type==='عرض'?'selected':''}>عرض</option></select></div>
     <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button><button class="btn-save" onclick="saveWarehouse('${id}')">حفظ</button></div>`);
 }
 function saveWarehouse(id){
   const name=$('#w_name').value.trim(); if(!name){ toast('اكتب اسم المخزن'); return; }
-  const obj={id:id||uid(), name, location:$('#w_location').value.trim(), type:$('#w_type').value};
+  const obj={id:id||uid(), name, location:$('#w_location').value.trim(), type:'مخزن رئيسي'};
   if(id){ const i=warehouses.findIndex(x=>x.id===id); warehouses[i]=obj; } else warehouses.unshift(obj);
   save('warehouses_v1',warehouses); closeSheet(); render(); toast('تم الحفظ');
 }
 function delWarehouse(id){ if(!confirm('حذف المخزن؟')) return; warehouses=warehouses.filter(x=>x.id!==id); save('warehouses_v1',warehouses); render(); }
+
 function renderWarehouses(m){
-  const list = warehouses.filter(w=>!q || w.name.includes(q) || w.location.includes(q));
-  const groups = ['مخزن رئيسي','فرع','عرض'].filter(t=>list.some(w=>w.type===t));
+  const whTab = load('_whTab_', 'compare');
+  const tabs = [{id:'compare',name:'⚖️ مقارنة الفروع'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
+  m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
+    ${tabs.map(t=>`<button class="tab ${whTab===t.id?'active':''}" onclick="setWhTab('${t.id}')" style="flex:0 0 auto;padding:9px 12px;border-radius:9px;background:${whTab===t.id?'var(--blue)':'var(--panel2)'};color:${whTab===t.id?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:12.5px;white-space:nowrap">${t.name}</button>`).join('')}
+  </div><div id="wh_content"></div>`;
+  if(whTab==='compare') renderWhCompare($('#wh_content'));
+  else renderWhDetail($('#wh_content'), whTab);
+}
+function setWhTab(id){ save('_whTab_',id); save('_whSub_',0); render(); }
+
+function renderWhDetail(m, whId){
+  const w = warehouses.find(x=>x.id===whId);
+  if(!w){ m.innerHTML=`<div class="empty">المخزن غير موجود</div>`; return; }
+  const sub = load('_whSub_',0);
+  m.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px">
+    <button onclick="setWhSub(0)" style="flex:1;padding:9px;border-radius:9px;background:${sub===0?'var(--blue)':'var(--panel2)'};color:${sub===0?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13px">📋 الجرد</button>
+    <button onclick="setWhSub(1)" style="flex:1;padding:9px;border-radius:9px;background:${sub===1?'var(--blue)':'var(--panel2)'};color:${sub===1?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13px">⚠️ النواقص</button>
+  </div><div id="wh_sub"></div>`;
+  if(sub===0) renderWhStock($('#wh_sub'), whId); else renderWhShortage($('#wh_sub'), whId);
+}
+function setWhSub(n){ save('_whSub_',n); render(); }
+
+function renderWhStock(m, whId){
+  const stock = whStock[whId] || {};
+  const list = Object.entries(stock).filter(([name])=>!q || name.includes(q));
+  const groups = [...new Set(list.map(([name])=>(itemsByName[name]||{}).mainGroup||'غير مصنف'))];
+  if(q) groups.forEach(g=>openGroups.add(g));
   m.innerHTML = `
+    <div class="impbar"><label>📥 استيراد شيت الجرد<input type="file" id="impStock" accept=".xlsx,.xls" style="display:none"></label></div>
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
-    ${groups.length? groups.map(t=>{
-      const rows=list.filter(w=>w.type===t); const open=openGroups.has(t);
-      return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup('${t}')">
-        <span>${t} <span class="cnt">(${rows.length})</span></span><span class="arrow">▾</span></div>
-        <div class="grp-body">${rows.map(w=>`<div class="card"><div class="info"><div class="name">${esc(w.name)}</div>
-          <div class="sub">${w.location?esc(w.location):''}</div></div>
-          <div class="act"><button onclick="editWarehouse('${w.id}')">✏️</button><button onclick="delWarehouse('${w.id}')">🗑️</button></div></div>`).join('')}</div></div>`;
-    }).join('') : `<div class="empty">لا توجد مخازن</div>`}
+    ${groups.length? groups.map(g=>{
+      const rows=list.filter(([name])=>((itemsByName[name]||{}).mainGroup||'غير مصنف')===g); const open=openGroups.has(g);
+      return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup('${g}')">
+        <span>${esc(g)} <span class="cnt">(${rows.length})</span></span><span class="arrow">▾</span></div>
+        <div class="grp-body">${rows.map(([name,s])=>{
+          const unit=(itemsByName[name]||{}).unit||'—';
+          return `<div class="card"><div class="info"><div class="name">${esc(name)}</div>
+          <div class="sub">الرصيد: ${s.balance||0} ${esc(unit)}</div></div>
+          <div class="act"><button onclick="markShort('${whId}','${name.replace(/'/g,"\\'")}')">⚠️</button></div></div>`;
+        }).join('')}</div></div>`;
+    }).join('') : `<div class="empty">لا توجد بيانات جرد لهذا المخزن — استورد الشيت</div>`}
   `;
-  $('#q').oninput=e=>{ q=e.target.value; renderWarehouses(m); };
+  $('#q').oninput=e=>{ q=e.target.value; renderWhStock(m, whId); };
+  $('#impStock').onchange=e=>{ if(e.target.files[0]) importStock(e.target.files[0], whId); };
+}
+function importStock(file, whId){
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      const sn = wb.SheetNames.find(n=>n.includes('رصيد')) || wb.SheetNames[0];
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
+      const hdr = rows[0].map(h=>String(h||'').trim());
+      const ni = hdr.findIndex(h=>h.includes('صنف'));
+      const bi = hdr.findIndex(h=>h.includes('رصيد')||h.includes('كمية'));
+      if(ni<0 || bi<0){ toast('لم يتم التعرف على أعمدة الصنف/الرصيد — تأكد من العناوين'); return; }
+      const map={};
+      for(let i=1;i<rows.length;i++){ const row=rows[i]; if(!row[ni]) continue;
+        map[String(row[ni]).trim()] = {balance:row[bi]||0}; }
+      pendingImport={type:'stock', whId, map};
+      openSheet(`<h3>تأكيد استيراد الجرد</h3><p style="font-size:13.5px;color:var(--muted)">
+        ${Object.keys(map).length} صنف — هيتم استبدال بيانات الجرد الحالية لهذا المخزن.</p>
+        <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+        <button class="btn-save" onclick="commitImport()">💾 حفظ</button></div>`);
+    }catch(err){ toast('خطأ في الملف'); }
+  };
+  r.readAsArrayBuffer(file);
+}
+function markShort(whId, name){
+  const cur = (whShortage[whId]||{})[name] || {needed:'',note:''};
+  openSheet(`<h3>تسجيل نقص: ${esc(name)}</h3>
+    <div class="f-row"><label>الكمية المطلوبة *</label><input id="sh_needed" type="number" value="${esc(cur.needed)}"></div>
+    <div class="f-row"><label>ملاحظة</label><input id="sh_note" value="${esc(cur.note)}"></div>
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+    <button class="btn-save" onclick="saveShort('${whId}','${name.replace(/'/g,"\\'")}')">حفظ</button></div>`);
+}
+function saveShort(whId, name){
+  const needed=$('#sh_needed').value.trim(); if(!needed){ toast('اكتب الكمية'); return; }
+  whShortage[whId]=whShortage[whId]||{};
+  whShortage[whId][name]={needed, note:$('#sh_note').value.trim()};
+  save('whShortage_v1',whShortage); closeSheet(); toast('تم تسجيل النقص');
+}
+function unmarkShort(whId,name){ if(!confirm('حذف من قائمة النواقص؟')) return; delete whShortage[whId][name]; save('whShortage_v1',whShortage); render(); }
+function renderWhShortage(m, whId){
+  const w=warehouses.find(x=>x.id===whId);
+  const list = Object.entries(whShortage[whId]||{});
+  m.innerHTML = `
+    <div class="impbar">
+      <button onclick="exportShortPdf('${whId}')">🖨️ PDF</button>
+      <button onclick="exportShortExcel('${whId}')">📊 إكسل</button>
+      <button onclick="exportShortImage('${whId}')">🖼️ صورة</button>
+    </div>
+    <div id="short_table">
+    ${list.length? `<table class="rep" id="short_print"><tr><th>الصنف</th><th>المطلوب</th><th>ملاحظة</th><th></th></tr>
+      ${list.map(([name,s])=>`<tr><td>${esc(name)}</td><td>${esc(s.needed)}</td><td>${esc(s.note||'—')}</td>
+        <td><button onclick="unmarkShort('${whId}','${name.replace(/'/g,"\\'")}')" style="border:none;background:none;color:var(--danger);cursor:pointer">✕</button></td></tr>`).join('')}
+      </table>` : `<div class="empty">لا يوجد نواقص مسجّلة — من تاب الجرد دوس ⚠️ جنب أي صنف لتسجيله كناقص</div>`}
+    </div>
+  `;
+}
+function exportShortExcel(whId){
+  const w=warehouses.find(x=>x.id===whId);
+  const list = Object.entries(whShortage[whId]||{});
+  if(!list.length){ toast('لا يوجد نواقص'); return; }
+  const data=[['الصنف','المطلوب','ملاحظة'], ...list.map(([n,s])=>[n,s.needed,s.note||''])];
+  const ws=XLSX.utils.aoa_to_sheet(data); const wbk=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wbk, ws, 'نواقص');
+  XLSX.writeFile(wbk, 'نواقص_'+w.name+'.xlsx');
+}
+function exportShortPdf(whId){
+  const w=warehouses.find(x=>x.id===whId);
+  const list = Object.entries(whShortage[whId]||{});
+  if(!list.length){ toast('لا يوجد نواقص'); return; }
+  const html = `<html dir="rtl"><head><meta charset="utf-8"><title>نواقص ${w.name}</title>
+    <style>body{font-family:Tahoma,Arial;padding:20px}h2{text-align:center}table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #999;padding:8px;text-align:center}th{background:#eee}</style></head><body>
+    <h2>نواقص مخزن ${w.name}</h2><table><tr><th>الصنف</th><th>المطلوب</th><th>ملاحظة</th></tr>
+    ${list.map(([n,s])=>`<tr><td>${esc(n)}</td><td>${esc(s.needed)}</td><td>${esc(s.note||'—')}</td></tr>`).join('')}
+    </table></body></html>`;
+  const win=window.open('','_blank'); win.document.write(html); win.document.close();
+  setTimeout(()=>win.print(), 300);
+}
+function exportShortImage(whId){
+  if(!window.html2canvas){ toast('جاري تحميل مكتبة الصور...'); const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload=()=>exportShortImage(whId); document.head.appendChild(s); return; }
+  const el=$('#short_print'); if(!el){ toast('لا يوجد نواقص'); return; }
+  html2canvas(el,{backgroundColor:'#fff'}).then(canvas=>{
+    const link=document.createElement('a'); link.download='نواقص.png'; link.href=canvas.toDataURL(); link.click();
+  });
+}
+function renderWhCompare(m){
+  const allGroups=new Set();
+  warehouses.forEach(w=>Object.keys(whStock[w.id]||{}).forEach(name=>allGroups.add((itemsByName[name]||{}).mainGroup||'غير مصنف')));
+  const groups=[...allGroups];
+  if(!groups.length){ m.innerHTML=`<div class="empty">لا توجد بيانات جرد كافية للمقارنة — استورد شيت الجرد لكل مخزن أولاً</div>`; return; }
+  const rows = groups.map(g=>{
+    const cells = warehouses.map(w=>{
+      const stock = whStock[w.id]||{};
+      let sum=0; Object.entries(stock).forEach(([name,s])=>{ if(((itemsByName[name]||{}).mainGroup||'غير مصنف')===g) sum+=Number(s.balance)||0; });
+      return sum;
+    });
+    return {g, cells};
+  });
+  m.innerHTML = `<div style="overflow-x:auto"><table class="rep">
+    <tr><th>المجموعة</th>${warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')}</tr>
+    ${rows.map(r=>`<tr><td>${esc(r.g)}</td>${r.cells.map(c=>`<td>${c.toLocaleString('en-US')}</td>`).join('')}</tr>`).join('')}
+  </table></div>`;
 }
 
 // ========== SALES ==========
 function editCustomer(id){
-  const c = id? customers.find(x=>x.id===id) : {id:'',name:'',cls:'موزع'};
+  const c = id? customers.find(x=>x.id===id) : {id:'',name:'',cls:''};
   openSheet(`<h3>${id?'تعديل عميل':'إضافة عميل'}</h3>
     <div class="f-row"><label>اسم العميل *</label><input id="c_name" value="${esc(c.name)}"></div>
-    <div class="f-row"><label>التصنيف *</label><select id="c_cls">${CLS_OPTS.map(o=>`<option ${o===c.cls?'selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="f-row"><label>التصنيف *</label><select id="c_cls">
+      <option value="" ${!c.cls?'selected':''}>-- اختار التصنيف --</option>
+      ${CLS_OPTS.map(o=>`<option ${o===c.cls?'selected':''}>${o}</option>`).join('')}</select></div>
     <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button><button class="btn-save" onclick="saveCustomer('${id}')">حفظ</button></div>`);
 }
 function saveCustomer(id){
@@ -350,14 +489,15 @@ function renderSales(m){
 function setSalesTab(n){ save('_salesTab_',n); render(); }
 function renderSalesCustomers(m){
   const list = customers.filter(c=>!q || c.name.includes(q));
-  const groups = CLS_OPTS.filter(c=>list.some(x=>x.cls===c));
+  const allGroups=['غير مصنف',...CLS_OPTS];
+  const groups = allGroups.filter(c=>list.some(x=>(x.cls||'غير مصنف')===c));
   m.innerHTML = `
     <div class="impbar"><label>📥 استيراد عملاء<input type="file" id="impCust" accept=".xlsx,.xls" style="display:none"></label></div>
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
     ${groups.length? groups.map(g=>{
-      const rows=list.filter(c=>c.cls===g); const open=openGroups.has(g);
+      const rows=list.filter(c=>(c.cls||'غير مصنف')===g); const open=openGroups.has(g)||g==='غير مصنف';
       return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup('${g}')">
-        <span>${g} <span class="cnt">(${rows.length})</span></span><span class="arrow">▾</span></div>
+        <span>${g==='غير مصنف'?'⚠️ ':''}${g} <span class="cnt">(${rows.length})</span></span><span class="arrow">▾</span></div>
         <div class="grp-body">${rows.map(c=>`<div class="card"><div class="info"><div class="name">${esc(c.name)}</div></div>
           <div class="act"><button onclick="editCustomer('${c.id}')">✏️</button><button onclick="delCustomer('${c.id}')">🗑️</button></div></div>`).join('')}</div></div>`;
     }).join('') : `<div class="empty">لا توجد عملاء</div>`}
@@ -378,11 +518,12 @@ function renderSalesReport(m){
   const months=Object.keys(monthlySales).sort();
   if(!months.length){ m.innerHTML=`<div class="empty">لا توجد شهور مستوردة</div>`; return; }
   const custByName={}; customers.forEach(c=>custByName[c.name]=c);
-  const rollup={}; const distRows={};
+  const rollup={}; const distRows={}; const unclassified=new Set();
   months.forEach(mo=>{
     Object.entries(monthlySales[mo]).forEach(([name,net])=>{
-      const cls=(custByName[name]||{}).cls||'موزع';
+      const cls=(custByName[name]||{}).cls||'';
       if(cls==='مستبعد') return;
+      if(!cls){ unclassified.add(name); return; }
       if(cls==='موزع'){ distRows[name]=distRows[name]||{}; distRows[name][mo]=(distRows[name][mo]||0)+net; }
       else{ rollup[cls]=rollup[cls]||{}; rollup[cls][mo]=(rollup[cls][mo]||0)+net; }
     });
@@ -401,7 +542,8 @@ function renderSalesReport(m){
     const tot=months.reduce((a,mo)=>a+(distRows[name][mo]||0),0);
     rowsHtml+=`<tr><td>${esc(name)}</td>${months.map(mo=>`<td>${fmt(distRows[name][mo])}</td>`).join('')}<td><b>${fmt(tot)}</b></td></tr>`;
   });
-  m.innerHTML=`<div style="overflow-x:auto"><table class="rep">
+  m.innerHTML=`${unclassified.size? `<div class="warn">⚠️ عندك ${unclassified.size} عميل لسه غير مصنّف ومش داخل في الجدول ده — صنّفهم من تاب العملاء: ${[...unclassified].slice(0,6).join('، ')}${unclassified.size>6?' ...':''}</div>`:''}
+    <div style="overflow-x:auto"><table class="rep">
     <tr><th>بيان</th>${months.map(mo=>`<th>${mo}</th>`).join('')}<th>الإجمالي</th></tr>${rowsHtml}</table></div>`;
 }
 function importCustomers(file){
@@ -413,11 +555,11 @@ function importCustomers(file){
       const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{header:1,defval:''});
       let list=[];
       for(let i=1;i<rows.length;i++){ const r2=rows[i]; if(!r2[1]) continue;
-        list.push({id:uid(), name:String(r2[1]).trim(), cls:String(r2[2]||'موزع').trim()}); }
+        list.push({id:uid(), name:String(r2[1]).trim(), cls:''}); }
       if(!list.length){ toast('لا توجد بيانات'); return; }
       pendingImport={type:'customers', list};
       openSheet(`<h3>تأكيد</h3><p style="font-size:13.5px;color:var(--muted)">
-        ${list.length} عميل — هيستبدل القائمة الحالية.</p>
+        ${list.length} عميل هيتم استيرادهم بدون تصنيف — لازم تصنّفهم بنفسك بعد الحفظ من مجموعة "غير مصنف".</p>
         <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
         <button class="btn-save" onclick="commitImport()">💾 حفظ</button></div>`);
     }catch(err){ toast('خطأ في الملف'); }
@@ -466,7 +608,7 @@ function commitSalesImport(){
   const p=pendingImport; if(!p) return;
   const month=$('#s_month').value.trim();
   if(!month){ toast('اكتب الشهر'); return; }
-  p.unmatchedCust.forEach(name=>{ customers.push({id:uid(),name,cls:'موزع'}); });
+  p.unmatchedCust.forEach(name=>{ customers.push({id:uid(),name,cls:''}); });
   save('customers_v1',customers);
   monthlySales[month]=p.custMap; monthlySector[month]=p.sectorMap;
   save('monthlySales_v1',monthlySales); save('monthlySector_v1',monthlySector);
@@ -483,6 +625,7 @@ function commitImport(){
   if(pendingImport.type==='items'){ items=pendingImport.list; itemsByName={}; items.forEach(i=>itemsByName[i.name]=i); save('items_v1',items); }
   else if(pendingImport.type==='gvcodes'){ gvcodes=pendingImport.list; save('gvcodes_v1',gvcodes); }
   else if(pendingImport.type==='customers'){ customers=pendingImport.list; save('customers_v1',customers); }
+  else if(pendingImport.type==='stock'){ whStock[pendingImport.whId]=pendingImport.map; save('whStock_v1',whStock); }
   pendingImport=null; closeSheet(); render(); toast('تم الحفظ');
 }
 
@@ -496,6 +639,7 @@ function render(){
   else renderPayroll(m);
 }
 
+$('#refreshBtn').addEventListener('click', ()=>{ location.reload(); });
 render();
 </script>
 </body>
