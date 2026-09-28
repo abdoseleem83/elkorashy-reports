@@ -73,10 +73,17 @@ table.rep{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--
 table.rep th,table.rep td{padding:8px 6px;border-bottom:1px solid var(--border);text-align:center}
 table.rep th{background:var(--panel2);font-size:11.5px}
 table.rep td:first-child,table.rep th:first-child{text-align:right}
+table.rep.stk{width:max-content;min-width:100%;overflow:visible}
+table.rep.stk td:first-child,table.rep.stk th:first-child{position:sticky;right:0;z-index:1;background:var(--panel);min-width:130px;max-width:160px}
+table.rep.stk th:first-child{background:var(--panel2)}
+.qs{display:flex;gap:10px;font-size:12px;align-items:center;flex-wrap:wrap}
+.qs small{color:var(--muted)}
+.grp-h>span:first-child{flex:1;min-width:0}
+.grp-h{gap:8px}
 </style>
 </head>
 <body>
-<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.5</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.6</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -316,12 +323,13 @@ function delWarehouse(id){ if(!confirm('حذف المخزن؟')) return; warehou
 
 function renderWarehouses(m){
   const whTab = load('_whTab_', null);
-  const tabs = [{id:'compare',name:'⚖️ مقارنة الفروع'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
+  const tabs = [{id:'compare',name:'⚖️ مقارنة الفروع'},{id:'colors',name:'🎨 مقارنة بالألوان'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
   m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
     ${tabs.map(t=>`<button class="tab ${whTab===t.id?'active':''}" onclick="setWhTab('${t.id}')" style="flex:0 0 auto;padding:9px 12px;border-radius:9px;background:${whTab===t.id?'var(--blue)':'var(--panel2)'};color:${whTab===t.id?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:12.5px;white-space:nowrap">${t.name}</button>`).join('')}
   </div><div id="wh_content"></div>`;
   if(whTab===null) $('#wh_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
   else if(whTab==='compare') renderWhCompare($('#wh_content'));
+  else if(whTab==='colors') renderWhColors($('#wh_content'));
   else renderWhDetail($('#wh_content'), whTab);
 }
 function setWhTab(id){ const cur=load('_whTab_',null); save('_whTab_', cur===id?null:id); save('_whSub_',null); render(); }
@@ -357,18 +365,24 @@ function groupFilterHtml(allMain, whId){
     })() : ''}
   </details>`;
 }
+function normUnit(u){ return String(u||'').trim().replace(/ه$/,'ة'); }
 function pieceBreakdown(name, s){
   const it = itemsByName[name] || {};
-  const unit = it.unit || '—';
-  const bigLbl = (unit==='لفة')?'لفة':(unit==='كرتونة'?'كرتونة':'وحدة كبيرة');
-  const smallLbl = (unit==='عود')?'عود':(unit==='قطعة'?'قطعة':'قطعة');
-  let big = s.big||0, small = s.small||0;
-  if(!big && !small && it.rollQty && Number(it.rollQty)>0){
-    const rq = Number(it.rollQty);
-    big = Math.floor((s.balance||0)/rq);
-    small = (s.balance||0) % rq;
-  }
+  const unit = normUnit(it.unit) || '—';
+  const rq = Number(it.rollQty)||0;
+  const bigLbl = unit==='لفة'?'لفة':(unit==='كرتونة'?'كرتونة':'وحدة كبيرة');
+  const smallLbl = unit==='لفة'?'عود':'قطعة';
+  let big = Number(s.big)||0, small = Number(s.small)||0;
+  if(!big && !small && rq>1){ const b=Number(s.balance)||0; big=Math.floor(b/rq); small=b%rq; }
   return {unit, bigLbl, smallLbl, big, small};
+}
+function balText(name, s){
+  s = s || {balance:0};
+  const b = pieceBreakdown(name, s);
+  const bal = Number(s.balance)||0;
+  const parts=[]; if(b.big) parts.push(b.big+' '+b.bigLbl); if(b.small) parts.push(b.small+' '+b.smallLbl);
+  if(parts.length) return bal+' ('+parts.join(' + ')+')';
+  return bal+' '+(b.unit==='—'?'':b.unit);
 }
 function renderWhStock(m, whId){
   const stock = whStock[whId] || {};
@@ -387,10 +401,8 @@ function renderWhStock(m, whId){
       return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup('${g}')">
         <span>${esc(g)} <span class="cnt">(${rows.length})</span></span><span class="arrow">▾</span></div>
         <div class="grp-body">${rows.map(([name,s])=>{
-          const b = pieceBreakdown(name, s);
           return `<div class="card"><div class="info"><div class="name">${esc(name)}</div>
-          <div class="sub">الرصيد: ${s.balance||0} ${esc(b.unit)} ${(b.big||b.small)?`(${b.big} ${b.bigLbl} + ${b.small} ${b.smallLbl})`:''}</div></div>
-          <div class="act"><button onclick="markShort('${whId}','${name.replace(/'/g,"\\'")}')">⚠️</button></div></div>`;
+          <div class="sub">الرصيد: ${esc(balText(name, s))}</div></div></div>`;
         }).join('')}</div></div>`;
     }).join('') : `<div class="empty">لا توجد بيانات أرصدة لهذا المخزن — استورد الشيت</div>`}
   `;
@@ -480,7 +492,7 @@ function renderWhShortage(m, whId){
         const rec = (whShortage[whId]||{})[it.name] || {};
         const unitOpts = units.length? units : [it.unit].filter(Boolean);
         return `<div class="card"><div class="info"><div class="name">${esc(it.name)}</div>
-          <div class="sub">الرصيد: ${bal} ${esc(it.unit||'')}</div></div>
+          <div class="sub">الرصيد: ${esc(balText(it.name, stock[it.name]))}</div></div>
           <input type="number" placeholder="الكمية" value="${esc(rec.order||'')}" style="width:70px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px"
             onchange="setOrderQty('${whId}','${it.name.replace(/'/g,"\\'")}', this.value, document.getElementById('u_${it.id}').value)">
           <select id="u_${it.id}" onchange="setOrderUnit('${whId}','${it.name.replace(/'/g,"\\'")}', this.value)" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px">
@@ -592,71 +604,157 @@ function exportShortImage(whId){
     el.remove();
   });
 }
-function renderWhCompare(m){
-  const groupsMap={}; // main -> Set(sub)
-  items.forEach(it=>{ if(!it.mainGroup) return; groupsMap[it.mainGroup]=groupsMap[it.mainGroup]||new Set(); if(it.subGroup) groupsMap[it.mainGroup].add(it.subGroup); });
-  const hasData = warehouses.some(w=>Object.keys(whStock[w.id]||{}).length);
-  if(!hasData){ m.innerHTML=`<div class="empty">لا توجد بيانات أرصدة كافية للمقارنة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
-  function qtyFor(whId, itemName){ return Number((whStock[whId]||{})[itemName]?.balance)||0; }
-  let rowsHtml='';
-  Object.entries(groupsMap).forEach(([mg, subs])=>{
-    const mgItems = items.filter(i=>i.mainGroup===mg);
-    const mgTotals = warehouses.map(w=>mgItems.reduce((s,it)=>s+qtyFor(w.id,it.name),0));
-    if(mgTotals.every(t=>t===0)) return;
-    rowsHtml+=`<tr style="background:var(--panel2)"><td><b>◆ ${esc(mg)}</b></td>${mgTotals.map(t=>`<td><b>${t.toLocaleString('en-US')}</b></td>`).join('')}<td><b>${mgTotals.reduce((a,b)=>a+b,0).toLocaleString('en-US')}</b></td></tr>`;
-    [...subs].forEach(sg=>{
-      const sgItems = mgItems.filter(i=>i.subGroup===sg);
-      sgItems.forEach(it=>{
-        const cells = warehouses.map(w=>qtyFor(w.id,it.name));
-        if(cells.every(c=>c===0)) return;
-        rowsHtml+=`<tr><td style="padding-right:16px">${esc(it.name)} <span style="color:var(--muted);font-size:11px">(${esc(sg)})</span></td>${cells.map(c=>`<td>${c.toLocaleString('en-US')}</td>`).join('')}<td>${cells.reduce((a,b)=>a+b,0).toLocaleString('en-US')}</td></tr>`;
+// ===== مقارنة الفروع (هرمية) + مقارنة بالألوان =====
+let cmpMain=new Set(), cmpSub=new Set(), cmpZero=false, colMain=new Set(), colZero=false;
+const fmtN=n=>Number(n).toLocaleString('en-US');
+function qtyOf(whId, name){ return Number((whStock[whId]||{})[name]?.balance)||0; }
+function cmpToggleMain(v){ if(cmpMain.has(v)) cmpMain.delete(v); else cmpMain.add(v); cmpSub=new Set(); render(); }
+function cmpToggleSub(v){ if(cmpSub.has(v)) cmpSub.delete(v); else cmpSub.add(v); render(); }
+function colToggleMain(v){ if(colMain.has(v)) colMain.delete(v); else colMain.add(v); render(); }
+function chipsHtml(list, set, fn){ return list.map(g=>`<span class="pill ${set.has(g)?'on':''}" onclick="${fn}('${esc(g).replace(/'/g,"\\'")}')">${esc(g)}</span>`).join(''); }
+function floatBar(inner){ return `<div style="height:70px"></div><div style="position:sticky;bottom:0;background:var(--bg);padding:8px 0 4px;border-top:1px solid var(--border)"><div class="impbar" style="margin:0">${inner}</div></div>`; }
+function noStockMsg(){ return !warehouses.some(w=>Object.keys(whStock[w.id]||{}).length); }
+
+function buildCompareTree(){
+  const tree=[];
+  [...new Set(items.map(i=>i.mainGroup).filter(Boolean))].forEach(mg=>{
+    if(cmpMain.size && !cmpMain.has(mg)) return;
+    const mgItems=items.filter(i=>i.mainGroup===mg);
+    const subs=[];
+    [...new Set(mgItems.map(i=>i.subGroup||'بدون فرعية'))].forEach(sg=>{
+      if(cmpSub.size && !cmpSub.has(sg)) return;
+      const rows=[];
+      mgItems.filter(i=>(i.subGroup||'بدون فرعية')===sg).forEach(it=>{
+        const cells=warehouses.map(w=>qtyOf(w.id,it.name));
+        if(!cells.reduce((a,b)=>a+b,0) && !cmpZero) return;
+        rows.push({name:it.name,cells});
       });
+      if(rows.length) subs.push({sg, cells:warehouses.map((w,i)=>rows.reduce((s,r)=>s+r.cells[i],0)), items:rows});
     });
+    if(subs.length) tree.push({mg, cells:warehouses.map((w,i)=>subs.reduce((s,x)=>s+x.cells[i],0)), subs});
   });
-  m.innerHTML = `
-    <div class="impbar"><button onclick="exportCompareExcel()">📊 إكسل</button><button onclick="exportComparePdf()">🖨️ PDF</button></div>
-    <div style="overflow-x:auto"><table class="rep" id="compare_table">
-    <tr><th>الصنف / المجموعة</th>${warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')}<th>الإجمالي</th></tr>
-    ${rowsHtml}
-  </table></div>`;
+  return tree;
 }
-function compareRowsData(){
-  const groupsMap={};
-  items.forEach(it=>{ if(!it.mainGroup) return; groupsMap[it.mainGroup]=groupsMap[it.mainGroup]||new Set(); if(it.subGroup) groupsMap[it.mainGroup].add(it.subGroup); });
-  function qtyFor(whId, itemName){ return Number((whStock[whId]||{})[itemName]?.balance)||0; }
+function qCells(cells){
+  const tot=cells.reduce((a,b)=>a+b,0);
+  return warehouses.map((w,i)=>`<span><small>${esc(w.name)}</small> <b>${fmtN(cells[i])}</b></span>`).join('')+(warehouses.length>1?`<span><small>الكل</small> <b>${fmtN(tot)}</b></span>`:'');
+}
+function renderWhCompare(m){
+  if(noStockMsg()){ m.innerHTML=`<div class="empty">لا توجد بيانات أرصدة كافية للمقارنة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
+  const allMain=[...new Set(items.map(i=>i.mainGroup).filter(Boolean))];
+  const allSub=cmpMain.size? [...new Set(items.filter(i=>cmpMain.has(i.mainGroup)).map(i=>i.subGroup).filter(Boolean))] : [];
+  const tree=buildCompareTree();
+  m.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">اختار المجموعات للعرض والتصدير (من غير اختيار = الكل):</div>
+    <div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allMain,cmpMain,'cmpToggleMain')}</div>
+    ${allSub.length? `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الفرعية:</div><div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allSub,cmpSub,'cmpToggleSub')}</div>`:''}
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${cmpZero?'checked':''} onchange="cmpZero=this.checked;render()"> إظهار الأصناف الصفرية</label>
+    ${tree.length? tree.map(t=>{
+      const k='cmp:'+t.mg;
+      return `<div class="grp ${openGroups.has(k)?'open':''}"><div class="grp-h" onclick="toggleGroup('${esc(k).replace(/'/g,"\\'")}')"><span>◆ ${esc(t.mg)}</span><span class="qs">${qCells(t.cells)}</span><span class="arrow">▾</span></div>
+        <div class="grp-body">${t.subs.map(s=>{
+          const k2=k+'|'+s.sg;
+          return `<div class="grp ${openGroups.has(k2)?'open':''}" style="margin:6px 0"><div class="grp-h" onclick="toggleGroup('${esc(k2).replace(/'/g,"\\'")}')"><span>${esc(s.sg)}</span><span class="qs">${qCells(s.cells)}</span><span class="arrow">▾</span></div>
+            <div class="grp-body">${s.items.map(r=>`<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(r.name)}</div></div><div class="qs">${qCells(r.cells)}</div></div>`).join('')}</div></div>`;
+        }).join('')}</div></div>`;
+    }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
+    ${floatBar(`<button onclick="exportCompareExcel()">📊 إكسل</button><button onclick="exportComparePdf()">🖨️ PDF</button>`)}
+  `;
+}
+function compareExportRows(){
   const rows=[];
-  Object.entries(groupsMap).forEach(([mg, subs])=>{
-    const mgItems = items.filter(i=>i.mainGroup===mg);
-    [...subs].forEach(sg=>{
-      mgItems.filter(i=>i.subGroup===sg).forEach(it=>{
-        const cells = warehouses.map(w=>qtyFor(w.id,it.name));
-        if(cells.every(c=>c===0)) return;
-        rows.push([mg, sg, it.name, ...cells, cells.reduce((a,b)=>a+b,0)]);
-      });
-    });
-  });
+  buildCompareTree().forEach(t=>{ rows.push({type:'main',label:t.mg,cells:t.cells});
+    t.subs.forEach(s=>{ rows.push({type:'sub',label:s.sg,cells:s.cells}); s.items.forEach(r=>rows.push({type:'item',label:r.name,cells:r.cells})); }); });
   return rows;
 }
 function exportCompareExcel(){
-  const rows = compareRowsData();
-  if(!rows.length){ toast('لا توجد بيانات'); return; }
-  const data=[['المجموعة الرئيسية','المجموعة الفرعية','الصنف', ...warehouses.map(w=>w.name), 'الإجمالي'], ...rows];
-  const ws=XLSX.utils.aoa_to_sheet(data); const wbk=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wbk, ws, 'مقارنة الفروع');
-  XLSX.writeFile(wbk, 'مقارنة_الفروع.xlsx');
+  const rows=compareExportRows(); if(!rows.length){ toast('لا توجد بيانات'); return; }
+  const data=[['مقارنة أرصدة الفروع — '+new Date().toISOString().slice(0,10)],[],['الصنف',...warehouses.map(w=>w.name),'الإجمالي']];
+  rows.forEach(r=>{ const pre=r.type==='main'?'◆ ':(r.type==='sub'?'   ▸ ':'      '); data.push([pre+r.label,...r.cells,r.cells.reduce((a,b)=>a+b,0)]); });
+  const ws=XLSX.utils.aoa_to_sheet(data); ws['!cols']=[{wch:50}]; const wbk=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wbk, ws, 'مقارنة الفروع'); XLSX.writeFile(wbk, 'مقارنة_الفروع.xlsx');
 }
 function exportComparePdf(){
-  const rows = compareRowsData();
-  if(!rows.length){ toast('لا توجد بيانات'); return; }
+  const rows=compareExportRows(); if(!rows.length){ toast('لا توجد بيانات'); return; }
+  const bg={main:'#d9d9d9',sub:'#efefef',item:'#fff'};
   const html=`<html dir="rtl"><head><meta charset="utf-8"><title>مقارنة الفروع</title>
-    <style>body{font-family:Tahoma,Arial;padding:20px}h2{text-align:center}table{width:100%;border-collapse:collapse;font-size:12px}
-    th,td{border:1px solid #999;padding:6px;text-align:center}th{background:#eee}</style></head><body>
-    <h2>مقارنة أرصدة الفروع</h2>
-    <table><tr><th>المجموعة الرئيسية</th><th>الفرعية</th><th>الصنف</th>${warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')}<th>الإجمالي</th></tr>
-    ${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}
+    <style>body{font-family:Tahoma,Arial;padding:16px}h2{text-align:center}table{width:100%;border-collapse:collapse;font-size:12px}
+    th,td{border:1px solid #999;padding:5px;text-align:center}td:first-child{text-align:right}th{background:#bbb}</style></head><body>
+    <h2>مقارنة أرصدة الفروع — ${new Date().toISOString().slice(0,10)}</h2>
+    <table><tr><th>الصنف</th>${warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')}<th>الإجمالي</th></tr>
+    ${rows.map(r=>`<tr style="background:${bg[r.type]};${r.type!=='item'?'font-weight:bold':''}"><td style="padding-right:${r.type==='item'?24:(r.type==='sub'?14:5)}px">${r.type==='main'?'◆ ':''}${esc(r.label)}</td>${r.cells.map(c=>`<td>${fmtN(c)}</td>`).join('')}<td>${fmtN(r.cells.reduce((a,b)=>a+b,0))}</td></tr>`).join('')}
     </table></body></html>`;
-  const win=window.open('','_blank'); win.document.write(html); win.document.close();
-  setTimeout(()=>win.print(), 300);
+  const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),300);
+}
+
+// ----- مقارنة بالألوان: الصنف المختصر × (اللون × الفرع) -----
+function buildColorTable(){
+  const norm=s=>String(s).trim();
+  const src=items.filter(i=>i.baseName && norm(i.baseName) && i.color && norm(i.color) && (!colMain.size || colMain.has(i.mainGroup)));
+  const groups={};
+  src.forEach(it=>{
+    const mg=it.mainGroup, bn=norm(it.baseName), c=norm(it.color);
+    groups[mg]=groups[mg]||{}; groups[mg][bn]=groups[mg][bn]||{};
+    const cells=groups[mg][bn][c]=groups[mg][bn][c]||warehouses.map(()=>0);
+    warehouses.forEach((w,i)=>{ cells[i]+=qtyOf(w.id,it.name); });
+  });
+  const colorSum={};
+  Object.values(groups).forEach(bs=>Object.values(bs).forEach(cs=>Object.entries(cs).forEach(([c,cells])=>{ colorSum[c]=(colorSum[c]||0)+cells.reduce((a,b)=>a+b,0); })));
+  let colors=Object.keys(colorSum); if(!colZero) colors=colors.filter(c=>colorSum[c]>0);
+  const pri=['ابيض','بيج']; colors.sort((a,b)=>{ const pa=pri.indexOf(a), pb=pri.indexOf(b); if(pa>=0||pb>=0) return (pa<0?99:pa)-(pb<0?99:pb); return colorSum[b]-colorSum[a]; });
+  const W=warehouses.length, rows=[];
+  Object.entries(groups).forEach(([mg,bs])=>{
+    const list=[];
+    Object.entries(bs).forEach(([bn,cs])=>{
+      const flat=[]; colors.forEach(c=>{ const cells=cs[c]||warehouses.map(()=>0); flat.push(...cells); });
+      const total=flat.reduce((a,b)=>a+b,0);
+      if(total||colZero) list.push({type:'item',label:bn,flat,total});
+    });
+    if(list.length){ rows.push({type:'main',label:mg}); rows.push(...list); }
+  });
+  return {colors, rows, W};
+}
+function renderWhColors(m){
+  if(noStockMsg()){ m.innerHTML=`<div class="empty">لا توجد بيانات أرصدة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
+  const allMain=[...new Set(items.filter(i=>i.baseName&&i.color).map(i=>i.mainGroup).filter(Boolean))];
+  const {colors,rows,W}=buildColorTable();
+  const cell=n=>n?fmtN(n):'<span style="color:var(--muted)">·</span>';
+  m.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">اختار المجموعات للعرض والتصدير (من غير اختيار = الكل):</div>
+    <div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allMain,colMain,'colToggleMain')}</div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${colZero?'checked':''} onchange="colZero=this.checked;render()"> إظهار الألوان/الأصناف الصفرية</label>
+    ${rows.length? `<div style="overflow-x:auto"><table class="rep stk">
+      <tr><th rowspan="2">الصنف</th>${colors.map(c=>`<th colspan="${W}">${esc(c)}</th>`).join('')}<th rowspan="2">الكل</th></tr>
+      <tr>${colors.map(()=>warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')).join('')}</tr>
+      ${rows.map(r=>r.type==='main'
+        ? `<tr><td colspan="${2+colors.length*W}" style="background:var(--panel2);font-weight:700;text-align:right">◆ ${esc(r.label)}</td></tr>`
+        : `<tr><td>${esc(r.label)}</td>${r.flat.map(v=>`<td>${cell(v)}</td>`).join('')}<td><b>${fmtN(r.total)}</b></td></tr>`).join('')}
+    </table></div>` : `<div class="empty">لا توجد بيانات مطابقة</div>`}
+    ${floatBar(`<button onclick="exportColorsExcel()">📊 إكسل</button><button onclick="exportColorsPdf()">🖨️ PDF</button>`)}
+  `;
+}
+function exportColorsExcel(){
+  const {colors,rows,W}=buildColorTable(); if(!rows.length){ toast('لا توجد بيانات'); return; }
+  const h1=['']; colors.forEach(c=>{ h1.push(c); for(let k=1;k<W;k++) h1.push(''); }); h1.push('');
+  const h2=['الصنف']; colors.forEach(()=>warehouses.forEach(w=>h2.push(w.name))); h2.push('الكل');
+  const data=[['مقارنة الأرصدة بالألوان — '+new Date().toISOString().slice(0,10)],h1,h2];
+  rows.forEach(r=>{ if(r.type==='main') data.push(['◆ '+r.label]); else data.push([r.label,...r.flat,r.total]); });
+  const ws=XLSX.utils.aoa_to_sheet(data);
+  ws['!merges']=colors.map((c,i)=>({s:{r:1,c:1+i*W},e:{r:1,c:i*W+W}})); ws['!cols']=[{wch:38}];
+  const wbk=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wbk, ws, 'مقارنة بالألوان'); XLSX.writeFile(wbk,'مقارنة_بالألوان.xlsx');
+}
+function exportColorsPdf(){
+  const {colors,rows,W}=buildColorTable(); if(!rows.length){ toast('لا توجد بيانات'); return; }
+  const html=`<html dir="rtl"><head><meta charset="utf-8"><title>مقارنة بالألوان</title>
+    <style>@page{size:landscape}body{font-family:Tahoma,Arial;padding:14px}h2{text-align:center}table{width:100%;border-collapse:collapse;font-size:11px}
+    th,td{border:1px solid #999;padding:4px;text-align:center}td:first-child{text-align:right}th{background:#bbb}</style></head><body>
+    <h2>مقارنة الأرصدة بالألوان — ${new Date().toISOString().slice(0,10)}</h2>
+    <table><tr><th rowspan="2">الصنف</th>${colors.map(c=>`<th colspan="${W}">${esc(c)}</th>`).join('')}<th rowspan="2">الكل</th></tr>
+    <tr>${colors.map(()=>warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')).join('')}</tr>
+    ${rows.map(r=>r.type==='main'?`<tr><td colspan="${2+colors.length*W}" style="background:#d9d9d9;font-weight:bold;text-align:right">◆ ${esc(r.label)}</td></tr>`
+      :`<tr><td>${esc(r.label)}</td>${r.flat.map(v=>`<td>${v?fmtN(v):'·'}</td>`).join('')}<td><b>${fmtN(r.total)}</b></td></tr>`).join('')}
+    </table></body></html>`;
+  const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),300);
 }
 
 // ========== SALES ==========
