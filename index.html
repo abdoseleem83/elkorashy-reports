@@ -83,7 +83,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.6</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.7</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -334,17 +334,6 @@ function renderWarehouses(m){
 }
 function setWhTab(id){ const cur=load('_whTab_',null); save('_whTab_', cur===id?null:id); save('_whSub_',null); render(); }
 
-function renderWhDetail(m, whId){
-  const w = warehouses.find(x=>x.id===whId);
-  if(!w){ m.innerHTML=`<div class="empty">المخزن غير موجود</div>`; return; }
-  const sub = load('_whSub_',null);
-  m.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px">
-    <button onclick="setWhSub(0)" style="flex:1;padding:9px;border-radius:9px;background:${sub===0?'var(--blue)':'var(--panel2)'};color:${sub===0?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13px">📊 الأرصدة</button>
-    <button onclick="setWhSub(1)" style="flex:1;padding:9px;border-radius:9px;background:${sub===1?'var(--blue)':'var(--panel2)'};color:${sub===1?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13px">🧾 طلب النواقص</button>
-  </div><div id="wh_sub"></div>`;
-  if(sub===null) $('#wh_sub').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
-  else if(sub===0) renderWhStock($('#wh_sub'), whId); else renderWhShortage($('#wh_sub'), whId);
-}
 function setWhSub(n){ const cur=load('_whSub_',null); save('_whSub_', cur===n?null:n); render(); }
 
 function groupFilterHtml(allMain, whId){
@@ -502,11 +491,11 @@ function renderWhShortage(m, whId){
     <div style="height:70px"></div>
     <div style="position:sticky;bottom:0;background:var(--bg);padding:8px 0 4px;border-top:1px solid var(--border)">
       <div class="impbar" style="margin:0 0 6px">
-        <button onclick="exportShortPdf('${whId}')">🖨️ PDF</button>
+        <button onclick="exportShortPdf('${whId}')">📄 PDF</button>
         <button onclick="exportShortExcel('${whId}')">📊 إكسل</button>
         <button onclick="exportShortImage('${whId}')">🖼️ صورة</button>
       </div>
-      <button onclick="exportOrderSummary('${whId}')" style="width:100%;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">🖨️ طباعة الأوردر (ملخّص بالمجموعات)</button>
+      <button onclick="exportOrderSummary('${whId}')" style="width:100%;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">📄 ملخّص الأوردر بالمجموعات (PDF)</button>
     </div>
   `;
   $('#q').oninput=e=>{ q=e.target.value; renderWhShortage(m, whId); };
@@ -525,29 +514,7 @@ function buildGroupBreakdown(list){
   });
   return buckets;
 }
-function breakdownTableHtml(buckets){
-  let rows='';
-  Object.entries(buckets).forEach(([bucket,b])=>{
-    rows+=`<tr style="background:#f0f0f0"><td colspan="2"><b>${esc(bucket)}</b></td><td><b>${b.total}</b></td></tr>`;
-    Object.entries(b.subs).forEach(([sub,tot])=>{ rows+=`<tr><td></td><td>${esc(sub)}</td><td>${tot}</td></tr>`; });
-  });
-  return `<table style="width:100%;border-collapse:collapse;margin-top:16px"><tr><th colspan="2" style="border:1px solid #999;padding:8px;background:#eee">المجموعة</th><th style="border:1px solid #999;padding:8px;background:#eee">الإجمالي</th></tr>${rows.replace(/<td/g,'<td style="border:1px solid #999;padding:8px"')}</table>`;
-}
 function getOrderDate(whId){ const d=load('whOrderDate_v1',{}); return d[whId] || new Date().toISOString().slice(0,10); }
-function exportOrderSummary(whId){
-  const w=warehouses.find(x=>x.id===whId);
-  const list = Object.entries(whShortage[whId]||{});
-  if(!list.length){ toast('لا يوجد طلبات'); return; }
-  const buckets=buildGroupBreakdown(list);
-  const html=`<html dir="rtl"><head><meta charset="utf-8"><title>طلب أوردر ${w.name}</title>
-    <style>body{font-family:Tahoma,Arial;padding:20px}h2{text-align:center}table{border-collapse:collapse}
-    th,td{border:1px solid #999;padding:10px;text-align:center}th{background:#eee}</style></head><body>
-    <h2>طلب أوردر النواقص</h2><p style="text-align:center">الفرع: ${esc(w.name)} — التاريخ: ${getOrderDate(whId)}</p>
-    ${breakdownTableHtml(buckets)}
-    </body></html>`;
-  const win=window.open('','_blank'); win.document.write(html); win.document.close();
-  setTimeout(()=>win.print(), 300);
-}
 function exportShortExcel(whId){
   const w=warehouses.find(x=>x.id===whId);
   const list = Object.entries(whShortage[whId]||{});
@@ -563,46 +530,6 @@ function exportShortExcel(whId){
   const ws=XLSX.utils.aoa_to_sheet(data); const wbk=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wbk, ws, 'نواقص');
   XLSX.writeFile(wbk, 'نواقص_'+w.name+'.xlsx');
-}
-function exportShortPdf(whId){
-  const w=warehouses.find(x=>x.id===whId);
-  const list = Object.entries(whShortage[whId]||{});
-  if(!list.length){ toast('لا يوجد نواقص'); return; }
-  const buckets=buildGroupBreakdown(list);
-  const html = `<html dir="rtl"><head><meta charset="utf-8"><title>نواقص ${w.name}</title>
-    <style>body{font-family:Tahoma,Arial;padding:20px}h2{text-align:center}table{width:100%;border-collapse:collapse}
-    th,td{border:1px solid #999;padding:8px;text-align:center}th{background:#eee}</style></head><body>
-    <h2>طلبية نواقص ${esc(w.name)} بتاريخ ${getOrderDate(whId)}</h2><table><tr><th>الصنف</th><th>طلب الوردر</th><th>الوحدة</th><th>ملاحظة</th></tr>
-    ${list.map(([n,s])=>`<tr><td>${esc(n)}</td><td>${esc(s.order)}</td><td>${esc(s.unit||'—')}</td><td>${esc(s.note||'—')}</td></tr>`).join('')}
-    </table>
-    <h3>ملخص الإجمالي حسب المجموعة</h3>
-    ${breakdownTableHtml(buckets)}
-    </body></html>`;
-  const win=window.open('','_blank'); win.document.write(html); win.document.close();
-  setTimeout(()=>win.print(), 300);
-}
-function exportShortImage(whId){
-  const w=warehouses.find(x=>x.id===whId);
-  const list = Object.entries(whShortage[whId]||{});
-  if(!list.length){ toast('لا يوجد نواقص'); return; }
-  if(!window.html2canvas){ toast('جاري تحميل مكتبة الصور...'); const s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-    s.onload=()=>exportShortImage(whId); document.head.appendChild(s); return; }
-  const buckets=buildGroupBreakdown(list);
-  const el=document.createElement('div');
-  el.style.cssText='position:fixed;left:-9999px;top:0;background:#fff;padding:16px;direction:rtl';
-  el.innerHTML=`<h3 style="font-family:Tahoma,Arial;text-align:center">طلبية نواقص ${esc(w.name)} بتاريخ ${getOrderDate(whId)}</h3>
-    <table style="border-collapse:collapse;font-family:Tahoma,Arial"><tr>
-    <th style="border:1px solid #999;padding:8px;background:#eee">الصنف</th>
-    <th style="border:1px solid #999;padding:8px;background:#eee">طلب الوردر</th>
-    <th style="border:1px solid #999;padding:8px;background:#eee">الوحدة</th></tr>
-    ${list.map(([n,s])=>`<tr><td style="border:1px solid #999;padding:8px">${esc(n)}</td><td style="border:1px solid #999;padding:8px">${esc(s.order)}</td><td style="border:1px solid #999;padding:8px">${esc(s.unit||'—')}</td></tr>`).join('')}
-    </table><div style="font-family:Tahoma,Arial">${breakdownTableHtml(buckets)}</div>`;
-  document.body.appendChild(el);
-  html2canvas(el,{backgroundColor:'#fff'}).then(canvas=>{
-    const link=document.createElement('a'); link.download='نواقص_'+w.name+'.png'; link.href=canvas.toDataURL(); link.click();
-    el.remove();
-  });
 }
 // ===== مقارنة الفروع (هرمية) + مقارنة بالألوان =====
 let cmpMain=new Set(), cmpSub=new Set(), cmpZero=false, colMain=new Set(), colZero=false;
@@ -658,7 +585,7 @@ function renderWhCompare(m){
             <div class="grp-body">${s.items.map(r=>`<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(r.name)}</div></div><div class="qs">${qCells(r.cells)}</div></div>`).join('')}</div></div>`;
         }).join('')}</div></div>`;
     }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
-    ${floatBar(`<button onclick="exportCompareExcel()">📊 إكسل</button><button onclick="exportComparePdf()">🖨️ PDF</button>`)}
+    ${floatBar(`<button onclick="exportCompareExcel()">📊 إكسل</button><button onclick="exportComparePdf()">📄 PDF</button><button onclick="exportCompareImage()">🖼️ صورة</button>`)}
   `;
 }
 function compareExportRows(){
@@ -673,18 +600,6 @@ function exportCompareExcel(){
   rows.forEach(r=>{ const pre=r.type==='main'?'◆ ':(r.type==='sub'?'   ▸ ':'      '); data.push([pre+r.label,...r.cells,r.cells.reduce((a,b)=>a+b,0)]); });
   const ws=XLSX.utils.aoa_to_sheet(data); ws['!cols']=[{wch:50}]; const wbk=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wbk, ws, 'مقارنة الفروع'); XLSX.writeFile(wbk, 'مقارنة_الفروع.xlsx');
-}
-function exportComparePdf(){
-  const rows=compareExportRows(); if(!rows.length){ toast('لا توجد بيانات'); return; }
-  const bg={main:'#d9d9d9',sub:'#efefef',item:'#fff'};
-  const html=`<html dir="rtl"><head><meta charset="utf-8"><title>مقارنة الفروع</title>
-    <style>body{font-family:Tahoma,Arial;padding:16px}h2{text-align:center}table{width:100%;border-collapse:collapse;font-size:12px}
-    th,td{border:1px solid #999;padding:5px;text-align:center}td:first-child{text-align:right}th{background:#bbb}</style></head><body>
-    <h2>مقارنة أرصدة الفروع — ${new Date().toISOString().slice(0,10)}</h2>
-    <table><tr><th>الصنف</th>${warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')}<th>الإجمالي</th></tr>
-    ${rows.map(r=>`<tr style="background:${bg[r.type]};${r.type!=='item'?'font-weight:bold':''}"><td style="padding-right:${r.type==='item'?24:(r.type==='sub'?14:5)}px">${r.type==='main'?'◆ ':''}${esc(r.label)}</td>${r.cells.map(c=>`<td>${fmtN(c)}</td>`).join('')}<td>${fmtN(r.cells.reduce((a,b)=>a+b,0))}</td></tr>`).join('')}
-    </table></body></html>`;
-  const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),300);
 }
 
 // ----- مقارنة بالألوان: الصنف المختصر × (اللون × الفرع) -----
@@ -713,48 +628,6 @@ function buildColorTable(){
     if(list.length){ rows.push({type:'main',label:mg}); rows.push(...list); }
   });
   return {colors, rows, W};
-}
-function renderWhColors(m){
-  if(noStockMsg()){ m.innerHTML=`<div class="empty">لا توجد بيانات أرصدة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
-  const allMain=[...new Set(items.filter(i=>i.baseName&&i.color).map(i=>i.mainGroup).filter(Boolean))];
-  const {colors,rows,W}=buildColorTable();
-  const cell=n=>n?fmtN(n):'<span style="color:var(--muted)">·</span>';
-  m.innerHTML = `
-    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">اختار المجموعات للعرض والتصدير (من غير اختيار = الكل):</div>
-    <div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allMain,colMain,'colToggleMain')}</div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${colZero?'checked':''} onchange="colZero=this.checked;render()"> إظهار الألوان/الأصناف الصفرية</label>
-    ${rows.length? `<div style="overflow-x:auto"><table class="rep stk">
-      <tr><th rowspan="2">الصنف</th>${colors.map(c=>`<th colspan="${W}">${esc(c)}</th>`).join('')}<th rowspan="2">الكل</th></tr>
-      <tr>${colors.map(()=>warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')).join('')}</tr>
-      ${rows.map(r=>r.type==='main'
-        ? `<tr><td colspan="${2+colors.length*W}" style="background:var(--panel2);font-weight:700;text-align:right">◆ ${esc(r.label)}</td></tr>`
-        : `<tr><td>${esc(r.label)}</td>${r.flat.map(v=>`<td>${cell(v)}</td>`).join('')}<td><b>${fmtN(r.total)}</b></td></tr>`).join('')}
-    </table></div>` : `<div class="empty">لا توجد بيانات مطابقة</div>`}
-    ${floatBar(`<button onclick="exportColorsExcel()">📊 إكسل</button><button onclick="exportColorsPdf()">🖨️ PDF</button>`)}
-  `;
-}
-function exportColorsExcel(){
-  const {colors,rows,W}=buildColorTable(); if(!rows.length){ toast('لا توجد بيانات'); return; }
-  const h1=['']; colors.forEach(c=>{ h1.push(c); for(let k=1;k<W;k++) h1.push(''); }); h1.push('');
-  const h2=['الصنف']; colors.forEach(()=>warehouses.forEach(w=>h2.push(w.name))); h2.push('الكل');
-  const data=[['مقارنة الأرصدة بالألوان — '+new Date().toISOString().slice(0,10)],h1,h2];
-  rows.forEach(r=>{ if(r.type==='main') data.push(['◆ '+r.label]); else data.push([r.label,...r.flat,r.total]); });
-  const ws=XLSX.utils.aoa_to_sheet(data);
-  ws['!merges']=colors.map((c,i)=>({s:{r:1,c:1+i*W},e:{r:1,c:i*W+W}})); ws['!cols']=[{wch:38}];
-  const wbk=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wbk, ws, 'مقارنة بالألوان'); XLSX.writeFile(wbk,'مقارنة_بالألوان.xlsx');
-}
-function exportColorsPdf(){
-  const {colors,rows,W}=buildColorTable(); if(!rows.length){ toast('لا توجد بيانات'); return; }
-  const html=`<html dir="rtl"><head><meta charset="utf-8"><title>مقارنة بالألوان</title>
-    <style>@page{size:landscape}body{font-family:Tahoma,Arial;padding:14px}h2{text-align:center}table{width:100%;border-collapse:collapse;font-size:11px}
-    th,td{border:1px solid #999;padding:4px;text-align:center}td:first-child{text-align:right}th{background:#bbb}</style></head><body>
-    <h2>مقارنة الأرصدة بالألوان — ${new Date().toISOString().slice(0,10)}</h2>
-    <table><tr><th rowspan="2">الصنف</th>${colors.map(c=>`<th colspan="${W}">${esc(c)}</th>`).join('')}<th rowspan="2">الكل</th></tr>
-    <tr>${colors.map(()=>warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')).join('')}</tr>
-    ${rows.map(r=>r.type==='main'?`<tr><td colspan="${2+colors.length*W}" style="background:#d9d9d9;font-weight:bold;text-align:right">◆ ${esc(r.label)}</td></tr>`
-      :`<tr><td>${esc(r.label)}</td>${r.flat.map(v=>`<td>${v?fmtN(v):'·'}</td>`).join('')}<td><b>${fmtN(r.total)}</b></td></tr>`).join('')}
-    </table></body></html>`;
-  const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),300);
 }
 
 // ========== SALES ==========
@@ -930,6 +803,294 @@ function commitImport(){
   else if(pendingImport.type==='customers'){ customers=pendingImport.list; save('customers_v1',customers); }
   else if(pendingImport.type==='stock'){ Object.entries(pendingImport.perWh).forEach(([whId,map])=>{ whStock[whId]=map; }); save('whStock_v1',whStock); }
   pendingImport=null; closeSheet(); render(); toast('تم الحفظ');
+}
+
+// ===================== تصدير حقيقي (PDF يتنزّل + صورة) =====================
+const LIB_URLS={
+  html2canvas:'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+  jspdf:'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  exceljs:'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js'
+};
+function loadLib(key, test){
+  return new Promise((res,rej)=>{
+    if(test()) return res();
+    const s=document.createElement('script'); s.src=LIB_URLS[key];
+    s.onload=()=>test()?res():rej(new Error('lib '+key)); s.onerror=()=>rej(new Error('net '+key));
+    document.head.appendChild(s);
+  });
+}
+const DOC_CSS=`<style>
+.dx{font-size:13px}.dx h2{text-align:center;margin:0 0 4px;font-size:20px}.dx h3{margin:18px 0 8px;font-size:15px}
+.dx .sub{text-align:center;color:#555;margin-bottom:12px}
+.dx table{width:100%;border-collapse:collapse}
+.dx th{background:#1d4ed8;color:#fff;padding:7px 6px;border:1px solid #173fb0;font-size:12.5px}
+.dx td{padding:6px;border:1px solid #cfd6e6;text-align:center}
+.dx td:first-child{text-align:right}
+.dx tr.m td{background:#cfdcff;font-weight:700;text-align:right}
+.dx tr.s td{background:#e8eefc;font-weight:700}
+.dx tr.z:nth-child(even) td{background:#f6f8fd}
+.dx .neg{color:#b91c1c;font-weight:700}.dx .pos{color:#15803d;font-weight:700}
+</style>`;
+function mkDoc(bodyHtml, landscape){
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;left:-99999px;top:0;width:'+(landscape?1120:780)+'px;background:#fff;color:#111;padding:18px;direction:rtl;font-family:Tahoma,Arial,sans-serif;box-sizing:border-box';
+  el.innerHTML=DOC_CSS+bodyHtml; document.body.appendChild(el); return el;
+}
+async function docToCanvas(el){
+  await loadLib('html2canvas',()=>window.html2canvas);
+  // نقلل الدقة تلقائيًا للجداول الطويلة عشان متعدّيش حد الذاكرة في الموبايل
+  const area=Math.max(1,el.offsetWidth*el.offsetHeight); let sc=2;
+  while(area*sc*sc>12e6 && sc>0.7) sc=Math.round((sc-0.1)*10)/10;
+  return window.html2canvas(el,{scale:sc,backgroundColor:'#fff',useCORS:true});
+}
+async function exportDocImage(bodyHtml, filename, landscape){
+  toast('جاري تجهيز الصورة...'); const el=mkDoc(bodyHtml,landscape);
+  try{ const c=await docToCanvas(el); const a=document.createElement('a'); a.download=filename+'.png'; a.href=c.toDataURL('image/png'); document.body.appendChild(a); a.click(); a.remove(); toast('تم تنزيل الصورة'); }
+  catch(e){ console.error(e); toast('تعذر التصدير — تأكد من الاتصال بالإنترنت'); }
+  finally{ el.remove(); }
+}
+async function exportDocPdf(bodyHtml, filename, landscape){
+  toast('جاري تجهيز ملف PDF...'); const el=mkDoc(bodyHtml,landscape);
+  try{
+    await loadLib('jspdf',()=>window.jspdf);
+    const canvas=await docToCanvas(el);
+    const pdf=new window.jspdf.jsPDF({orientation:landscape?'l':'p',unit:'pt',format:'a4'});
+    const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), mg=18;
+    const sc=(pw-2*mg)/canvas.width, pageH=(ph-2*mg)/sc;
+    const er=el.getBoundingClientRect(), k=canvas.width/er.width;
+    const bounds=[...el.querySelectorAll('tr')].map(r=>Math.round((r.getBoundingClientRect().bottom-er.top)*k));
+    let y=0, first=true;
+    while(y<canvas.height-2){
+      let end=Math.min(y+pageH,canvas.height);
+      if(end<canvas.height){ const cand=bounds.filter(b=>b>y+pageH*0.4 && b<=end); if(cand.length) end=cand[cand.length-1]; }
+      const h=end-y, sl=document.createElement('canvas'); sl.width=canvas.width; sl.height=h;
+      sl.getContext('2d').drawImage(canvas,0,y,canvas.width,h,0,0,canvas.width,h);
+      if(!first) pdf.addPage(); first=false;
+      pdf.addImage(sl.toDataURL('image/jpeg',0.92),'JPEG',mg,mg,canvas.width*sc,h*sc);
+      y=end;
+    }
+    pdf.save(filename+'.pdf'); toast('تم تنزيل ملف PDF');
+  }catch(e){ console.error(e); toast('تعذر إنشاء PDF — تأكد من الاتصال بالإنترنت'); }
+  finally{ el.remove(); }
+}
+function downloadBlob(blob, name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
+const todayStr=()=>new Date().toISOString().slice(0,10);
+
+// ----- النواقص -----
+function breakdownTableHtml(buckets){
+  let rows='';
+  Object.entries(buckets).forEach(([bucket,b])=>{
+    rows+=`<tr class="m"><td colspan="2">${esc(bucket)}</td><td>${b.total}</td></tr>`;
+    Object.entries(b.subs).forEach(([sub,tot])=>{ rows+=`<tr class="z"><td></td><td>${esc(sub)}</td><td>${tot}</td></tr>`; });
+  });
+  return `<table><tr><th colspan="2">المجموعة</th><th>الإجمالي</th></tr>${rows}</table>`;
+}
+function shortDocBody(whId){
+  const w=warehouses.find(x=>x.id===whId), list=Object.entries(whShortage[whId]||{});
+  return `<div class="dx"><h2>طلبية نواقص ${esc(w.name)}</h2><div class="sub">بتاريخ ${getOrderDate(whId)}</div>
+    <table><tr><th>الصنف</th><th>الكمية</th><th>الوحدة</th><th>ملاحظة</th></tr>
+    ${list.map(([n,s])=>`<tr class="z"><td>${esc(n)}</td><td>${esc(s.order)}</td><td>${esc(s.unit||'—')}</td><td>${esc(s.note||'—')}</td></tr>`).join('')}</table>
+    <h3>ملخص الإجمالي حسب المجموعة</h3>${breakdownTableHtml(buildGroupBreakdown(list))}</div>`;
+}
+function exportShortPdf(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocPdf(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),false); }
+function exportShortImage(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocImage(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),false); }
+function exportOrderSummary(whId){
+  const w=warehouses.find(x=>x.id===whId), list=Object.entries(whShortage[whId]||{});
+  if(!list.length){ toast('لا يوجد طلبات'); return; }
+  exportDocPdf(`<div class="dx"><h2>طلب أوردر النواقص</h2><div class="sub">الفرع: ${esc(w.name)} — التاريخ: ${getOrderDate(whId)}</div>${breakdownTableHtml(buildGroupBreakdown(list))}</div>`,'اوردر_'+w.name+'_'+getOrderDate(whId),false);
+}
+
+// ----- مقارنة الفروع -----
+function compareDocBody(){
+  const rows=compareExportRows();
+  return `<div class="dx"><h2>مقارنة أرصدة الفروع</h2><div class="sub">${todayStr()}</div>
+    <table><tr><th>الصنف</th>${warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')}<th>الإجمالي</th></tr>
+    ${rows.map(r=>`<tr class="${r.type==='main'?'m':(r.type==='sub'?'s':'z')}"><td style="padding-right:${r.type==='item'?22:(r.type==='sub'?14:6)}px">${r.type==='main'?'◆ ':''}${esc(r.label)}</td>${r.cells.map(c=>`<td>${fmtN(c)}</td>`).join('')}<td><b>${fmtN(r.cells.reduce((a,b)=>a+b,0))}</b></td></tr>`).join('')}</table></div>`;
+}
+function exportComparePdf(){ if(!compareExportRows().length){ toast('لا توجد بيانات'); return; } exportDocPdf(compareDocBody(),'مقارنة_الفروع_'+todayStr(),false); }
+function exportCompareImage(){ if(!compareExportRows().length){ toast('لا توجد بيانات'); return; } exportDocImage(compareDocBody(),'مقارنة_الفروع_'+todayStr(),false); }
+
+// ----- مقارنة بالألوان (كل لون بلونه) -----
+const COLOR_HEX={'ابيض':'#ffffff','بيج':'#dcc79b','رمادي':'#a3a8ae','اسود':'#3a3a3a','خشبي':'#b07a45','ارو':'#c9a56a','جولدن اوك':'#c58b2a','بني':'#7a5233','ماهوجني':'#8a3f2b'};
+function hexRgb(h){ h=h.replace('#',''); return [0,2,4].map(i=>parseInt(h.substr(i,2),16)); }
+function mixWhite(h,r){ return '#'+hexRgb(h).map(c=>Math.round(c+(255-c)*r).toString(16).padStart(2,'0')).join(''); }
+function colorInfo(name){
+  const head=COLOR_HEX[String(name).trim()]||'#d9dde5';
+  const [r,g,b]=hexRgb(head); const lum=0.299*r+0.587*g+0.114*b;
+  return {head, cell:head==='#ffffff'?'#ffffff':mixWhite(head,0.6), text:lum<140?'#ffffff':'#111111'};
+}
+function colorsTableHtml(cls){
+  const {colors,rows,W}=buildColorTable(); const info=colors.map(colorInfo);
+  const gb=i=>(i%W===0)?'border-right:2px solid #555;':'';
+  const cell=n=>n?fmtN(n):'<span style="opacity:.45">·</span>';
+  return `<table class="${cls}">
+    <tr><th rowspan="2">الصنف</th>${colors.map((c,i)=>`<th colspan="${W}" style="background:${info[i].head};color:${info[i].text};border-right:2px solid #555">${esc(c)}</th>`).join('')}<th rowspan="2">الكل</th></tr>
+    <tr>${colors.map((c,i)=>warehouses.map((w,j)=>`<th style="background:${info[i].cell};color:#111;${j===0?'border-right:2px solid #555;':''}">${esc(w.name)}</th>`).join('')).join('')}</tr>
+    ${rows.map(r=>r.type==='main'
+      ? `<tr class="m"><td colspan="${2+colors.length*W}" style="background:#cfdcff;color:#111;font-weight:700;text-align:right">◆ ${esc(r.label)}</td></tr>`
+      : `<tr class="z"><td>${esc(r.label)}</td>${r.flat.map((v,i)=>`<td style="background:${info[Math.floor(i/W)].cell};color:#111;${gb(i)}">${cell(v)}</td>`).join('')}<td><b>${fmtN(r.total)}</b></td></tr>`).join('')}
+  </table>`;
+}
+function colorsDocBody(){ return `<div class="dx"><h2>مقارنة الأرصدة بالألوان</h2><div class="sub">${todayStr()}</div>${colorsTableHtml('')}</div>`; }
+function renderWhColors(m){
+  if(noStockMsg()){ m.innerHTML=`<div class="empty">لا توجد بيانات أرصدة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
+  const allMain=[...new Set(items.filter(i=>i.baseName&&i.color).map(i=>i.mainGroup).filter(Boolean))];
+  const {rows}=buildColorTable();
+  m.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">اختار المجموعات للعرض والتصدير (من غير اختيار = الكل):</div>
+    <div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allMain,colMain,'colToggleMain')}</div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${colZero?'checked':''} onchange="colZero=this.checked;render()"> إظهار الألوان/الأصناف الصفرية</label>
+    ${rows.length? `<div style="overflow-x:auto">${colorsTableHtml('rep stk')}</div>` : `<div class="empty">لا توجد بيانات مطابقة</div>`}
+    ${floatBar(`<button onclick="exportColorsExcel()">📊 إكسل</button><button onclick="exportColorsPdf()">📄 PDF</button><button onclick="exportColorsImage()">🖼️ صورة</button>`)}
+  `;
+}
+function exportColorsPdf(){ if(!buildColorTable().rows.length){ toast('لا توجد بيانات'); return; } exportDocPdf(colorsDocBody(),'مقارنة_بالألوان_'+todayStr(),true); }
+function exportColorsImage(){ if(!buildColorTable().rows.length){ toast('لا توجد بيانات'); return; } exportDocImage(colorsDocBody(),'مقارنة_بالألوان_'+todayStr(),true); }
+async function exportColorsExcel(){
+  const {colors,rows,W}=buildColorTable(); if(!rows.length){ toast('لا توجد بيانات'); return; }
+  try{
+    await loadLib('exceljs',()=>window.ExcelJS);
+    const wb=new window.ExcelJS.Workbook(), ws=wb.addWorksheet('مقارنة بالألوان',{views:[{rightToLeft:true}]});
+    const argb=h=>'FF'+h.replace('#','').toUpperCase(), info=colors.map(colorInfo);
+    const fill=(c,h)=>{ c.fill={type:'pattern',pattern:'solid',fgColor:{argb:argb(h)}}; };
+    const thin={style:'thin',color:{argb:'FF999999'}}, box=c=>{ c.border={top:thin,left:thin,bottom:thin,right:thin}; c.alignment={horizontal:'center',vertical:'middle'}; };
+    const NC=2+colors.length*W;
+    ws.addRow(['مقارنة الأرصدة بالألوان — '+todayStr()]); ws.mergeCells(1,1,1,NC); ws.getCell(1,1).font={bold:true,size:14}; ws.getCell(1,1).alignment={horizontal:'center'};
+    const r2=ws.addRow(['الصنف']), r3=ws.addRow(['']);
+    colors.forEach((c,i)=>{ const c0=2+i*W; ws.mergeCells(2,c0,2,c0+W-1); const cell=ws.getCell(2,c0); cell.value=c; fill(cell,info[i].head); cell.font={bold:true,color:{argb:argb(info[i].text)}}; box(cell);
+      warehouses.forEach((w,j)=>{ const x=ws.getCell(3,c0+j); x.value=w.name; fill(x,info[i].cell); x.font={bold:true}; box(x); }); });
+    ws.mergeCells(2,1,3,1); ws.mergeCells(2,NC,3,NC); ws.getCell(2,1).value='الصنف'; ws.getCell(2,NC).value='الكل';
+    [ws.getCell(2,1),ws.getCell(2,NC)].forEach(c=>{ fill(c,'#dbe4ff'); c.font={bold:true}; box(c); });
+    let rn=4;
+    rows.forEach(r=>{
+      if(r.type==='main'){ ws.mergeCells(rn,1,rn,NC); const c=ws.getCell(rn,1); c.value='◆ '+r.label; fill(c,'#cfdcff'); c.font={bold:true}; c.alignment={horizontal:'right'}; }
+      else { ws.getCell(rn,1).value=r.label; box(ws.getCell(rn,1)); ws.getCell(rn,1).alignment={horizontal:'right'};
+        r.flat.forEach((v,i)=>{ const c=ws.getCell(rn,2+i); c.value=v||0; fill(c,info[Math.floor(i/W)].cell); box(c); if(!v) c.font={color:{argb:'FF999999'}}; });
+        const t=ws.getCell(rn,NC); t.value=r.total; t.font={bold:true}; box(t); }
+      rn++;
+    });
+    ws.getColumn(1).width=40; for(let c=2;c<=NC;c++) ws.getColumn(c).width=10;
+    const buf=await wb.xlsx.writeBuffer();
+    downloadBlob(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'مقارنة_بالألوان_'+todayStr()+'.xlsx'); toast('تم تنزيل ملف إكسل');
+  }catch(e){ console.error(e); toast('تعذر إنشاء الإكسل — تأكد من الاتصال بالإنترنت'); }
+}
+
+// ===================== الجرد الفعلي =====================
+let invCounts=load('invCounts_v1',{}), invMain=new Set(), invSub=new Set(), invHideZero=false, invView=0;
+function invGet(whId){ if(!invCounts[whId]) invCounts[whId]={date:todayStr(),counts:{}}; return invCounts[whId]; }
+function invToggleMain(v){ if(invMain.has(v)) invMain.delete(v); else invMain.add(v); invSub=new Set(); render(); }
+function invToggleSub(v){ if(invSub.has(v)) invSub.delete(v); else invSub.add(v); render(); }
+function setInvDate(whId,v){ invGet(whId).date=v; save('invCounts_v1',invCounts); }
+function invNew(whId){ if(!confirm('بدء جرد جديد؟ هيتمسح الجرد الحالي لهذا المخزن.')) return; invCounts[whId]={date:todayStr(),counts:{}}; save('invCounts_v1',invCounts); render(); }
+function setInvCount(whId,itemId,kind,val){
+  const it=items.find(x=>x.id===itemId); if(!it) return;
+  const inv=invGet(whId), rq=Number(it.rollQty)||0, c=inv.counts[it.name]||{};
+  if(kind==='q'){ if(val===''){ delete inv.counts[it.name]; } else { inv.counts[it.name]={actual:Number(val)}; } }
+  else {
+    if(val==='') delete c[kind]; else c[kind]=Number(val);
+    if(c.big===undefined && c.small===undefined) delete inv.counts[it.name];
+    else { c.actual=(c.big||0)*rq+(c.small||0); inv.counts[it.name]=c; }
+  }
+  save('invCounts_v1',invCounts);
+  const el=document.getElementById('invCnt'); if(el) el.textContent=Object.keys(inv.counts).length;
+}
+function invResult(whId){
+  const inv=invGet(whId), stock=whStock[whId]||{}, rows=[];
+  Object.entries(inv.counts).forEach(([name,c])=>{
+    const it=itemsByName[name]||{}, prog=Number(stock[name]?.balance)||0, act=Number(c.actual)||0;
+    rows.push({name, mg:it.mainGroup||'غير مصنف', prog, act, diff:act-prog});
+  });
+  const def=rows.filter(r=>r.diff<0), exc=rows.filter(r=>r.diff>0);
+  const defTotal=def.reduce((a,r)=>a-r.diff,0), excTotal=exc.reduce((a,r)=>a+r.diff,0);
+  const pct=rows.length? (rows.length-def.length-exc.length)/rows.length : 0;
+  return {rows,def,exc,counted:rows.length,defTotal,excTotal,pct};
+}
+function renderWhInventory(m, whId){
+  const inv=invGet(whId), w=warehouses.find(x=>x.id===whId), stock=whStock[whId]||{};
+  const segBtn=(i,t)=>`<button onclick="invView=${i};render()" style="flex:1;padding:9px;border-radius:9px;background:${invView===i?'var(--blue)':'var(--panel2)'};color:${invView===i?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13px">${t}</button>`;
+  const head=`<div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--border)">
+      📝 جرد مخزن <b>${esc(w.name)}</b> بتاريخ <input type="date" value="${inv.date}" onchange="setInvDate('${whId}',this.value)" style="border:1px solid var(--border);border-radius:6px;padding:2px 6px;background:var(--panel);color:var(--text)">
+      — مجرود: <b id="invCnt">${Object.keys(inv.counts).length}</b> صنف
+      <button onclick="invNew('${whId}')" style="margin-right:8px;border:1px solid var(--border);background:var(--panel);color:var(--danger);border-radius:6px;padding:2px 8px;cursor:pointer">🗑️ جرد جديد</button></div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">${segBtn(0,'✍️ إدخال الجرد')}${segBtn(1,'📋 النتيجة')}</div>`;
+  if(invView===1){ renderInvResult(m, whId, head); return; }
+  const allMain=[...new Set(items.map(i=>i.mainGroup).filter(Boolean))];
+  const allSub=invMain.size? [...new Set(items.filter(i=>invMain.has(i.mainGroup)).map(i=>i.subGroup).filter(Boolean))] : [];
+  let list=invMain.size? items.filter(i=>invMain.has(i.mainGroup)) : [];
+  if(invSub.size) list=list.filter(i=>invSub.has(i.subGroup));
+  if(q) list=list.filter(i=>i.name.includes(q));
+  if(invHideZero) list=list.filter(i=>(Number(stock[i.name]?.balance)||0)>0);
+  const inp='width:62px;padding:8px 4px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;text-align:center';
+  m.innerHTML = head+`
+    <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الرئيسية (اختار أكتر من واحدة):</div>
+    <div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allMain,invMain,'invToggleMain')}</div>
+    ${allSub.length? `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الفرعية:</div><div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allSub,invSub,'invToggleSub')}</div>`:''}
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${invHideZero?'checked':''} onchange="invHideZero=this.checked;render()"> إخفاء الأصناف رصيدها صفر</label>
+    ${!invMain.size? `<div class="empty">اختار مجموعة رئيسية واحدة أو أكتر عشان تبدأ الجرد</div>` :
+      list.length? list.map(it=>{
+        const rq=Number(it.rollQty)||0, c=inv.counts[it.name]||{}, b=pieceBreakdown(it.name,{balance:0});
+        const ins = rq>1
+          ? `<input type="number" inputmode="numeric" placeholder="${b.bigLbl}" value="${c.big??''}" style="${inp}" onchange="setInvCount('${whId}','${it.id}','big',this.value)">
+             <input type="number" inputmode="numeric" placeholder="${b.smallLbl}" value="${c.small??''}" style="${inp}" onchange="setInvCount('${whId}','${it.id}','small',this.value)">`
+          : `<input type="number" inputmode="numeric" placeholder="الفعلي" value="${c.actual??''}" style="${inp};width:84px" onchange="setInvCount('${whId}','${it.id}','q',this.value)">`;
+        return `<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(it.name)}</div>
+          <div class="sub">برنامج: ${esc(balText(it.name, stock[it.name]))}</div></div>${ins}</div>`;
+      }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
+    <div style="height:20px"></div>`;
+  const qi=$('#q'); if(qi) qi.oninput=e=>{ q=e.target.value; renderWhInventory(m, whId); };
+}
+function invStatsHtml(r){
+  const box=(l,v,c)=>`<div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><div style="font-size:11.5px;color:var(--muted)">${l}</div><div style="font-size:19px;font-weight:700;${c?'color:'+c:''}">${v}</div></div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+    ${box('أصناف مجرودة',fmtN(r.counted))}${box('أصناف عجز',fmtN(r.def.length),'var(--danger)')}${box('أصناف زيادة',fmtN(r.exc.length),'var(--ok)')}
+    ${box('إجمالي العجز',fmtN(r.defTotal),'var(--danger)')}${box('إجمالي الزيادة',fmtN(r.excTotal),'var(--ok)')}${box('نسبة المطابقة',Math.round(r.pct*100)+'%')}</div>`;
+}
+function invListHtml(list, kind){
+  if(!list.length) return `<div class="empty" style="padding:14px">${kind==='def'?'لا يوجد عجز':'لا يوجد زيادة'}</div>`;
+  return list.map(x=>`<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(x.name)}</div>
+    <div class="sub">${esc(x.mg)} · برنامج: ${fmtN(x.prog)} · فعلي: ${fmtN(x.act)}</div></div>
+    <b style="color:${kind==='def'?'var(--danger)':'var(--ok)'}">${kind==='def'?'-':'+'}${fmtN(Math.abs(x.diff))}</b></div>`).join('');
+}
+function renderInvResult(m, whId, head){
+  const r=invResult(whId);
+  m.innerHTML = head + (r.counted? `${invStatsHtml(r)}
+    <div style="font-weight:700;margin:6px 0">🔻 تفاصيل العجز</div>${invListHtml(r.def,'def')}
+    <div style="font-weight:700;margin:12px 0 6px">🔺 تفاصيل الزيادة</div>${invListHtml(r.exc,'exc')}` : `<div class="empty">لسه ماتجردش أي صنف — روح إدخال الجرد واكتب الكميات الفعلية</div>`)
+    + floatBar(`<button onclick="exportInvExcel('${whId}')">📊 إكسل</button><button onclick="exportInvPdf('${whId}')">📄 PDF</button><button onclick="exportInvImage('${whId}')">🖼️ صورة</button>`);
+}
+function invDocBody(whId){
+  const w=warehouses.find(x=>x.id===whId), inv=invGet(whId), r=invResult(whId);
+  const tbl=(list,kind)=> list.length? `<table><tr><th>المجموعة</th><th>الصنف</th><th>الرصيد (برنامج)</th><th>الجرد الفعلي</th><th>${kind==='def'?'العجز':'الزيادة'}</th></tr>
+    ${list.map(x=>`<tr class="z"><td>${esc(x.mg)}</td><td>${esc(x.name)}</td><td>${fmtN(x.prog)}</td><td>${fmtN(x.act)}</td><td class="${kind==='def'?'neg':'pos'}">${fmtN(Math.abs(x.diff))}</td></tr>`).join('')}</table>` : `<div style="color:#666;padding:6px">${kind==='def'?'لا يوجد عجز':'لا يوجد زيادة'}</div>`;
+  return `<div class="dx"><h2>نتيجة جرد مخزن ${esc(w.name)}</h2><div class="sub">بتاريخ ${inv.date}</div>
+    <table><tr><th>الأصناف المجرودة</th><th>أصناف عجز</th><th>أصناف زيادة</th><th>إجمالي العجز</th><th>إجمالي الزيادة</th><th>نسبة المطابقة</th></tr>
+    <tr class="z"><td>${fmtN(r.counted)}</td><td class="neg">${fmtN(r.def.length)}</td><td class="pos">${fmtN(r.exc.length)}</td><td class="neg">${fmtN(r.defTotal)}</td><td class="pos">${fmtN(r.excTotal)}</td><td><b>${Math.round(r.pct*100)}%</b></td></tr></table>
+    <h3>تفاصيل العجز</h3>${tbl(r.def,'def')}<h3>تفاصيل الزيادة</h3>${tbl(r.exc,'exc')}</div>`;
+}
+function exportInvPdf(whId){ const w=warehouses.find(x=>x.id===whId); if(!invResult(whId).counted){ toast('لا يوجد جرد'); return; } exportDocPdf(invDocBody(whId),'نتيجة_جرد_'+w.name+'_'+invGet(whId).date,false); }
+function exportInvImage(whId){ const w=warehouses.find(x=>x.id===whId); if(!invResult(whId).counted){ toast('لا يوجد جرد'); return; } exportDocImage(invDocBody(whId),'نتيجة_جرد_'+w.name+'_'+invGet(whId).date,false); }
+function exportInvExcel(whId){
+  const w=warehouses.find(x=>x.id===whId), inv=invGet(whId), r=invResult(whId); if(!r.counted){ toast('لا يوجد جرد'); return; }
+  const data=[['نتيجة جرد مخزن '+w.name+' بتاريخ '+inv.date],[],['الأصناف المجرودة','أصناف عجز','أصناف زيادة','إجمالي العجز','إجمالي الزيادة','نسبة المطابقة'],
+    [r.counted,r.def.length,r.exc.length,r.defTotal,r.excTotal,Math.round(r.pct*100)+'%'],[],['تفاصيل العجز'],['المجموعة','الصنف','الرصيد (برنامج)','الجرد الفعلي','العجز'],
+    ...r.def.map(x=>[x.mg,x.name,x.prog,x.act,-x.diff]),[],['تفاصيل الزيادة'],['المجموعة','الصنف','الرصيد (برنامج)','الجرد الفعلي','الزيادة'],
+    ...r.exc.map(x=>[x.mg,x.name,x.prog,x.act,x.diff])];
+  const ws=XLSX.utils.aoa_to_sheet(data); ws['!cols']=[{wch:24},{wch:44},{wch:16},{wch:14},{wch:12}];
+  const wbk=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wbk,ws,'نتيجة الجرد'); XLSX.writeFile(wbk,'نتيجة_جرد_'+w.name+'_'+inv.date+'.xlsx');
+}
+
+function renderWhDetail(m, whId){
+  const w = warehouses.find(x=>x.id===whId);
+  if(!w){ m.innerHTML=`<div class="empty">المخزن غير موجود</div>`; return; }
+  const sub = load('_whSub_',null);
+  const b=(n,t)=>`<button onclick="setWhSub(${n})" style="flex:1;padding:9px 4px;border-radius:9px;background:${sub===n?'var(--blue)':'var(--panel2)'};color:${sub===n?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:12.5px">${t}</button>`;
+  m.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px">${b(0,'📊 الأرصدة')}${b(1,'🧾 طلب النواقص')}${b(2,'📝 الجرد')}</div><div id="wh_sub"></div>`;
+  const box=$('#wh_sub');
+  if(sub===null) box.innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
+  else if(sub===0) renderWhStock(box, whId);
+  else if(sub===1) renderWhShortage(box, whId);
+  else renderWhInventory(box, whId);
 }
 
 function render(){
