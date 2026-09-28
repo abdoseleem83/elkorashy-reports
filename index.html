@@ -80,10 +80,24 @@ table.rep.stk th:first-child{background:var(--panel2)}
 .qs small{color:var(--muted)}
 .grp-h>span:first-child{flex:1;min-width:0}
 .grp-h{gap:8px}
+.ddrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.dd{position:relative;min-width:0}
+.dd summary,.dd .ddoff{list-style:none;cursor:pointer;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:8px 26px 8px 10px;display:flex;flex-direction:column;gap:2px;position:relative}
+.dd .ddoff{cursor:default;opacity:.7}
+.dd summary::-webkit-details-marker{display:none}
+.dd summary::after{content:'▾';position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.ddl{font-size:11px;color:var(--muted)}
+.ddv{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ddp{position:absolute;top:calc(100% + 4px);z-index:30;width:min(330px,88vw);max-height:52vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:6px}
+.ddp label{display:flex;align-items:center;gap:8px;padding:10px 8px;font-size:13.5px;border-bottom:1px solid var(--border)}
+.ddp label:last-child{border-bottom:none}
+.ddp input[type=checkbox]{width:18px;height:18px;flex-shrink:0}
+.ddact{display:flex;gap:6px;padding:2px 2px 8px;position:sticky;top:0;background:var(--panel);z-index:1}
+.ddact button{flex:1;padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px;font-weight:700}
 </style>
 </head>
 <body>
-<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.7</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.8</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -142,7 +156,7 @@ const modules=[{id:'items',icon:'📦',name:'الأصناف'},{id:'warehouses',i
 function renderNav(){
   $('#nav').innerHTML = modules.map(m=>`<button class="nav-btn ${m.id===module?'active':''}" onclick="switchModule('${m.id}')">${m.icon} ${m.name}</button>`).join('');
 }
-function switchModule(m){ module=(module===m)?null:m; q=''; openGroups=new Set(); render(); }
+function switchModule(m){ module=(module===m)?null:m; q=''; openGroups=new Set(); render(true); }
 $('#fab').addEventListener('click', ()=>{
   if(module==='items') editItem(null);
   else if(module==='warehouses') editWarehouse(null);
@@ -185,7 +199,7 @@ function renderItems(m){
   else if(st===1) renderGvCodes($('#it_content'));
   else renderUnits($('#it_content'));
 }
-function setItemsTab(n){ const cur=load('_itemsTab_',null); save('_itemsTab_', cur===n?null:n); q=''; render(); }
+function setItemsTab(n){ const cur=load('_itemsTab_',null); save('_itemsTab_', cur===n?null:n); q=''; render(true); }
 function renderItemsList(m){
   const list = items.filter(i => !q || i.name.includes(q) || i.mainGroup.includes(q));
   const groups = [...new Set(list.map(i=>i.mainGroup||'بدون'))];
@@ -204,7 +218,7 @@ function renderItemsList(m){
           <div class="act"><button onclick="editItem('${i.id}')">✏️</button><button onclick="delItem('${i.id}')">🗑️</button></div></div>`).join('')}</div></div>`;
     }).join('') : `<div class="empty">لا يوجد أصناف</div>`}
   `;
-  $('#q').oninput=e=>{ q=e.target.value; renderItemsList(m); };
+  $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderItemsList(m)); };
   $('#impItems').onchange=e=>{ if(e.target.files[0]) importItems(e.target.files[0]); };
 }
 function renderGvCodes(m){
@@ -218,7 +232,7 @@ function renderGvCodes(m){
       <div class="sub">كود: ${esc(i.code||'—')} · القطعة/كرتونة: ${esc(i.perCarton||'—')} · وزن: ${esc(i.weight||'—')}</div></div>
       <div class="act"><button onclick="editGvCode('${i.id}')">✏️</button><button onclick="delGvCode('${i.id}')">🗑️</button></div></div>`).join('') : `<div class="empty">لا توجد أكواد</div>`}
   `;
-  $('#q').oninput=e=>{ q=e.target.value; renderGvCodes(m); };
+  $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderGvCodes(m)); };
   $('#impGv').onchange=e=>{ if(e.target.files[0]) importGvCodes(e.target.files[0]); };
 }
 function renderUnits(m){
@@ -332,9 +346,9 @@ function renderWarehouses(m){
   else if(whTab==='colors') renderWhColors($('#wh_content'));
   else renderWhDetail($('#wh_content'), whTab);
 }
-function setWhTab(id){ const cur=load('_whTab_',null); save('_whTab_', cur===id?null:id); save('_whSub_',null); render(); }
+function setWhTab(id){ const cur=load('_whTab_',null); save('_whTab_', cur===id?null:id); save('_whSub_',null); render(true); }
 
-function setWhSub(n){ const cur=load('_whSub_',null); save('_whSub_', cur===n?null:n); render(); }
+function setWhSub(n){ const cur=load('_whSub_',null); save('_whSub_', cur===n?null:n); render(true); }
 
 function groupFilterHtml(allMain, whId){
   return `<details style="margin-bottom:10px;border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:8px 10px">
@@ -384,7 +398,7 @@ function renderWhStock(m, whId){
   m.innerHTML = `
     <div class="impbar"><label>📥 استيراد شيت الأرصدة<input type="file" id="impStock" accept=".xlsx,.xls" style="display:none"></label></div>
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
-    ${groupFilterHtml(allMain, whId)}
+    ${ddRow('st',allMain,whFilterMain,[...new Set(items.filter(i=>whFilterMain.has(i.mainGroup)).map(i=>i.subGroup).filter(Boolean))],whFilterSub)}
     ${groups.length? groups.map(g=>{
       const rows=list.filter(([name])=>((itemsByName[name]||{}).mainGroup||'غير مصنف')===g); const open=openGroups.has(g);
       return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup('${g}')">
@@ -395,7 +409,7 @@ function renderWhStock(m, whId){
         }).join('')}</div></div>`;
     }).join('') : `<div class="empty">لا توجد بيانات أرصدة لهذا المخزن — استورد الشيت</div>`}
   `;
-  $('#q').oninput=e=>{ q=e.target.value; renderWhStock(m, whId); };
+  $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderWhStock(m, whId)); };
   $('#impStock').onchange=e=>{ if(e.target.files[0]) importStock(e.target.files[0], whId); };
 }
 function toggleWhFilter(kind, val, whId){
@@ -468,10 +482,7 @@ function renderWhShortage(m, whId){
       <input type="date" value="${orderDate}" onchange="setOrderDate('${whId}', this.value)" style="border:1px solid var(--border);border-radius:6px;padding:2px 6px;background:var(--panel);color:var(--text)">
     </div>
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الرئيسية (اختار أكتر من واحدة):</div>
-    <div style="display:flex;flex-wrap:wrap;margin-bottom:8px">${allMain.map(g=>`<span class="pill ${shortMain.has(g)?'on':''}" onclick="setShortMain('${whId}','${esc(g).replace(/'/g,"\\'")}')">${esc(g)}</span>`).join('')}</div>
-    ${allSub.length? `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الفرعية:</div>
-    <div style="display:flex;flex-wrap:wrap;margin-bottom:8px">${allSub.map(g=>`<span class="pill ${shortSub.has(g)?'on':''}" onclick="setShortSub('${whId}','${esc(g).replace(/'/g,"\\'")}')">${esc(g)}</span>`).join('')}</div>`:''}
+    ${ddRow('sh',allMain,shortMain,allSub,shortSub)}
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-bottom:10px">
       <input type="checkbox" ${showZero?'checked':''} onchange="save('_whShowZero_', this.checked); render();"> إظهار الأصناف رصيدها صفر
     </label>
@@ -498,7 +509,7 @@ function renderWhShortage(m, whId){
       <button onclick="exportOrderSummary('${whId}')" style="width:100%;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">📄 ملخّص الأوردر بالمجموعات (PDF)</button>
     </div>
   `;
-  $('#q').oninput=e=>{ q=e.target.value; renderWhShortage(m, whId); };
+  $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderWhShortage(m, whId)); };
 }
 function unmarkShort(whId,name){ if(!whShortage[whId]) return; delete whShortage[whId][name]; save('whShortage_v1',whShortage); render(); }
 function getOrderDate(whId){ const d=load('whOrderDate_v1',{}); return d[whId] || new Date().toISOString().slice(0,10); }
@@ -572,9 +583,7 @@ function renderWhCompare(m){
   const allSub=cmpMain.size? [...new Set(items.filter(i=>cmpMain.has(i.mainGroup)).map(i=>i.subGroup).filter(Boolean))] : [];
   const tree=buildCompareTree();
   m.innerHTML = `
-    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">اختار المجموعات للعرض والتصدير (من غير اختيار = الكل):</div>
-    <div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allMain,cmpMain,'cmpToggleMain')}</div>
-    ${allSub.length? `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الفرعية:</div><div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allSub,cmpSub,'cmpToggleSub')}</div>`:''}
+    ${ddRow('cmp',allMain,cmpMain,allSub,cmpSub)}
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${cmpZero?'checked':''} onchange="cmpZero=this.checked;render()"> إظهار الأصناف الصفرية</label>
     ${tree.length? tree.map(t=>{
       const k='cmp:'+t.mg;
@@ -662,7 +671,7 @@ function renderSales(m){
   else if(st===1) renderSalesImport($('#st_content'));
   else renderSalesReport($('#st_content'));
 }
-function setSalesTab(n){ const cur=load('_salesTab_',null); save('_salesTab_', cur===n?null:n); q=''; render(); }
+function setSalesTab(n){ const cur=load('_salesTab_',null); save('_salesTab_', cur===n?null:n); q=''; render(true); }
 function renderSalesCustomers(m){
   const list = customers.filter(c=>!q || c.name.includes(q));
   const allGroups=['غير مصنف',...CLS_OPTS];
@@ -678,7 +687,7 @@ function renderSalesCustomers(m){
           <div class="act"><button onclick="editCustomer('${c.id}')">✏️</button><button onclick="delCustomer('${c.id}')">🗑️</button></div></div>`).join('')}</div></div>`;
     }).join('') : `<div class="empty">لا توجد عملاء</div>`}
   `;
-  $('#q').oninput=e=>{ q=e.target.value; renderSalesCustomers(m); };
+  $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderSalesCustomers(m)); };
   $('#impCust').onchange=e=>{ if(e.target.files[0]) importCustomers(e.target.files[0]); };
 }
 function renderSalesImport(m){
@@ -937,8 +946,7 @@ function renderWhColors(m){
   const allMain=[...new Set(items.filter(i=>i.baseName&&i.color).map(i=>i.mainGroup).filter(Boolean))];
   const {rows}=buildColorTable();
   m.innerHTML = `
-    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">اختار المجموعات للعرض والتصدير (من غير اختيار = الكل):</div>
-    <div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allMain,colMain,'colToggleMain')}</div>
+    ${ddRowMain('col',allMain,colMain)}
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${colZero?'checked':''} onchange="colZero=this.checked;render()"> إظهار الألوان/الأصناف الصفرية</label>
     ${rows.length? `<div style="overflow-x:auto">${colorsTableHtml('rep stk')}</div>` : `<div class="empty">لا توجد بيانات مطابقة</div>`}
     ${floatBar(`<button onclick="exportColorsExcel()">📊 إكسل</button><button onclick="exportColorsPdf()">📄 PDF</button><button onclick="exportColorsImage()">🖼️ صورة</button>`)}
@@ -1023,9 +1031,7 @@ function renderWhInventory(m, whId){
   const inp='width:62px;padding:8px 4px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;text-align:center';
   m.innerHTML = head+`
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الرئيسية (اختار أكتر من واحدة):</div>
-    <div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allMain,invMain,'invToggleMain')}</div>
-    ${allSub.length? `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الفرعية:</div><div style="display:flex;flex-wrap:wrap;margin-bottom:6px">${chipsHtml(allSub,invSub,'invToggleSub')}</div>`:''}
+    ${ddRow('inv',allMain,invMain,allSub,invSub)}
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${invHideZero?'checked':''} onchange="invHideZero=this.checked;render()"> إخفاء الأصناف رصيدها صفر</label>
     ${!invMain.size? `<div class="empty">اختار مجموعة رئيسية واحدة أو أكتر عشان تبدأ الجرد</div>` :
       list.length? list.map(it=>{
@@ -1038,7 +1044,7 @@ function renderWhInventory(m, whId){
           <div class="sub">برنامج: ${esc(balText(it.name, stock[it.name]))}</div></div>${ins}</div>`;
       }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
     <div style="height:20px"></div>`;
-  const qi=$('#q'); if(qi) qi.oninput=e=>{ q=e.target.value; renderWhInventory(m, whId); };
+  const qi=$('#q'); if(qi) qi.oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderWhInventory(m, whId)); };
 }
 function invStatsHtml(r){
   const box=(l,v,c)=>`<div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><div style="font-size:11.5px;color:var(--muted)">${l}</div><div style="font-size:19px;font-weight:700;${c?'color:'+c:''}">${v}</div></div>`;
@@ -1093,7 +1099,38 @@ function renderWhDetail(m, whId){
   else renderWhInventory(box, whId);
 }
 
-function render(){
+// ===================== قوائم منسدلة متعددة الاختيار =====================
+const DDREG={}; let ddOpen=new Set();
+function ddToggle(id,open,el){
+  if(open){ ddOpen.add(id); document.querySelectorAll('.dd details').forEach(d=>{ if(d!==el && d.open) d.open=false; }); }
+  else ddOpen.delete(id);
+}
+function ddPick(id,val){ const d=DDREG[id]; if(!d) return; if(d.sel.has(val)) d.sel.delete(val); else d.sel.add(val); if(d.after) d.after(); render(); }
+function ddAll(id){ const d=DDREG[id]; if(!d) return; d.options.forEach(o=>d.sel.add(o)); if(d.after) d.after(); render(); }
+function ddClear(id){ const d=DDREG[id]; if(!d) return; d.sel.clear(); if(d.after) d.after(); render(); }
+function msDD(id,label,options,sel,side,after){
+  DDREG[id]={sel,options,after};
+  const arr=[...sel];
+  const txt=arr.length? (arr[0]+(arr.length>1?' +'+(arr.length-1):'')) : 'اختار...';
+  return `<div class="dd"><details ${ddOpen.has(id)?'open':''} ontoggle="ddToggle('${id}',this.open,this)">
+    <summary><span class="ddl">${label}</span><span class="ddv">${esc(txt)}</span></summary>
+    <div class="ddp" style="${side}:0"><div class="ddact"><button onclick="ddAll('${id}')">تحديد الكل</button><button onclick="ddClear('${id}')">مسح</button></div>
+    ${options.length? options.map((o,i)=>`<label><input type="checkbox" ${sel.has(o)?'checked':''} onchange="ddPick('${id}',DDREG['${id}'].options[${i}])"> ${esc(o)}</label>`).join('') : '<div style="padding:10px;color:var(--muted);font-size:13px">لا توجد خيارات</div>'}
+    </div></details></div>`;
+}
+function ddRow(pfx, mainOpts, mainSet, subOpts, subSet){
+  const sub = mainSet.size ? msDD(pfx+'_s','المجموعة الفرعية',subOpts,subSet,'left',null)
+    : `<div class="dd"><div class="ddoff"><span class="ddl">المجموعة الفرعية</span><span class="ddv" style="color:var(--muted);font-weight:400">اختار الرئيسية أولاً</span></div></div>`;
+  return `<div class="ddrow">${msDD(pfx+'_m','المجموعة الرئيسية',mainOpts,mainSet,'right',()=>subSet.clear())}${sub}</div>`;
+}
+function ddRowMain(pfx, mainOpts, mainSet){ return `<div class="ddrow" style="grid-template-columns:1fr">${msDD(pfx+'_m','المجموعة الرئيسية',mainOpts,mainSet,'right',null)}</div>`; }
+function reRenderKeepQ(fn){
+  const a=document.activeElement, had=!!(a && a.id==='q'), pos=had? a.selectionStart : 0;
+  fn();
+  if(had){ const n=document.querySelector('#q'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(e){} } }
+}
+
+function renderInner(){
   renderNav();
   const m=$('#main');
   if(!module){ m.innerHTML=`<div class="empty">اضغط على أحد الأيقونات فوق</div>`; return; }
@@ -1102,6 +1139,11 @@ function render(){
   else if(module==='sales') renderSales(m);
   else if(module==='gv') renderGV(m);
   else renderPayroll(m);
+}
+function render(top){
+  const m=$('#main'); const st=m? m.scrollTop : 0;
+  renderInner();
+  if(m) m.scrollTop = top? 0 : st;
 }
 
 $('#refreshBtn').addEventListener('click', ()=>{ location.reload(); });
