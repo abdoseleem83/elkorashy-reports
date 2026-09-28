@@ -76,7 +76,7 @@ table.rep td:first-child,table.rep th:first-child{text-align:right}
 </style>
 </head>
 <body>
-<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.4</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.5</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -118,10 +118,17 @@ const SECTOR_MAP={
   'اكسسورات pvc اكسا':'اكسسوارات','اكسسوارات خارجيه':'اكسسوارات','جيفيز':'اكسسوارات',
   'ابواب WPC':'ابواب WPC','شاتر':'أخرى','تصنيع':'أخرى','حشوات':'أخرى'
 };
+// تجميع مخصوص للتصدير: كرافت ونيو مع بعض، والاكسسوارات وكومبن مع بعض
+const EXPORT_GROUP_MAP={
+  'قطاعات كرافت لاين':'كرافت ونيو لاين','نيو لاين':'كرافت ونيو لاين',
+  'قطاعات PVC كومبن':'اكسسوارات وكومبن','اكسسورات pvc اكسا':'اكسسوارات وكومبن',
+  'اكسسوارات خارجيه':'اكسسوارات وكومبن','جيفيز':'اكسسوارات وكومبن'
+};
+function exportBucket(mainGroup){ return EXPORT_GROUP_MAP[mainGroup] || mainGroup || 'غير مصنف'; }
 
 let module='items', q='', openGroups=new Set(), pendingImport=null;
 let whFilterMain=new Set(), whFilterSub=new Set();
-let shortMain='', shortSub='';
+let shortMain=new Set(), shortSub=new Set();
 
 // nav
 const modules=[{id:'items',icon:'📦',name:'الأصناف'},{id:'warehouses',icon:'🏭',name:'المخازن'},{id:'sales',icon:'🧾',name:'المبيعات'},{id:'gv',icon:'📋',name:'جيفز'},{id:'payroll',icon:'💰',name:'المرتبات'}];
@@ -350,6 +357,19 @@ function groupFilterHtml(allMain, whId){
     })() : ''}
   </details>`;
 }
+function pieceBreakdown(name, s){
+  const it = itemsByName[name] || {};
+  const unit = it.unit || '—';
+  const bigLbl = (unit==='لفة')?'لفة':(unit==='كرتونة'?'كرتونة':'وحدة كبيرة');
+  const smallLbl = (unit==='عود')?'عود':(unit==='قطعة'?'قطعة':'قطعة');
+  let big = s.big||0, small = s.small||0;
+  if(!big && !small && it.rollQty && Number(it.rollQty)>0){
+    const rq = Number(it.rollQty);
+    big = Math.floor((s.balance||0)/rq);
+    small = (s.balance||0) % rq;
+  }
+  return {unit, bigLbl, smallLbl, big, small};
+}
 function renderWhStock(m, whId){
   const stock = whStock[whId] || {};
   let list = Object.entries(stock).filter(([name])=>!q || name.includes(q));
@@ -367,11 +387,9 @@ function renderWhStock(m, whId){
       return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup('${g}')">
         <span>${esc(g)} <span class="cnt">(${rows.length})</span></span><span class="arrow">▾</span></div>
         <div class="grp-body">${rows.map(([name,s])=>{
-          const unit=(itemsByName[name]||{}).unit||'—';
-          const bigLbl = (unit==='لفة')?'لفة':(unit==='كرتونة'?'كرتونة':'وحدة كبيرة');
-          const smallLbl = (unit==='عود')?'عود':(unit==='قطعة'?'قطعة':'وحدة صغيرة');
+          const b = pieceBreakdown(name, s);
           return `<div class="card"><div class="info"><div class="name">${esc(name)}</div>
-          <div class="sub">الرصيد: ${s.balance||0} ${esc(unit)} ${(s.big||s.small)?`(${s.big||0} ${bigLbl} + ${s.small||0} ${smallLbl})`:''}</div></div>
+          <div class="sub">الرصيد: ${s.balance||0} ${esc(b.unit)} ${(b.big||b.small)?`(${b.big} ${b.bigLbl} + ${b.small} ${b.smallLbl})`:''}</div></div>
           <div class="act"><button onclick="markShort('${whId}','${name.replace(/'/g,"\\'")}')">⚠️</button></div></div>`;
         }).join('')}</div></div>`;
     }).join('') : `<div class="empty">لا توجد بيانات أرصدة لهذا المخزن — استورد الشيت</div>`}
@@ -427,19 +445,17 @@ function setOrderQty(whId, name, val, unit){
 function setOrderUnit(whId, name, unit){
   if(whShortage[whId] && whShortage[whId][name]){ whShortage[whId][name].unit=unit; save('whShortage_v1',whShortage); }
 }
-function setShortMain(whId, val){ shortMain = val||''; shortSub=''; render(); }
-function setShortSub(whId, val){ shortSub = val||''; render(); }
+function setShortMain(whId, val){ if(shortMain.has(val)) shortMain.delete(val); else shortMain.add(val); shortSub=new Set(); render(); }
+function setShortSub(whId, val){ if(shortSub.has(val)) shortSub.delete(val); else shortSub.add(val); render(); }
 function setOrderDate(whId, val){ const d=load('whOrderDate_v1',{}); d[whId]=val; save('whOrderDate_v1',d); }
 function renderWhShortage(m, whId){
   const w=warehouses.find(x=>x.id===whId);
   const stock = whStock[whId] || {};
   const showZero = load('_whShowZero_', true);
   const allMain = [...new Set(items.map(i=>i.mainGroup).filter(Boolean))];
-  const curMain = shortMain;
-  const allSub = curMain? [...new Set(items.filter(i=>i.mainGroup===curMain).map(i=>i.subGroup).filter(Boolean))] : [];
-  const curSub = shortSub;
-  let list = curMain ? items.filter(i=>i.mainGroup===curMain) : [];
-  if(curSub) list = list.filter(i=>i.subGroup===curSub);
+  const allSub = shortMain.size? [...new Set(items.filter(i=>shortMain.has(i.mainGroup)).map(i=>i.subGroup).filter(Boolean))] : [];
+  let list = shortMain.size ? items.filter(i=>shortMain.has(i.mainGroup)) : [];
+  if(shortSub.size) list = list.filter(i=>shortSub.has(i.subGroup));
   if(q) list = list.filter(i=>i.name.includes(q));
   if(!showZero) list = list.filter(i=>(stock[i.name]?.balance||0) > 0);
   const dates = load('whOrderDate_v1',{});
@@ -451,20 +467,14 @@ function renderWhShortage(m, whId){
       <input type="date" value="${orderDate}" onchange="setOrderDate('${whId}', this.value)" style="border:1px solid var(--border);border-radius:6px;padding:2px 6px;background:var(--panel);color:var(--text)">
     </div>
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <select onchange="setShortMain('${whId}', this.value)" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px">
-        <option value="">-- المجموعة الرئيسية --</option>
-        ${allMain.map(g=>`<option value="${esc(g)}" ${g===curMain?'selected':''}>${esc(g)}</option>`).join('')}
-      </select>
-      ${curMain? `<select onchange="setShortSub('${whId}', this.value)" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px">
-        <option value="">-- كل الفرعية --</option>
-        ${allSub.map(g=>`<option value="${esc(g)}" ${g===curSub?'selected':''}>${esc(g)}</option>`).join('')}
-      </select>`:''}
-    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الرئيسية (اختار أكتر من واحدة):</div>
+    <div style="display:flex;flex-wrap:wrap;margin-bottom:8px">${allMain.map(g=>`<span class="pill ${shortMain.has(g)?'on':''}" onclick="setShortMain('${whId}','${esc(g).replace(/'/g,"\\'")}')">${esc(g)}</span>`).join('')}</div>
+    ${allSub.length? `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">المجموعة الفرعية:</div>
+    <div style="display:flex;flex-wrap:wrap;margin-bottom:8px">${allSub.map(g=>`<span class="pill ${shortSub.has(g)?'on':''}" onclick="setShortSub('${whId}','${esc(g).replace(/'/g,"\\'")}')">${esc(g)}</span>`).join('')}</div>`:''}
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-bottom:10px">
       <input type="checkbox" ${showZero?'checked':''} onchange="save('_whShowZero_', this.checked); render();"> إظهار الأصناف رصيدها صفر
     </label>
-    ${!curMain? `<div class="empty">اختار مجموعة رئيسية من فوق عشان تبدأ تكتب طلب الوردر</div>` :
+    ${!shortMain.size? `<div class="empty">اختار مجموعة رئيسية واحدة أو أكتر من فوق عشان تبدأ تكتب طلب الوردر</div>` :
       list.length? list.map(it=>{
         const bal = stock[it.name]?.balance || 0;
         const rec = (whShortage[whId]||{})[it.name] || {};
@@ -477,29 +487,51 @@ function renderWhShortage(m, whId){
             ${unitOpts.map(u=>`<option ${((rec.unit||it.unit)===u)?'selected':''}>${esc(u)}</option>`).join('')}
           </select></div>`;
       }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
-    <div class="impbar" style="margin-top:14px">
-      <button onclick="exportShortPdf('${whId}')">🖨️ PDF (تفصيلي)</button>
-      <button onclick="exportShortExcel('${whId}')">📊 إكسل</button>
-      <button onclick="exportShortImage('${whId}')">🖼️ صورة</button>
+    <div style="height:70px"></div>
+    <div style="position:sticky;bottom:0;background:var(--bg);padding:8px 0 4px;border-top:1px solid var(--border)">
+      <div class="impbar" style="margin:0 0 6px">
+        <button onclick="exportShortPdf('${whId}')">🖨️ PDF</button>
+        <button onclick="exportShortExcel('${whId}')">📊 إكسل</button>
+        <button onclick="exportShortImage('${whId}')">🖼️ صورة</button>
+      </div>
+      <button onclick="exportOrderSummary('${whId}')" style="width:100%;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">🖨️ طباعة الأوردر (ملخّص بالمجموعات)</button>
     </div>
-    <div class="impbar"><button onclick="exportOrderSummary('${whId}')" style="background:var(--blue);color:#fff">🖨️ طباعة الأوردر (ملخّص بالمجموعات)</button></div>
   `;
   $('#q').oninput=e=>{ q=e.target.value; renderWhShortage(m, whId); };
 }
 function unmarkShort(whId,name){ if(!whShortage[whId]) return; delete whShortage[whId][name]; save('whShortage_v1',whShortage); render(); }
 function getOrderDate(whId){ const d=load('whOrderDate_v1',{}); return d[whId] || new Date().toISOString().slice(0,10); }
+function buildGroupBreakdown(list){
+  const buckets={};
+  list.forEach(([name,s])=>{
+    const it=itemsByName[name]||{};
+    const bucket=exportBucket(it.mainGroup);
+    const sub=it.subGroup||'بدون';
+    buckets[bucket]=buckets[bucket]||{total:0, subs:{}};
+    buckets[bucket].total+=(Number(s.order)||0);
+    buckets[bucket].subs[sub]=(buckets[bucket].subs[sub]||0)+(Number(s.order)||0);
+  });
+  return buckets;
+}
+function breakdownTableHtml(buckets){
+  let rows='';
+  Object.entries(buckets).forEach(([bucket,b])=>{
+    rows+=`<tr style="background:#f0f0f0"><td colspan="2"><b>${esc(bucket)}</b></td><td><b>${b.total}</b></td></tr>`;
+    Object.entries(b.subs).forEach(([sub,tot])=>{ rows+=`<tr><td></td><td>${esc(sub)}</td><td>${tot}</td></tr>`; });
+  });
+  return `<table style="width:100%;border-collapse:collapse;margin-top:16px"><tr><th colspan="2" style="border:1px solid #999;padding:8px;background:#eee">المجموعة</th><th style="border:1px solid #999;padding:8px;background:#eee">الإجمالي</th></tr>${rows.replace(/<td/g,'<td style="border:1px solid #999;padding:8px"')}</table>`;
+}
+function getOrderDate(whId){ const d=load('whOrderDate_v1',{}); return d[whId] || new Date().toISOString().slice(0,10); }
 function exportOrderSummary(whId){
   const w=warehouses.find(x=>x.id===whId);
   const list = Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد طلبات'); return; }
-  const byGroup={};
-  list.forEach(([name,s])=>{ const g=(itemsByName[name]||{}).mainGroup||'غير مصنف'; byGroup[g]=(byGroup[g]||0)+(Number(s.order)||0); });
-  const groups=Object.keys(byGroup);
+  const buckets=buildGroupBreakdown(list);
   const html=`<html dir="rtl"><head><meta charset="utf-8"><title>طلب أوردر ${w.name}</title>
-    <style>body{font-family:Tahoma,Arial;padding:20px}h2{text-align:center}table{width:100%;border-collapse:collapse;margin-top:16px}
+    <style>body{font-family:Tahoma,Arial;padding:20px}h2{text-align:center}table{border-collapse:collapse}
     th,td{border:1px solid #999;padding:10px;text-align:center}th{background:#eee}</style></head><body>
     <h2>طلب أوردر النواقص</h2><p style="text-align:center">الفرع: ${esc(w.name)} — التاريخ: ${getOrderDate(whId)}</p>
-    <table><tr>${groups.map(g=>`<th>${esc(g)}</th>`).join('')}</tr><tr>${groups.map(g=>`<td>${byGroup[g]}</td>`).join('')}</tr></table>
+    ${breakdownTableHtml(buckets)}
     </body></html>`;
   const win=window.open('','_blank'); win.document.write(html); win.document.close();
   setTimeout(()=>win.print(), 300);
@@ -510,6 +542,12 @@ function exportShortExcel(whId){
   if(!list.length){ toast('لا يوجد نواقص'); return; }
   const data=[['طلبية نواقص '+w.name+' بتاريخ '+getOrderDate(whId)],[],['الصنف','طلب الوردر','الوحدة','ملاحظة'],
     ...list.map(([n,s])=>[n,s.order,s.unit||'',s.note||''])];
+  const buckets=buildGroupBreakdown(list);
+  data.push([],['ملخص الإجمالي حسب المجموعة']);
+  Object.entries(buckets).forEach(([bucket,b])=>{
+    data.push([bucket,'','',b.total]);
+    Object.entries(b.subs).forEach(([sub,tot])=>{ data.push(['- '+sub,'','',tot]); });
+  });
   const ws=XLSX.utils.aoa_to_sheet(data); const wbk=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wbk, ws, 'نواقص');
   XLSX.writeFile(wbk, 'نواقص_'+w.name+'.xlsx');
@@ -518,12 +556,16 @@ function exportShortPdf(whId){
   const w=warehouses.find(x=>x.id===whId);
   const list = Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد نواقص'); return; }
+  const buckets=buildGroupBreakdown(list);
   const html = `<html dir="rtl"><head><meta charset="utf-8"><title>نواقص ${w.name}</title>
     <style>body{font-family:Tahoma,Arial;padding:20px}h2{text-align:center}table{width:100%;border-collapse:collapse}
     th,td{border:1px solid #999;padding:8px;text-align:center}th{background:#eee}</style></head><body>
     <h2>طلبية نواقص ${esc(w.name)} بتاريخ ${getOrderDate(whId)}</h2><table><tr><th>الصنف</th><th>طلب الوردر</th><th>الوحدة</th><th>ملاحظة</th></tr>
     ${list.map(([n,s])=>`<tr><td>${esc(n)}</td><td>${esc(s.order)}</td><td>${esc(s.unit||'—')}</td><td>${esc(s.note||'—')}</td></tr>`).join('')}
-    </table></body></html>`;
+    </table>
+    <h3>ملخص الإجمالي حسب المجموعة</h3>
+    ${breakdownTableHtml(buckets)}
+    </body></html>`;
   const win=window.open('','_blank'); win.document.write(html); win.document.close();
   setTimeout(()=>win.print(), 300);
 }
@@ -534,6 +576,7 @@ function exportShortImage(whId){
   if(!window.html2canvas){ toast('جاري تحميل مكتبة الصور...'); const s=document.createElement('script');
     s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
     s.onload=()=>exportShortImage(whId); document.head.appendChild(s); return; }
+  const buckets=buildGroupBreakdown(list);
   const el=document.createElement('div');
   el.style.cssText='position:fixed;left:-9999px;top:0;background:#fff;padding:16px;direction:rtl';
   el.innerHTML=`<h3 style="font-family:Tahoma,Arial;text-align:center">طلبية نواقص ${esc(w.name)} بتاريخ ${getOrderDate(whId)}</h3>
@@ -542,7 +585,7 @@ function exportShortImage(whId){
     <th style="border:1px solid #999;padding:8px;background:#eee">طلب الوردر</th>
     <th style="border:1px solid #999;padding:8px;background:#eee">الوحدة</th></tr>
     ${list.map(([n,s])=>`<tr><td style="border:1px solid #999;padding:8px">${esc(n)}</td><td style="border:1px solid #999;padding:8px">${esc(s.order)}</td><td style="border:1px solid #999;padding:8px">${esc(s.unit||'—')}</td></tr>`).join('')}
-    </table>`;
+    </table><div style="font-family:Tahoma,Arial">${breakdownTableHtml(buckets)}</div>`;
   document.body.appendChild(el);
   html2canvas(el,{backgroundColor:'#fff'}).then(canvas=>{
     const link=document.createElement('a'); link.download='نواقص_'+w.name+'.png'; link.href=canvas.toDataURL(); link.click();
@@ -550,23 +593,70 @@ function exportShortImage(whId){
   });
 }
 function renderWhCompare(m){
-  const allGroups=new Set();
-  warehouses.forEach(w=>Object.keys(whStock[w.id]||{}).forEach(name=>allGroups.add((itemsByName[name]||{}).mainGroup||'غير مصنف')));
-
-  const groups=[...allGroups];
-  if(!groups.length){ m.innerHTML=`<div class="empty">لا توجد بيانات جرد كافية للمقارنة — استورد شيت الجرد لكل مخزن أولاً</div>`; return; }
-  const rows = groups.map(g=>{
-    const cells = warehouses.map(w=>{
-      const stock = whStock[w.id]||{};
-      let sum=0; Object.entries(stock).forEach(([name,s])=>{ if(((itemsByName[name]||{}).mainGroup||'غير مصنف')===g) sum+=Number(s.balance)||0; });
-      return sum;
+  const groupsMap={}; // main -> Set(sub)
+  items.forEach(it=>{ if(!it.mainGroup) return; groupsMap[it.mainGroup]=groupsMap[it.mainGroup]||new Set(); if(it.subGroup) groupsMap[it.mainGroup].add(it.subGroup); });
+  const hasData = warehouses.some(w=>Object.keys(whStock[w.id]||{}).length);
+  if(!hasData){ m.innerHTML=`<div class="empty">لا توجد بيانات أرصدة كافية للمقارنة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
+  function qtyFor(whId, itemName){ return Number((whStock[whId]||{})[itemName]?.balance)||0; }
+  let rowsHtml='';
+  Object.entries(groupsMap).forEach(([mg, subs])=>{
+    const mgItems = items.filter(i=>i.mainGroup===mg);
+    const mgTotals = warehouses.map(w=>mgItems.reduce((s,it)=>s+qtyFor(w.id,it.name),0));
+    if(mgTotals.every(t=>t===0)) return;
+    rowsHtml+=`<tr style="background:var(--panel2)"><td><b>◆ ${esc(mg)}</b></td>${mgTotals.map(t=>`<td><b>${t.toLocaleString('en-US')}</b></td>`).join('')}<td><b>${mgTotals.reduce((a,b)=>a+b,0).toLocaleString('en-US')}</b></td></tr>`;
+    [...subs].forEach(sg=>{
+      const sgItems = mgItems.filter(i=>i.subGroup===sg);
+      sgItems.forEach(it=>{
+        const cells = warehouses.map(w=>qtyFor(w.id,it.name));
+        if(cells.every(c=>c===0)) return;
+        rowsHtml+=`<tr><td style="padding-right:16px">${esc(it.name)} <span style="color:var(--muted);font-size:11px">(${esc(sg)})</span></td>${cells.map(c=>`<td>${c.toLocaleString('en-US')}</td>`).join('')}<td>${cells.reduce((a,b)=>a+b,0).toLocaleString('en-US')}</td></tr>`;
+      });
     });
-    return {g, cells};
   });
-  m.innerHTML = `<div style="overflow-x:auto"><table class="rep">
-    <tr><th>المجموعة</th>${warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')}</tr>
-    ${rows.map(r=>`<tr><td>${esc(r.g)}</td>${r.cells.map(c=>`<td>${c.toLocaleString('en-US')}</td>`).join('')}</tr>`).join('')}
+  m.innerHTML = `
+    <div class="impbar"><button onclick="exportCompareExcel()">📊 إكسل</button><button onclick="exportComparePdf()">🖨️ PDF</button></div>
+    <div style="overflow-x:auto"><table class="rep" id="compare_table">
+    <tr><th>الصنف / المجموعة</th>${warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')}<th>الإجمالي</th></tr>
+    ${rowsHtml}
   </table></div>`;
+}
+function compareRowsData(){
+  const groupsMap={};
+  items.forEach(it=>{ if(!it.mainGroup) return; groupsMap[it.mainGroup]=groupsMap[it.mainGroup]||new Set(); if(it.subGroup) groupsMap[it.mainGroup].add(it.subGroup); });
+  function qtyFor(whId, itemName){ return Number((whStock[whId]||{})[itemName]?.balance)||0; }
+  const rows=[];
+  Object.entries(groupsMap).forEach(([mg, subs])=>{
+    const mgItems = items.filter(i=>i.mainGroup===mg);
+    [...subs].forEach(sg=>{
+      mgItems.filter(i=>i.subGroup===sg).forEach(it=>{
+        const cells = warehouses.map(w=>qtyFor(w.id,it.name));
+        if(cells.every(c=>c===0)) return;
+        rows.push([mg, sg, it.name, ...cells, cells.reduce((a,b)=>a+b,0)]);
+      });
+    });
+  });
+  return rows;
+}
+function exportCompareExcel(){
+  const rows = compareRowsData();
+  if(!rows.length){ toast('لا توجد بيانات'); return; }
+  const data=[['المجموعة الرئيسية','المجموعة الفرعية','الصنف', ...warehouses.map(w=>w.name), 'الإجمالي'], ...rows];
+  const ws=XLSX.utils.aoa_to_sheet(data); const wbk=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wbk, ws, 'مقارنة الفروع');
+  XLSX.writeFile(wbk, 'مقارنة_الفروع.xlsx');
+}
+function exportComparePdf(){
+  const rows = compareRowsData();
+  if(!rows.length){ toast('لا توجد بيانات'); return; }
+  const html=`<html dir="rtl"><head><meta charset="utf-8"><title>مقارنة الفروع</title>
+    <style>body{font-family:Tahoma,Arial;padding:20px}h2{text-align:center}table{width:100%;border-collapse:collapse;font-size:12px}
+    th,td{border:1px solid #999;padding:6px;text-align:center}th{background:#eee}</style></head><body>
+    <h2>مقارنة أرصدة الفروع</h2>
+    <table><tr><th>المجموعة الرئيسية</th><th>الفرعية</th><th>الصنف</th>${warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')}<th>الإجمالي</th></tr>
+    ${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}
+    </table></body></html>`;
+  const win=window.open('','_blank'); win.document.write(html); win.document.close();
+  setTimeout(()=>win.print(), 300);
 }
 
 // ========== SALES ==========
