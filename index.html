@@ -97,7 +97,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v1.9</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1>🧾 تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.0</span><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -811,6 +811,7 @@ function commitImport(){
   else if(pendingImport.type==='gvcodes'){ gvcodes=pendingImport.list; save('gvcodes_v1',gvcodes); }
   else if(pendingImport.type==='customers'){ customers=pendingImport.list; save('customers_v1',customers); }
   else if(pendingImport.type==='employees'){ employees=pendingImport.list; save('employees_v1',employees); }
+  else if(pendingImport.type==='gvrows'){ const o=gvGet(); if(o){ o.rows=pendingImport.rows; gvSave(); } }
   else if(pendingImport.type==='stock'){ Object.entries(pendingImport.perWh).forEach(([whId,map])=>{ whStock[whId]=map; }); save('whStock_v1',whStock); }
   pendingImport=null; closeSheet(); render(); toast('تم الحفظ');
 }
@@ -1300,26 +1301,39 @@ function renderPayEntry(c){
 }
 // ---- النواتج
 const PAY_COLS={
-  send:[['المرتب الكامل',r=>r.monthly],['المستحق',r=>r.due],['خصم غياب',r=>r.dAbP+r.dAbN],['خصم تأخيرات',r=>r.dLate],['إضافي',r=>r.otAmt],['خصم جزاءات',r=>r.dPen],['سلف',r=>r.adv],['تأمينات',r=>r.ins],['إجمالي الخصومات',r=>r.ded],['حوافز',r=>r.bonus],['الصافي',r=>r.net]],
-  full:[['الراتب الشهري',r=>r.monthly],['المستحق',r=>r.due],['غياب بإذن (أيام)',r=>r.abP],['غياب بدون إذن (أيام)',r=>r.abN],['تأخير (ساعات)',r=>r.late],['إضافي (ساعات)',r=>r.ot],['جزاءات (أيام)',r=>r.pen],['خصم غياب',r=>r.dAbP+r.dAbN],['خصم تأخير',r=>r.dLate],['مبلغ إضافي',r=>r.otAmt],['خصم جزاءات',r=>r.dPen],['سلف',r=>r.adv],['تأمينات',r=>r.ins],['حوافز',r=>r.bonus],['الصافي',r=>r.net]]
+  send:[['monthly','المرتب الكامل',r=>r.monthly],['due','المستحق',r=>r.due],['absence','خصم غياب',r=>r.dAbP+r.dAbN],['late','خصم تأخيرات',r=>r.dLate],['ot','إضافي',r=>r.otAmt],['pen','خصم جزاءات',r=>r.dPen],['adv','سلف',r=>r.adv],['ins','تأمينات',r=>r.ins],['ded','إجمالي الخصومات',r=>r.ded],['bonus','حوافز',r=>r.bonus],['net','الصافي',r=>r.net]],
+  full:[['monthly','الراتب الشهري',r=>r.monthly],['due','المستحق',r=>r.due],['abP','غياب بإذن (أيام)',r=>r.abP],['abN','غياب بدون إذن (أيام)',r=>r.abN],['late','تأخير (ساعات)',r=>r.late],['ot','إضافي (ساعات)',r=>r.ot],['pen','جزاءات (أيام)',r=>r.pen],['dAb','خصم غياب',r=>r.dAbP+r.dAbN],['dLate','خصم تأخير',r=>r.dLate],['otAmt','مبلغ إضافي',r=>r.otAmt],['dPen','خصم جزاءات',r=>r.dPen],['adv','سلف',r=>r.adv],['ins','تأمينات',r=>r.ins],['bonus','حوافز',r=>r.bonus],['net','الصافي',r=>r.net]]
 };
+let paySendVisible = new Set(load('paySendCols_v1', PAY_COLS.send.map(c=>c[0])));
+let payExportBranch = load('_payExportBranch_','');
+function paySendToggle(key){ if(paySendVisible.has(key)) paySendVisible.delete(key); else paySendVisible.add(key); save('paySendCols_v1',[...paySendVisible]); render(); }
+function setPayExportBranch(v){ payExportBranch=v; save('_payExportBranch_',v); render(); }
+function paySendColsSheet(){
+  openSheet(`<h3>الأعمدة الظاهرة في كشف الإرسال</h3>
+    ${PAY_COLS.send.map(([k,l])=>`<label style="display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid var(--border)"><input type="checkbox" ${paySendVisible.has(k)?'checked':''} onchange="paySendToggle('${k}')"> ${esc(l)}</label>`).join('')}
+    <div class="f-actions"><button class="btn-save" onclick="closeSheet()">تم</button></div>`);
+}
 function payModel(){
-  const rows=payRows(payMonth,payHalf), cols=PAY_COLS[payKind], sums=rs=>cols.map(([h,f])=>rs.reduce((a,r)=>a+f(r),0));
+  let rows=payRows(payMonth,payHalf);
+  if(payExportBranch) rows=rows.filter(r=>(r.emp.branch||'بدون فرع')===payExportBranch);
+  let cols=PAY_COLS[payKind];
+  if(payKind==='send') cols=cols.filter(c=>paySendVisible.has(c[0]));
+  const sums=rs=>cols.map(([k,h,f])=>rs.reduce((a,r)=>a+f(r),0));
   const branches=[...new Set(rows.map(r=>r.emp.branch||'بدون فرع'))], body=[]; let idx=0;
   branches.forEach(b=>{
     const br=rows.filter(r=>(r.emp.branch||'بدون فرع')===b);
     body.push({type:'branch',label:b});
-    br.forEach(r=>{ idx++; body.push({type:'row',cells:[idx,r.emp.name,r.emp.branch||'',...cols.map(([h,f])=>f(r))]}); });
+    br.forEach(r=>{ idx++; body.push({type:'row',cells:[idx,r.emp.name,r.emp.branch||'',...cols.map(([k,h,f])=>f(r))]}); });
     body.push({type:'sub',cells:['','إجمالي '+b,'',...sums(br)]});
   });
   body.push({type:'tot',cells:['','الإجمالي العام','',...sums(rows)]});
-  return {title:(payKind==='send'?'كشف الإرسال — ':'كشف المرتبات — ')+payLabel(payMonth,payHalf), header:['م','الموظف','الفرع',...cols.map(c=>c[0])], body, rows};
+  return {title:(payKind==='send'?'كشف الإرسال — ':'كشف المرتبات — ')+payLabel(payMonth,payHalf)+(payExportBranch?' — فرع '+payExportBranch:''), header:['م','الموظف','الفرع',...cols.map(c=>c[1])], body, rows};
 }
 function payDocBody(){ const md=payModel(); return `<div class="dx" style="font-size:11.5px"><h2>شركة القرشي</h2><div class="sub">${esc(md.title)}</div>${docTableHtml(md)}</div>`; }
-function payFile(){ return (payKind==='send'?'كشف_الارسال_':'كشف_المرتبات_')+payMonth+(payHalf==='m'?'_شهري':'_نصف'+payHalf); }
-function exportPayPdf(){ if(!payRows(payMonth,payHalf).length){ toast('لا توجد بيانات'); return; } exportDocPdf(payDocBody(),payFile(),true); }
-function exportPayImage(){ if(!payRows(payMonth,payHalf).length){ toast('لا توجد بيانات'); return; } exportDocImage(payDocBody(),payFile(),true); }
-function exportPayExcel(){ if(!payRows(payMonth,payHalf).length){ toast('لا توجد بيانات'); return; } const md=payModel(); saveAoaXlsx(modelToAoa(md),'المرتبات',payFile()+'.xlsx',[5,26,12,...md.header.slice(3).map(()=>13)]); }
+function payFile(){ return (payKind==='send'?'كشف_الارسال_':'كشف_المرتبات_')+payMonth+(payHalf==='m'?'_شهري':'_نصف'+payHalf)+(payExportBranch?'_'+payExportBranch:''); }
+function exportPayPdf(){ if(!payModel().rows.length){ toast('لا توجد بيانات'); return; } exportDocPdf(payDocBody(),payFile(),true); }
+function exportPayImage(){ if(!payModel().rows.length){ toast('لا توجد بيانات'); return; } exportDocImage(payDocBody(),payFile(),true); }
+function exportPayExcel(){ const md=payModel(); if(!md.rows.length){ toast('لا توجد بيانات'); return; } saveAoaXlsx(modelToAoa(md),'المرتبات',payFile()+'.xlsx',[5,26,12,...md.header.slice(3).map(()=>13)]); }
 function renderPayOutput(c){
   const rows=payRows(payMonth,payHalf), T=payTotals(rows);
   const box=(l,v,col)=>`<div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><div style="font-size:11.5px;color:var(--muted)">${l}</div><div style="font-size:17px;font-weight:700;${col?'color:'+col:''}">${v}</div></div>`;
@@ -1336,7 +1350,11 @@ function renderPayOutput(c){
           <div class="sub">مستحق ${fmtN(r.due)} · خصومات ${fmtN(r.ded)}${r.otAmt?' · إضافي '+fmtN(r.otAmt):''}${r.bonus?' · حوافز '+fmtN(r.bonus):''}</div></div><b style="font-size:15px">${fmtN(r.net)}</b></div>`).join('')}</div></div>`;
     }).join('')}
     <div style="font-size:12px;color:var(--muted);margin:12px 0 6px">نوع الكشف للتصدير:</div>
-    <div style="display:flex;gap:6px">${kb('send','كشف الإرسال')}${kb('full','كشف المرتبات التفصيلي')}</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">${kb('send','كشف الإرسال')}${kb('full','كشف المرتبات التفصيلي')}</div>
+    ${payKind==='send'? `<button onclick="paySendColsSheet()" style="width:100%;padding:9px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12.5px;font-weight:700;margin-bottom:8px">⚙️ تخصيص أعمدة كشف الإرسال (${paySendVisible.size}/${PAY_COLS.send.length})</button>`:''}
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">تصدير فرع:</div>
+    <select onchange="setPayExportBranch(this.value)" style="width:100%;padding:9px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px">
+      <option value="">كل الفروع مع بعض</option>${branches.map(b=>`<option value="${esc(b)}" ${payExportBranch===b?'selected':''}>${esc(b)} فقط</option>`).join('')}</select>
     ${floatBar(`<button onclick="exportPayExcel()">📊 إكسل</button><button onclick="exportPayPdf()">📄 PDF</button><button onclick="exportPayImage()">🖼️ صورة</button>`)}`
     : `<div class="empty">لا يوجد موظفين في هذه الفترة</div>`);
 }
@@ -1376,21 +1394,65 @@ function gvQty(i,kind,v){
 function gvDelRow(i){ const o=gvGet(); if(!o) return; o.rows.splice(i,1); gvSave(); render(); }
 function gvAddItem(){
   if(!gvGet()){ toast('اعمل طلبية جديدة الأول'); return; }
-  openSheet(`<h3>إضافة أصناف للطلبية</h3><input class="search" style="width:100%;margin-bottom:8px" id="gvq" placeholder="بحث بالاسم أو الكود..." oninput="gvFilter()"><div id="gvlist"></div>
+  openSheet(`<h3>إضافة أصناف للطلبية</h3><p style="font-size:12px;color:var(--muted);margin-top:-8px">اكتب اسم الصنف واكتب الكمية جنبه مباشرة</p>
+    <input class="search" style="width:100%;margin-bottom:8px" id="gvq" placeholder="بحث بالاسم أو الكود..." oninput="gvFilter()"><div id="gvlist"></div>
     <div class="f-actions"><button class="btn-save" onclick="closeSheet()">تم</button></div>`);
   gvFilter();
 }
 function gvFilter(){
   const o=gvGet(), box=document.getElementById('gvlist'); if(!o||!box) return;
-  const qv=((document.getElementById('gvq')||{}).value||'').trim().toLowerCase(), used=new Set(o.rows.map(r=>r.gid));
-  const list=gvcodes.filter(g=>!qv||String(g.name).toLowerCase().includes(qv)||String(g.code).toLowerCase().includes(qv)).slice(0,80);
-  box.innerHTML=list.length? list.map(g=>`<div class="card" onclick="gvPick('${g.id}')" style="cursor:pointer;${used.has(g.id)?'opacity:.5':''}"><div class="info"><div class="name" style="font-size:13px">${esc(g.name)}</div><div class="sub">${esc(g.code)} · ${g.perCarton||'—'} قطعة/كرتونة</div></div><b>${used.has(g.id)?'✓':'+'}</b></div>`).join('')
-    : `<div class="empty">${gvcodes.length?'لا توجد نتائج':'لسه مفيش أكواد جيفز — استوردها من الأصناف ← أكواد جيفز'}</div>`;
+  const qv=((document.getElementById('gvq')||{}).value||'').trim().toLowerCase();
+  const list=gvcodes.filter(g=>!qv||String(g.name).toLowerCase().includes(qv)||String(g.code).toLowerCase().includes(qv)).slice(0,60);
+  box.innerHTML=list.length? list.map(g=>{
+    const ex=o.rows.find(r=>r.gid===g.id);
+    return `<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(g.name)}</div><div class="sub">${esc(g.code)} · ${g.perCarton||'—'} قطعة/كرتونة</div></div>
+      <input type="number" inputmode="numeric" placeholder="الكمية" value="${ex?ex.qty||'':''}" style="width:80px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px" onchange="gvSetQtyDirect('${g.id}',this.value)"></div>`;
+  }).join('') : `<div class="empty">${gvcodes.length?'لا توجد نتائج':'لسه مفيش أكواد جيفز — استوردها من الأصناف ← أكواد جيفز'}</div>`;
 }
-function gvPick(gid){
-  const o=gvGet(); if(!o||o.rows.some(r=>r.gid===gid)) return;
-  const g=gvcodes.find(x=>x.id===gid); if(!g) return;
-  o.rows.push({gid,name:g.name,code:g.code,qty:0}); gvSave(); gvFilter(); render();
+function gvSetQtyDirect(gid,val){
+  const o=gvGet(); if(!o) return; const qty=Number(val)||0, g=gvcodes.find(x=>x.id===gid); if(!g) return;
+  const ex=o.rows.find(r=>r.gid===gid);
+  if(!qty){ if(ex) o.rows=o.rows.filter(r=>r.gid!==gid); }
+  else if(ex) ex.qty=qty;
+  else o.rows.push({gid,name:g.name,code:g.code,qty});
+  gvSave(); render();
+}
+function gvImportExcel(file){
+  const o=gvGet(); if(!o){ toast('اعمل طلبية جديدة الأول'); return; }
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      let hit=null;
+      for(const sn of wb.SheetNames){
+        const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
+        for(let hi=0;hi<Math.min(rows.length,6);hi++){
+          const hdr=(rows[hi]||[]).map(h=>String(h||'').trim());
+          const ni=hdr.findIndex(h=>h.includes('اسم الصنف')), qi=hdr.findIndex(h=>h.includes('الكمية'));
+          if(ni>=0 && qi>=0){ hit={rows,hi,ni,qi}; break; }
+        }
+        if(hit) break;
+      }
+      if(!hit){ toast('لم يتم التعرف على أعمدة اسم الصنف/الكمية في الملف'); return; }
+      const {rows,hi,ni,qi}=hit, newRows=o.rows.map(r2=>({...r2})); let matched=0; const unmatched=[];
+      for(let i=hi+1;i<rows.length;i++){
+        const row=rows[i], name=String(row[ni]||'').trim(), qty=Number(row[qi])||0;
+        if(!name || !qty) continue;
+        const g=gvcodes.find(x=>x.name.trim()===name);
+        if(!g){ unmatched.push(name); continue; }
+        matched++;
+        const ex=newRows.find(r2=>r2.gid===g.id);
+        if(ex) ex.qty=qty; else newRows.push({gid:g.id,name:g.name,code:g.code,qty});
+      }
+      if(!matched && !unmatched.length){ toast('لا توجد بيانات في الملف'); return; }
+      pendingImport={type:'gvrows',rows:newRows};
+      openSheet(`<h3>تأكيد استيراد الطلبية</h3><p style="font-size:13.5px;color:var(--muted)">
+        ${matched} صنف هيتضاف/يتحدّث في الطلبية الحالية.
+        ${unmatched.length? '<br>⚠️ '+unmatched.length+' صنف مش موجود في أكواد جيفز: '+unmatched.slice(0,6).map(esc).join('، ')+(unmatched.length>6?' ...':''):''}</p>
+        <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button><button class="btn-save" onclick="commitImport()">💾 حفظ</button></div>`);
+    }catch(err){ toast('خطأ في قراءة الملف'); console.error(err); }
+  };
+  r.readAsArrayBuffer(file);
 }
 function renderGV(m){
   const shown=gvOrders.filter(o=>gvShowArch||!o.archived||o.id===gvCur), o=gvGet();
@@ -1419,6 +1481,7 @@ function renderGV(m){
       <div style="font-size:12.5px;font-weight:700;color:${over?'var(--danger)':'var(--ok)'}">${esc(c.status)} <span style="color:var(--muted);font-weight:400">(السعة ${fmtN(c.cap)} كجم)</span></div></div>
     <div style="display:flex;gap:6px;margin-bottom:10px">
       <button onclick="gvAddItem()" style="flex:2;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">➕ إضافة أصناف</button>
+      <label style="flex:1;text-align:center;padding:10px 4px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:700;font-size:12px;cursor:pointer">📥 استيراد إكسل<input type="file" id="impGvOrder" accept=".xlsx,.xls" style="display:none"></label>
       <button onclick="gvArchive()" style="flex:1;padding:10px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:700;font-size:12.5px">${o.archived?'♻️ استرجاع':'📦 أرشفة'}</button>
       <button onclick="gvDelete()" style="padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--danger);font-size:13px">🗑️</button></div>
     ${c.rows.length? c.rows.map(r=>`<div class="card" style="flex-wrap:wrap"><div class="info" style="flex-basis:100%"><div class="name" style="font-size:13px">${r.i+1}. ${esc(r.name)}</div>
@@ -1429,6 +1492,7 @@ function renderGV(m){
       <button onclick="gvDelRow(${r.i})" style="border:none;background:none;color:var(--danger);font-size:16px">✕</button></div>`).join('')
       : `<div class="empty">الطلبية فاضية — دوس ➕ إضافة أصناف</div>`}
     ${floatBar(`<button onclick="exportGvExcel()">📊 إكسل</button><button onclick="exportGvPdf()">📄 PDF</button><button onclick="exportGvImage()">🖼️ صورة</button>`)}`;
+  const fi=document.getElementById('impGvOrder'); if(fi) fi.onchange=e=>{ if(e.target.files[0]) gvImportExcel(e.target.files[0]); };
 }
 function gvModel(){
   const o=gvGet(), c=gvCalc(o), body=[];
