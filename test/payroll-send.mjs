@@ -71,8 +71,10 @@ check('السنة بأرقام عربية', /٢٠٢٦/.test(md.title), md.title)
 const doc = await pg.evaluate(()=>payDocBody());
 check('عنوان الشركة فوق', /شركة القرشي — كشف المرتبات/.test(doc));
 check('جدول الكشف له كلاس مخصوص', /<table class="pay">/.test(doc));
-check('أعمدة الفلوس خضرا وخانات الإدخال كريمي', /class="money"/.test(doc) && /class="inp/.test(doc));
-check('الفرع بلون مميز', /class="[^"]*br[^"]*"/.test(doc));
+check('الجدول من غير خلفيات ملوّنة', !/background:#e2efda|background:#fff2cc/.test(doc) && !/class="inp/.test(doc), '');
+check('الخصومات أرقامها حمرا', /class="minus"/.test(doc), '');
+check('الإضافي والحوافز أرقامها خضرا', /class="plus"/.test(doc), '');
+check('الخانة الفاضية مالهاش لون', !/class="minus">\s*<\/td>/.test(doc) && !/class="plus">\s*<\/td>/.test(doc), '');
 check('الساعات بخانتين عشريتين', /6\.00/.test(doc), (doc.match(/>6[.\d]*</g)||[]).join(','));
 check('الفلوس بفواصل الآلاف', /10,000/.test(doc));
 
@@ -88,9 +90,10 @@ const x = await pg.evaluate(()=>{
   return got;
 });
 check('الإكسل مفيهوش عنوان مكرر', x.d[0][0]==='م', String(x.d[0][0]));
-check('ألوان الأعمدة متمرّرة للإكسل',
-  x.o.colFill && x.o.colFill[3]==='E2EFDA' && x.o.colFill[4]==='FFF2CC' && x.o.colFill[11]==='E2EFDA',
-  JSON.stringify(x.o.colFill));
+check('الإكسل من غير خلفيات', x.o.plain===true && !x.o.colFill, JSON.stringify({plain:x.o.plain,cf:x.o.colFill}));
+check('إشارات الأحمر والأخضر متمرّرة للإكسل',
+  x.o.sign[4]==='minus' && x.o.sign[7]==='plus' && x.o.sign[8]==='minus' && x.o.sign[10]==='plus',
+  JSON.stringify(x.o.sign));
 check('عرض الأعمدة مطابق للعدد', x.w.length===x.d[0].length, x.w.length+' vs '+x.d[0].length);
 
 // ── الكشف التفصيلي لسه بالفروع زي ما كان
