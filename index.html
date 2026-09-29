@@ -35,6 +35,8 @@ main{flex:1;overflow-y:auto;padding:10px}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;
   display:flex;align-items:center;gap:8px}
 .card .info{flex:1;min-width:0}
+/* لوح عادي (مش صف) — .card نفسها flex فأي محتوى جواها بيتقسم أعمدة */
+.panelbox{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;display:block}
 .card .name{font-weight:700;font-size:14px}
 .card .sub{font-size:12px;color:var(--muted);margin-top:2px}
 .act{display:flex;gap:6px}
@@ -99,7 +101,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.6</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.7</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -197,6 +199,7 @@ if(!warehouses.length){
 }
 let whStock = load('whStock_v1', {});      // {whId:{itemName:{balance,rolls,rods}}}
 let whShortage = load('whShortage_v1', {}); // {whId:{itemName:{needed,note}}}
+let ordMap = load('ordMap_v1', {});        // اسمنا(مطبّع) -> اسمهم في برنامج الطلبات، '' = تجاهل
 let customers = load('customers_v1', []);
 let monthlySales = load('monthlySales_v1', {});
 let monthlySector = load('monthlySector_v1', {});
@@ -230,7 +233,7 @@ let shortMain=new Set(), shortSub=new Set();
                             على الجهاز** ونقولك بالاسم إيه اللي اتغيّر.
    البيانات كلها صغيرة (كيلوبايتات) فكل مفتاح بيترفع رفعة واحدة — مفيش تقطيع
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
-const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1',
+const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1',
   'whOrderDate_v1','customers_v1','monthlySales_v1','monthlySector_v1','employees_v1','payData_v1',
   'paySendCols_v1','invCounts_v1','gvOrders_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
@@ -347,7 +350,7 @@ const SYNC_VARS = {
   whShortage_v1: v=>{ whShortage = v; }, customers_v1: v=>{ customers = v; },
   monthlySales_v1: v=>{ monthlySales = v; }, monthlySector_v1: v=>{ monthlySector = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
-  invCounts_v1: v=>{ invCounts = v; },
+  invCounts_v1: v=>{ invCounts = v; }, ordMap_v1: v=>{ ordMap = v; },
   // ⚠️ التلاتة دول كانوا في SYNC_KEYS بس مش في SYNC_VARS — يعني بيتنزّلوا
   // في التخزين المحلي والمتغيّر اللي الشاشة بتقرا منه يفضل القديم، فالبيانات
   // ما تبانش غير لما التطبيق يتقفل ويتفتح تاني.
@@ -1538,23 +1541,303 @@ function exportInvExcel(whId){
                        sign:['','','','','auto']});
 }
 
+/* ═══════════════ الربط مع برنامج الطلبات (الموزعين) ═══════════════
+   اتجاهين:
+     ⬆️ بنبعت رصيد طنطا هناك فيحل محل الرصيد اللي عندهم.
+     ⬇️ بنجيب الطلبات اللي الموزعين عملوها عشان تشوفها هنا وتخصمها من الرصيد.
+   كل اتجاه له رقم سري مختلف عندهم: الرفع برقم «الإدارة» (manageLogin)،
+   وقراءة الطلبات برقم «الأدمن» (adminLogin). التوكن بينتهي بعد ١٢ ساعة
+   فبنسجّل دخول لحظي قبل كل عملية بدل ما نخزّن توكن بايظ.
+   الأرقام السرية بتتخزّن على الجهاز بس — عمدًا مش بتتزامن. */
+const ORD_URL = 'https://script.google.com/macros/s/AKfycbwRMd_ZIrXC_UQL1zc_YM8gV3zCfB9nWx8kehDN6QzYBW1OnrhDLdoWx42WWiNWVnEX/exec';
+const ORD_STORE = 'طنطا';                 // برنامج الموزعين بيشتغل على رصيد طنطا
+function ordWh(){ return warehouses.find(w=> String(w.name||'').trim() === ORD_STORE) || null; }
+function ordPin(kind){ try{ return localStorage.getItem('_ordPin_' + kind) || ''; }catch(e){ return ''; } }
+function ordSetPin(kind, v){ try{ v ? localStorage.setItem('_ordPin_'+kind, v) : localStorage.removeItem('_ordPin_'+kind); }catch(e){} }
+
+// بصمة الاسم: من غير مسافات ولا رموز ولا تشكيل — عشان «باب 80 سم» = «باب ٨٠سم»
+function ordNorm(n){
+  return String(n||'').trim().toLowerCase()
+    .replace(/[٠-٩]/g, d=> '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+    .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه')
+    .replace(/[\s\-_.،,/\\()]+/g,'');
+}
+function ordTheirName(our){
+  const k = ordNorm(our);
+  return Object.prototype.hasOwnProperty.call(ordMap, k) ? ordMap[k] : undefined;
+}
+async function ordApi(path){
+  const r = await fetch(ORD_URL + path);
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+async function ordLogin(kind, pin){
+  const act = kind === 'admin' ? 'adminLogin' : 'manageLogin';
+  const d = await ordApi('?action=' + act + '&pin=' + encodeURIComponent(pin));
+  if(d && d.ok && d.token) return d.token;
+  const why = d && d.reason;
+  throw new Error(
+    why === 'wrong_pin' ? 'الرقم السري غلط.'
+    : why === 'locked' ? 'برنامج الطلبات قفل المحاولات مؤقتًا بعد محاولات غلط كتير — استنى شوية.'
+    : why === 'not_configured' ? 'برنامج الطلبات لسه ما اتظبطش عليه رقم سري.'
+    : 'الدخول لبرنامج الطلبات مانجحش.');
+}
+// أصناف برنامج الطلبات (نداء عام من غير رقم سري)
+let ordCat = null;
+async function ordFetchCatalog(){
+  const d = await ordApi('?action=catalog');
+  ordCat = ((d && d.items) || []).map(x=> String(x.name||'').trim()).filter(Boolean);
+  return ordCat;
+}
+// حالة المطابقة بين أسمائنا وأسماءهم
+function ordMatch(){
+  const wh = ordWh(); if(!wh) return {ok:[],auto:[],none:[],skip:[]};
+  const names = Object.keys(whStock[wh.id] || {});
+  const exact = new Set(ordCat || []), fp = new Map();
+  (ordCat || []).forEach(n=>{ const f = ordNorm(n); if(f && !fp.has(f)) fp.set(f, n); });
+  const out = {ok:[], auto:[], none:[], skip:[]};
+  names.forEach(our=>{
+    const saved = ordTheirName(our);
+    if(saved === '') return out.skip.push(our);
+    if(saved) return exact.has(saved) ? out.ok.push(our) : out.none.push(our);
+    if(exact.has(our)) return out.ok.push(our);
+    const g = fp.get(ordNorm(our));
+    if(g) return out.auto.push({our, their:g});
+    out.none.push(our);
+  });
+  return out;
+}
+// الصفوف اللي هتتبعت — باسمهم، ومن غير المتجاهَل
+function ordRows(){
+  const wh = ordWh(); if(!wh) return [];
+  const st = whStock[wh.id] || {};
+  const rows = [];
+  Object.keys(st).forEach(n=>{
+    const t = ordTheirName(n);
+    if(t === '') return;
+    rows.push({name: t || n, stock: Number(st[n] && st[n].balance) || 0});
+  });
+  return rows;
+}
+
+let ordOrders = null;        // آخر طلبات اتجابت
+function ordMsg(html){ const el = $('#ordMsg'); if(el) el.innerHTML = html; }
+
+async function ordSendStock(){
+  const pin = ($('#ord_mpin') && $('#ord_mpin').value || '').trim();
+  const rows = ordRows();
+  if(!rows.length) return ordMsg('<b style="color:var(--danger)">مفيش رصيد مرفوع لطنطا.</b>');
+  if(!pin) return ordMsg('<b style="color:var(--danger)">اكتب رقم «شاشة الإدارة» بتاع برنامج الطلبات.</b>');
+  if(!confirm('هيتبعت رصيد ' + rows.length + ' صنف من «طنطا» لبرنامج الطلبات ويحل محل الرصيد الحالي هناك. تكمل؟')) return;
+  ordSetPin('manage', pin);
+  ordMsg('بيسجّل دخول...');
+  try{
+    const tk = await ordLogin('manage', pin);
+    ordMsg('بيبعت الرصيد...');
+    const r = await fetch(ORD_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'manageUploadCatalog', token:tk, mode:'stock', rows})});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if(!d || d.ok === false) throw new Error((d && d.error) || 'برنامج الطلبات رفض الطلب.');
+    const nf = d.notFound || [];
+    ordMsg('<b style="color:var(--ok)">تم: ' + (d.updated || 0) + ' صنف اتحدّث رصيده هناك.</b>'
+      + (nf.length ? '<div style="margin-top:6px;color:#b45309"><b>' + nf.length + ' صنف</b> مش موجودين عندهم بنفس الاسم فاتسابوا زي ما هم:<br>'
+          + esc(nf.slice(0,10).join('، ')) + (nf.length>10?' …':'')
+          + '<br>دوس «🔍 طابق الأسماء» تحت عشان تربطهم مرة واحدة.</div>' : ''));
+  }catch(e){ ordMsg('<b style="color:var(--danger)">' + esc(ordErr(e)) + '</b>'); }
+}
+
+async function ordGetOrders(){
+  const pin = ($('#ord_apin') && $('#ord_apin').value || '').trim();
+  if(!pin) return ordMsg('<b style="color:var(--danger)">اكتب رقم «الأدمن» بتاع برنامج الطلبات.</b>');
+  ordSetPin('admin', pin);
+  ordMsg('بيسجّل دخول...');
+  try{
+    const tk = await ordLogin('admin', pin);
+    ordMsg('بيجيب الطلبات...');
+    const d = await ordApi('?action=lookup&token=' + encodeURIComponent(tk));
+    ordOrders = Array.isArray(d) ? d : [];
+    ordMsg('');
+    render(true);
+  }catch(e){ ordMsg('<b style="color:var(--danger)">' + esc(ordErr(e)) + '</b>'); }
+}
+function ordErr(e){
+  const m = (e && e.message) || '';
+  return /^HTTP|Failed to fetch|NetworkError|Load failed/.test(m)
+    ? 'مفيش اتصال ببرنامج الطلبات دلوقتي — جرّب تاني.' : m;
+}
+// مجموع الكميات المطلوبة لكل صنف (باسمنا إحنا)
+function ordDemand(onlyOpen){
+  const theirToOurs = {};
+  Object.keys(ordMap).forEach(k=>{ if(ordMap[k]) theirToOurs[ordMap[k]] = k; });
+  const wh = ordWh(); const st = (wh && whStock[wh.id]) || {};
+  const byNorm = {}; Object.keys(st).forEach(n=> byNorm[ordNorm(n)] = n);
+  const out = {};
+  (ordOrders || []).forEach(o=>{
+    if(onlyOpen && /تم تنفيذ/.test(o.status || '')) return;
+    (o.items || []).forEach(it=>{
+      const their = String(it.name || it.product || '').trim();
+      if(!their) return;
+      const ourKey = theirToOurs[their] || ordNorm(their);
+      const our = byNorm[ourKey] || their;
+      out[our] = (out[our] || 0) + (Number(it.qty || it.quantity) || 0);
+    });
+  });
+  return out;
+}
+function ordDeductStock(){
+  const wh = ordWh(); if(!wh) return;
+  const dem = ordDemand(true);
+  const names = Object.keys(dem).filter(n=> dem[n] > 0);
+  if(!names.length) return toast('مفيش طلبات مفتوحة تتخصم');
+  if(!confirm('هيتخصم من رصيد طنطا هنا:\n' + names.slice(0,10).map(n=> '• ' + n + ' ← ' + dem[n]).join('\n')
+    + (names.length>10 ? '\n…و' + (names.length-10) + ' غيرهم' : '')
+    + '\n\nده بيغيّر الرصيد عندك في التطبيق ده بس. تكمل؟')) return;
+  whStock[wh.id] = whStock[wh.id] || {};
+  names.forEach(n=>{
+    const cur = whStock[wh.id][n] || {balance:0};
+    cur.balance = (Number(cur.balance)||0) - dem[n];
+    whStock[wh.id][n] = cur;
+  });
+  save('whStock_v1', whStock);
+  toast('اتخصم ' + names.length + ' صنف من رصيد طنطا');
+  render(true);
+}
+async function ordAutoMatch(){
+  ordMsg('بيجيب أصناف برنامج الطلبات...');
+  try{
+    if(!ordCat) await ordFetchCatalog();
+    const m = ordMatch();
+    m.auto.forEach(x=>{ ordMap[ordNorm(x.our)] = x.their; });
+    save('ordMap_v1', ordMap);
+    ordMsg('<b style="color:var(--ok)">اتربط ' + m.auto.length + ' صنف تلقائي.</b>');
+    render(true);
+  }catch(e){ ordMsg('<b style="color:var(--danger)">' + esc(ordErr(e)) + '</b>'); }
+}
+function ordSetName(our, their){
+  const k = ordNorm(our);
+  if(their) ordMap[k] = their; else delete ordMap[k];
+  save('ordMap_v1', ordMap); render(true);
+}
+function ordSkip(our){
+  const k = ordNorm(our);
+  if(ordMap[k] === '') delete ordMap[k]; else ordMap[k] = '';
+  save('ordMap_v1', ordMap); render(true);
+}
+
+function renderWhOrders(box){
+  const wh = ordWh();
+  if(!wh){ box.innerHTML = '<div class="empty">مفيش مخزن اسمه «طنطا» — برنامج الموزعين بيشتغل عليه.</div>'; return; }
+  const rows = ordRows();
+  const m = ordCat ? ordMatch() : null;
+  const orders = ordOrders || [];
+  const openN = orders.filter(o=> !/تم تنفيذ/.test(o.status||'')).length;
+  const dem = orders.length ? ordDemand(true) : {};
+  const demNames = Object.keys(dem).filter(n=> dem[n] > 0).sort((a,b)=> dem[b]-dem[a]);
+  const st = whStock[wh.id] || {};
+
+  box.innerHTML = `
+  <div id="ordMsg" style="font-size:12.5px;line-height:1.8;margin-bottom:10px"></div>
+
+  <div class="panelbox">
+    <b style="font-size:13.5px">⬆️ ابعت رصيد طنطا لبرنامج الطلبات</b>
+    <div style="color:var(--muted);font-size:12.5px;margin:4px 0 8px">
+      ${rows.length} صنف هيتبعت ويحل محل الرصيد هناك.
+    </div>
+    <input id="ord_mpin" type="password" value="${esc(ordPin('manage'))}" placeholder="رقم شاشة الإدارة"
+      style="width:100%;padding:9px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);margin-bottom:8px">
+    <button onclick="ordSendStock()" style="width:100%;padding:11px;border-radius:10px;border:0;background:var(--blue);color:#fff;font-weight:700;cursor:pointer">🚚 ابعت الرصيد</button>
+  </div>
+
+  <div class="panelbox">
+    <b style="font-size:13.5px">⬇️ هات الطلبات من الموزعين</b>
+    <div style="color:var(--muted);font-size:12.5px;margin:4px 0 8px">
+      ${orders.length ? orders.length + ' طلب · <b>' + openN + '</b> لسه مفتوح' : 'لسه ما جبناش حاجة.'}
+    </div>
+    <input id="ord_apin" type="password" value="${esc(ordPin('admin'))}" placeholder="رقم الأدمن"
+      style="width:100%;padding:9px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);margin-bottom:8px">
+    <button onclick="ordGetOrders()" style="width:100%;padding:11px;border-radius:10px;border:0;background:#0ea5e9;color:#fff;font-weight:700;cursor:pointer">📥 هات الطلبات</button>
+  </div>
+
+  ${demNames.length ? `
+  <div class="panelbox">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <b style="flex:1;font-size:13.5px">📦 المطلوب من الطلبات المفتوحة</b>
+      <button onclick="ordDeductStock()" style="padding:7px 11px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-weight:700;cursor:pointer">➖ اخصمه من الرصيد</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <tr style="background:var(--panel2)"><th style="text-align:right;padding:7px">الصنف</th><th style="padding:7px">مطلوب</th><th style="padding:7px">رصيدنا</th><th style="padding:7px">الباقي</th></tr>
+      ${demNames.map(n=>{
+        const have = Number((st[n]||{}).balance) || 0, left = have - dem[n];
+        return `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:7px">${esc(n)}</td>
+          <td style="text-align:center;padding:7px">${dem[n]}</td>
+          <td style="text-align:center;padding:7px">${have}</td>
+          <td style="text-align:center;padding:7px;font-weight:700;color:${left<0?'var(--danger)':'var(--ok)'}">${left}</td>
+        </tr>`; }).join('')}
+    </table>
+  </div>` : ''}
+
+  ${orders.length ? `
+  <div class="panelbox">
+    <b style="font-size:13.5px">🧾 الطلبات</b>
+    <div style="max-height:320px;overflow:auto;margin-top:8px">
+    ${orders.slice(0,60).map(o=>`
+      <div style="border-top:1px solid var(--border);padding:7px 0;font-size:12.5px">
+        <div style="display:flex;gap:8px"><b style="flex:1">${esc(o.distName||'—')}</b>
+          <span style="color:var(--muted)">${esc(o.orderNo||o.id||'')}</span></div>
+        <div style="color:var(--muted)">${esc(o.status||'')} · ${o.ts? new Date(o.ts).toLocaleDateString('ar-EG') : ''} · ${(o.items||[]).length} صنف</div>
+      </div>`).join('')}
+    </div>
+  </div>` : ''}
+
+  <div class="panelbox">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <b style="flex:1;font-size:13.5px">🔍 مطابقة الأسماء</b>
+      <button onclick="ordAutoMatch()" style="padding:7px 11px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-weight:700;cursor:pointer">طابق تلقائي</button>
+    </div>
+    <div style="color:var(--muted);font-size:12.5px;margin-bottom:8px">
+      لو اسم الصنف عندنا مختلف عن اسمه عندهم، اربطهم مرة واحدة وخلاص.
+      ${m ? `من ${m.ok.length+m.auto.length+m.none.length+m.skip.length} صنف:
+        <b style="color:var(--ok)">${m.ok.length}</b> متطابق ·
+        <b>${m.auto.length}</b> اقتراح ·
+        <b style="color:#b45309">${m.none.length}</b> محتاج تحديد ·
+        <b>${m.skip.length}</b> متجاهل.` : 'دوس «طابق تلقائي» عشان نجيب أسماءهم.'}
+    </div>
+    ${m && (m.none.length || m.skip.length) ? `
+      <datalist id="ordNames">${(ordCat||[]).slice(0,3000).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+      ${m.none.concat(m.skip).slice(0,80).map(our=>`
+        <div style="display:flex;gap:6px;align-items:center;border-top:1px solid var(--border);padding:6px 0">
+          <span style="flex:1;font-size:12.5px">${esc(our)}</span>
+          <input list="ordNames" value="${esc(ordTheirName(our) || '')}" placeholder="اسمه عندهم"
+            onchange="ordSetName(${JSON.stringify(our).replace(/"/g,'&quot;')}, this.value.trim())"
+            style="flex:1;padding:6px;border-radius:7px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px">
+          <button onclick="ordSkip(${JSON.stringify(our).replace(/"/g,'&quot;')})" title="مش بيتباع عندهم"
+            style="padding:6px 9px;border-radius:7px;border:1px solid var(--border);background:${ordTheirName(our)===''?'var(--blue)':'transparent'};color:${ordTheirName(our)===''?'#fff':'var(--muted)'};cursor:pointer">🚫</button>
+        </div>`).join('')}` : ''}
+  </div>`;
+}
+
 function renderWhDetail(m, whId){
   const w = warehouses.find(x=>x.id===whId);
   if(!w){ m.innerHTML=`<div class="empty">المخزن غير موجود</div>`; return; }
   const sub = load('_whSub_',null);
   const b=(n,t)=>`<button onclick="setWhSub(${n})" style="flex:1;padding:9px 4px;border-radius:9px;background:${sub===n?'var(--blue)':'var(--panel2)'};color:${sub===n?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:12.5px">${t}</button>`;
   // تعديل/حذف المخزن — الدوال كانت موجودة من غير أي زرار يوصّلها
+  const isOrd = String(w.name||'').trim() === ORD_STORE;
   m.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
       <b style="flex:1;font-size:14px">🏭 ${esc(w.name)}${w.location?` <span style="color:var(--muted);font-weight:400;font-size:12px">— ${esc(w.location)}</span>`:''}</b>
       <button onclick="editWarehouse('${w.id}')" title="تعديل المخزن" style="padding:5px 10px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);color:var(--text);cursor:pointer">✏️</button>
       <button onclick="delWarehouse('${w.id}')" title="حذف المخزن" style="padding:5px 10px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);color:var(--danger);cursor:pointer">🗑</button>
     </div>
-    <div style="display:flex;gap:6px;margin-bottom:10px">${b(0,'📊 الأرصدة')}${b(1,'🧾 طلب النواقص')}${b(2,'📝 الجرد')}</div><div id="wh_sub"></div>`;
+    <div style="display:flex;gap:6px;margin-bottom:10px">${b(0,'📊 الأرصدة')}${b(1,'🧾 طلب النواقص')}${b(2,'📝 الجرد')}${isOrd?b(3,'🚚 الموزعين'):''}</div><div id="wh_sub"></div>`;
   const box=$('#wh_sub');
   if(sub===null) box.innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
   else if(sub===0) renderWhStock(box, whId);
   else if(sub===1) renderWhShortage(box, whId);
-  else renderWhInventory(box, whId);
+  else if(sub===2) renderWhInventory(box, whId);
+  else if(sub===3 && isOrd) renderWhOrders(box);
+  else box.innerHTML = `<div class="empty">اضغط على قسم فوق</div>`;
 }
 
 // ===================== قوائم منسدلة متعددة الاختيار =====================
