@@ -101,7 +101,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -2421,15 +2421,36 @@ function renderPayEntry(c){
   if(payHalf==='m'){ payHalf=1; save('_payHalf_',1); }
   const rows=payRows(payMonth,payHalf);
   const inp='width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:14px';
+  /* الإدخال بقى جدول بنفس أعمدة كشف الإرسال جنب بعض: بتمشي بالعرض على
+     الموظف وتكتب، بدل ما تفتح كل موظف لوحده وتنزل جوه قايمة.
+     الصافي بيتحدّث في سطره على طول، والإجمالي فوق كمان. */
+  const cell='width:100%;padding:6px 4px;border-radius:7px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;text-align:center';
   c.innerHTML=payBar(false)+`<div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--border)">إجمالي الصافي: <b id="payTot">${fmtN(rows.reduce((a,r)=>a+r.net,0))}</b> ج — ${rows.length} موظف</div>`+
-    (rows.length? rows.map(r=>{
-      const e=r.emp, ent=payEntry(payMonth,payHalf,e.id), k='pay:'+e.id, open=openGroups.has(k);
-      return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup('${k}')"><span>${esc(e.name)} <span class="cnt">${esc(e.branch||'')}</span></span><span><b id="pn_${e.id}">${fmtN(r.net)}</b> ج <span class="arrow">▾</span></span></div>
-        <div class="grp-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:4px 2px 8px">
-        ${PAY_FIELDS.map(([f,l])=>`<div><label style="font-size:11.5px;color:var(--muted);display:block;margin-bottom:3px">${l}</label><input type="number" inputmode="decimal" value="${ent[f]??''}" style="${inp}" oninput="payUpdate('${e.id}','${f}',this.value)"></div>`).join('')}
-        <div style="grid-column:1/-1"><label style="font-size:11.5px;color:var(--muted);display:block;margin-bottom:3px">ملاحظات</label><input type="text" value="${esc(ent.note||'')}" style="${inp}" oninput="payUpdate('${e.id}','note',this.value)"></div>
-        <div style="grid-column:1/-1;font-size:12px;color:var(--muted)">المستحق ${fmtN(r.due)} · اليوم ${fmt2(r.day)} · الساعة ${fmt2(r.hour)}</div></div></div></div>`;
-    }).join('') : `<div class="empty">لا يوجد موظفين في هذا النصف — ضيفهم من تاب العاملين</div>`);
+    (rows.length? `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table class="payin" style="width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;min-width:${360+PAY_FIELDS.length*76}px">
+        <tr>
+          <th style="position:sticky;right:0;z-index:3;background:var(--blue);color:#fff;padding:8px 6px;text-align:right;min-width:130px">الموظف</th>
+          <th style="background:var(--blue);color:#fff;padding:8px 4px;min-width:74px">راتب النصف</th>
+          ${PAY_FIELDS.map(([f,l])=>`<th style="background:var(--blue);color:#fff;padding:8px 4px;min-width:76px;font-size:11px;line-height:1.3">${esc(l)}</th>`).join('')}
+          <th style="background:var(--blue);color:#fff;padding:8px 4px;min-width:150px">ملاحظات</th>
+          <th style="background:var(--blue);color:#fff;padding:8px 4px;min-width:84px">الصافي</th>
+        </tr>
+        ${rows.map((r,i)=>{ const e=r.emp, ent=payEntry(payMonth,payHalf,e.id), bg=i%2?'var(--panel2)':'var(--panel)';
+          return `<tr>
+            <td style="position:sticky;right:0;z-index:2;background:${bg};padding:6px;border-bottom:1px solid var(--border);text-align:right">
+              <div style="font-weight:700">${esc(e.name)}</div>
+              <div style="font-size:11px;color:var(--muted)">${esc(e.branch||'')} · اليوم ${fmt2(r.day)} · الساعة ${fmt2(r.hour)}</div></td>
+            <td style="background:${bg};padding:6px 4px;border-bottom:1px solid var(--border);text-align:center;font-weight:700">${fmtN(r.due)}</td>
+            ${PAY_FIELDS.map(([f])=>`<td style="background:${bg};padding:4px 3px;border-bottom:1px solid var(--border)">
+              <input type="number" inputmode="decimal" value="${ent[f]??''}" style="${cell}" oninput="payUpdate('${e.id}','${f}',this.value)"></td>`).join('')}
+            <td style="background:${bg};padding:4px 3px;border-bottom:1px solid var(--border)">
+              <input type="text" value="${esc(ent.note||'')}" style="${cell};text-align:right" oninput="payUpdate('${e.id}','note',this.value)"></td>
+            <td style="background:${bg};padding:6px 4px;border-bottom:1px solid var(--border);text-align:center">
+              <b id="pn_${e.id}" style="font-size:13.5px">${fmtN(r.net)}</b></td>
+          </tr>`; }).join('')}
+      </table></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:6px">اسحب الجدول يمين وشمال عشان تشوف باقي الأعمدة — اسم الموظف بيفضل ثابت.</div>`
+    : `<div class="empty">لا يوجد موظفين في هذا النصف — ضيفهم من تاب العاملين</div>`);
 }
 // ---- النواتج
 const PAY_COLS={
