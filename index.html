@@ -43,6 +43,11 @@ main{flex:1;overflow-y:auto;padding:10px}
 .panelbox{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;display:block}
 .card .name{font-weight:700;font-size:14px}
 .card .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.clsrow{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.clschip{border:1px solid var(--border);background:var(--panel2);color:var(--muted);border-radius:999px;
+  padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.5}
+.clschip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.clschip.pend{background:#e0a800;border-color:#e0a800;color:#231a00}
 .act{display:flex;gap:6px}
 .act button{border:none;background:var(--panel2);width:32px;height:32px;border-radius:8px;font-size:14px;cursor:pointer}
 .empty{text-align:center;color:var(--muted);padding:40px 10px;font-size:13.5px}
@@ -106,7 +111,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.5</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.6</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -212,6 +217,9 @@ let monthlySector = load('monthlySector_v1', {});
 let monthlyDoors = load('monthlyDoors_v1', {});
 
 const CLS_OPTS=['موزع','مبيعات جملة','مبيعات خاصة','عميل ابواب','مستبعد'];
+const CLS_SHORT={'موزع':'موزع','مبيعات جملة':'جملة','مبيعات خاصة':'خاصة','عميل ابواب':'أبواب','مستبعد':'مستبعد'};
+/* تصنيفات اتعلّمت من الشاشة ولسه ماتحفظتش — id العميل ← التصنيف */
+let custPend={};
 const SECTOR_MAP={
   'قطاعات PVC كومبن':'قطاعات PVC كومبن','قطاعات كرافت لاين':'قطاعات كرافت لاين','نيو لاين':'نيو لاين',
   'اكسسورات pvc اكسا':'اكسسوارات','اكسسوارات خارجيه':'اكسسوارات','جيفيز':'اكسسوارات',
@@ -1353,10 +1361,10 @@ function editCustomer(id){
 function saveCustomer(id){
   const name=$('#c_name').value.trim(); if(!name){ toast('اكتب الاسم'); return; }
   const obj={id:id||uid(), name, cls:$('#c_cls').value};
-  if(id){ const i=customers.findIndex(x=>x.id===id); customers[i]=obj; } else customers.unshift(obj);
+  if(id){ const i=customers.findIndex(x=>x.id===id); customers[i]=obj; delete custPend[id]; } else customers.unshift(obj);
   save('customers_v1',customers); closeSheet(); render(); toast('تم الحفظ');
 }
-function delCustomer(id){ if(!confirm('حذف؟')) return; customers=customers.filter(x=>x.id!==id); save('customers_v1',customers); render(); }
+function delCustomer(id){ if(!confirm('حذف؟')) return; delete custPend[id]; customers=customers.filter(x=>x.id!==id); save('customers_v1',customers); render(); }
 
 function renderSales(m){
   /* مكانش فيه بيانات = الشاشة كانت بتقف عند «ابدأ باستيراد عملاء ومبيعات»
@@ -1527,21 +1535,63 @@ function exportRep(id, kind){
   if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
 }
 function setSalesTab(n){ const cur=load('_salesTab_',null); save('_salesTab_', cur===n?null:n); q=''; render(true); }
+/* التصنيف الحالي للعميل: المعلّم لسه ماتحفظش، وإلا المحفوظ */
+function clsOf(c){ return (c.id in custPend)? custPend[c.id] : (c.cls||''); }
+function clsChips(c){
+  const sel=clsOf(c), pend=(c.id in custPend);
+  return `<div class="clsrow" id="cls_${c.id}">${CLS_OPTS.map(o=>
+    `<button class="clschip${o===sel?(pend?' pend':' on'):''}" data-cls="${o}"
+      onclick="pickCls('${c.id}','${o}')">${CLS_SHORT[o]||o}</button>`).join('')}</div>`;
+}
+/* تعليم تصنيف من غير إعادة رسم الشاشة كلها — عشان المكان ما يرجعش لفوق */
+function pickCls(id, cls){
+  const c=customers.find(x=>x.id===id); if(!c) return;
+  const cur=clsOf(c);
+  const nv = (cur===cls)? '' : cls;                 // ضغطة تانية على نفس التصنيف = إلغاء
+  if(nv===(c.cls||'')) delete custPend[id]; else custPend[id]=nv;
+  const box=document.getElementById('cls_'+id);
+  if(box){
+    const sel=clsOf(c), pend=(id in custPend);
+    [...box.children].forEach(b=>{
+      const on = b.dataset.cls===sel;
+      b.className = 'clschip' + (on? (pend?' pend':' on') : '');
+    });
+  }
+  updateClsBar();
+}
+function pendCount(){ return Object.keys(custPend).length; }
+function updateClsBar(){
+  const n=pendCount(), b=document.getElementById('clsSaveBtn'); if(!b) return;
+  b.textContent = n? `💾 حفظ التصنيفات (${n})` : '💾 مفيش تغييرات';
+  b.disabled = !n; b.style.opacity = n? '1' : '.5';
+}
+function saveClsBatch(){
+  const ids=Object.keys(custPend);
+  if(!ids.length){ toast('مفيش تغييرات تتحفظ'); return; }
+  ids.forEach(id=>{ const c=customers.find(x=>x.id===id); if(c) c.cls=custPend[id]; });
+  custPend={}; save('customers_v1',customers);
+  toast(`اتحفظ تصنيف ${ids.length} عميل`); render(true);
+}
 function renderSalesCustomers(m){
   const list = customers.filter(c=>!q || c.name.includes(q));
   const allGroups=['غير مصنف',...CLS_OPTS];
   const groups = allGroups.filter(c=>list.some(x=>(x.cls||'غير مصنف')===c));
+  const unc = customers.filter(c=>!c.cls).length;
   m.innerHTML = `
     <div class="impbar"><label>📥 استيراد عملاء<input type="file" id="impCust" accept=".xlsx,.xls" style="display:none"></label></div>
+    ${unc? `<div class="warn">⚠️ ${unc} عميل لسه من غير تصنيف — دوس على التصنيف قدام كل عميل وبعدين «حفظ التصنيفات» تحت.</div>`:''}
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
     ${groups.length? groups.map(g=>{
       const rows=list.filter(c=>(c.cls||'غير مصنف')===g); const open=openGroups.has(g)||g==='غير مصنف';
       return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup('${g}')">
         <span>${g==='غير مصنف'?'⚠️ ':''}${g} <span class="cnt">(${rows.length})</span></span><span class="arrow">▾</span></div>
-        <div class="grp-body">${rows.map(c=>`<div class="card"><div class="info"><div class="name">${esc(c.name)}</div></div>
+        <div class="grp-body">${rows.map(c=>`<div class="card"><div class="info"><div class="name">${esc(c.name)}</div>
+          ${clsChips(c)}</div>
           <div class="act"><button onclick="editCustomer('${c.id}')">✏️</button><button onclick="delCustomer('${c.id}')">🗑️</button></div></div>`).join('')}</div></div>`;
     }).join('') : `<div class="empty">لسه مفيش عملاء — استورد ملف العملاء من فوق،<br>أو ارفع شيت مبيعات والعملاء هيتضافوا لوحدهم</div>`}
+    ${list.length? floatBar(`<button id="clsSaveBtn" onclick="saveClsBatch()">💾 مفيش تغييرات</button>`):''}
   `;
+  updateClsBar();
   $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderSalesCustomers(m)); };
   $('#impCust').onchange=e=>{ if(e.target.files[0]) importCustomers(e.target.files[0]); };
 }
