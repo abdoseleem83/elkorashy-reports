@@ -131,16 +131,19 @@ check('الربط بيتزامن', (await pg.evaluate(()=>SYNC_KEYS.includes('gv
 
 // ── الاسم المختصر لأصناف جيفز
 const sn = await pg.evaluate(()=>[
-  gvShortName('سبلونة مفصلى 40 سم GEVIS','ISP - M400'),
-  gvShortName('سبلونة جرار 40 سم GEVIS','ISP M400 - SUR / 15'),
+  gvShortName('سبلونة مفصلى 30 سم GEVIS','ISP - M300'),
+  gvShortName('سبلونة جرار 160 سم GEVIS','ISP M1600 - SUR / 15'),
   gvShortName('زاما 2 ضلفه CKK GEVIS','01'),
-  gvShortName('حلق باب 10 سم','A01'),
-  gvShortName('GEVIS','ISP')]);
-check('بيشيل GEVIS والكود من الاسم', sn[0]==='سبلونة مفصلى 40 سم', sn[0]);
-check('بيشيل SUR وأجزاء الكود كمان', sn[1]==='سبلونة جرار 40 سم', sn[1]);
-check('كود قصير (٠١) مابيتشالش من جوه الاسم', sn[2]==='زاما 2 ضلفه CKK', sn[2]);
-check('الاسم اللي مفيهوش تكرار مابيتغيرش', sn[3]==='حلق باب 10 سم', sn[3]);
-check('مابيرجعش اسم فاضي أبدًا', sn[4]==='GEVIS', sn[4]);
+  gvShortName('سبلونه مفصلي 30 GEVIS ISP-M300','ISP-M300'),
+  gvShortName('حلق باب 10 سم ليمنيشن 2.16 م A01 بالعود','A01'),
+  gvShortName('GEVIS ISP','ISP')]);
+check('عربي بس والمقاس بعد أول كلمة', sn[0]==='سبلونة 30 مفصلى', sn[0]);
+check('نفس الشكل مع مقاس من ٣ أرقام', sn[1]==='سبلونة 160 جرار', sn[1]);
+check('مفيش حروف لاتينية في النتيجة', !/[A-Za-z]/.test(sn[0]+sn[1]+sn[2]+sn[3]), sn.join(' | '));
+check('كود قصير (٠١) مابيتشالش من جوه الاسم', sn[2]==='زاما 2 ضلفه', sn[2]);
+check('أرقام الكود مابتظهرش كأنها مقاس (M300 مش 300)', sn[3]==='سبلونه 30 مفصلي', sn[3]);
+check('الكسر العشري مابينقسمش', /2\.16/.test(sn[4]) && !/2 16/.test(sn[4]), sn[4]);
+check('مابيرجعش اسم فاضي أبدًا', sn[5]==='GEVIS ISP', sn[5]);
 const cellTxt = await pg.evaluate(()=>{
   const td=[...document.querySelectorAll('#cmp_c table td')].find(x=>/سبلونة|زاما/.test(x.textContent));
   return td? {t:td.textContent.trim(), title:td.getAttribute('title')||''} : null; });
