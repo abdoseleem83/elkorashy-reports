@@ -62,8 +62,8 @@ main{flex:1;overflow-y:auto;padding:10px}
 .t3lbl{font-size:12px;color:var(--muted);font-weight:700;margin:2px 0 4px}
 /* أعلى رقم في العمود أخضر وأقل رقم أحمر */
 table.rep tr.qsub td{font-size:12px;color:var(--muted);background:var(--panel2);font-weight:700}
-table.rep td.hi{background:rgba(10,125,60,.18)}
-table.rep td.lo{background:rgba(192,32,47,.16)}
+table.rep td.hi{background:rgba(10,125,60,.18) !important}
+table.rep td.lo{background:rgba(192,32,47,.16) !important}
 .clsrow{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .clschip{border:1px solid var(--border);background:var(--panel2);color:var(--muted);border-radius:999px;
   padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.5}
@@ -132,7 +132,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.1</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -1711,15 +1711,20 @@ function topItems(){
 }
 
 /* ٢) موزعين × قطاعات */
+/* نفس صفوف «موزعين إجمالي» بالظبط عشان التقريرين يطابقوا بعض:
+   كل موزع بسطر، ومبيعات الجملة سطر واحد مجمّع. */
 function buildDistSectors(){
-  const months = salesMonths(), dists = new Set(distributorNames());
+  const months = salesMonths();
+  const custByName={}; customers.forEach(c=>custByName[c.name]=c);
   const secs = new Set(), rows = {};
   months.forEach(mo=>{
     Object.entries(monthlySector[mo]||{}).forEach(([cname, bySec])=>{
-      if(!dists.has(cname)) return;
+      const cls=(custByName[cname]||{}).cls||'';
+      if(!cls || cls==='مستبعد' || cls==='عميل ابواب' || cls==='مبيعات خاصة') return;
+      const key = cls==='موزع' ? cname : cls;
       Object.entries(bySec).forEach(([sec0, v])=>{
         const sec = secName(sec0);
-        secs.add(sec); rows[cname]=rows[cname]||{}; rows[cname][sec]=(rows[cname][sec]||0)+v;
+        secs.add(sec); rows[key]=rows[key]||{}; rows[key][sec]=(rows[key][sec]||0)+v;
       });
     });
   });
@@ -1740,7 +1745,7 @@ function repDistSectorsModel(){
 }
 function renderRepDistSectors(m){
   const d = buildDistSectors();
-  if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات لموزعين — صنّف العملاء «موزع» من شاشة العملاء</div>`; return; }
+  if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات مصنّفة — صنّف العملاء من شاشة العملاء</div>`; return; }
   const topSecs = d.cols.map((c,i)=> ({name:secLabel(c), val:d.tot[i]})).sort((a,b)=> b.val-a.val);
   renderRepTable(m, 'distsec', repDistSectorsModel(), {
     boxes: hiddenSecBar() + topBoxes(topSecs,'أعلى ٣ مجموعات') + topBoxes(topItems(),'أعلى ٣ أصناف')
@@ -1797,7 +1802,7 @@ function repDoorsByCodeModel(){
   body.push({type:'sub', cells:['', 'كمية', ...d.totQ, '', '']});
   return {title:'مبيعات الأبواب بالكود — '+periodLabel(),
     header:['م','الكود', ...d.cols, 'الكمية','الإجمالي'],
-    tapCol:1, rowTap:d.list.map(r=>`doorCodeSheet(${JSON.stringify(r.code)})`), body, d};
+    tapCol:1, rowTap:d.list.map(r=>`doorCodeSheet(&quot;${esc(r.code)}&quot;)`), body, d};
 }
 function renderRepDoorsByCode(m){
   const d=buildDoorsByCode();
@@ -1822,10 +1827,12 @@ function doorCodeSheet(code){
           style="flex:1;padding:7px 9px;border-radius:8px;border:1px solid var(--border);
           background:var(--panel2);color:var(--text);font-weight:700;font-size:13px"></div>`).join('')}</div>
     <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
-      <button class="btn-save" onclick='doorCodeSave(${JSON.stringify(names)})'>حفظ</button></div>`);
+      <button class="btn-save" onclick="doorCodeSave()">حفظ</button></div>`);
+  dcNames = names;
 }
+let dcNames=[];
 function doorCodeSave(names){
-  names.forEach((n,i)=>{
+  (names||dcNames).forEach((n,i)=>{
     const el=document.getElementById('dc_'+i); if(!el) return;
     const v=(el.value||'').trim().toUpperCase();
     if(v) doorCodeMap[n]=v; else delete doorCodeMap[n];
@@ -2007,6 +2014,8 @@ function exportRep(id, kind){
       {title: md.title, sign: md.sign||[], hiLo: md.hiLo});
     return;
   }
+  if(md.header[0]==='م'){ let i=0;                 // ميداليات في المستند زي الشاشة
+    md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]; i++; } }); }
   const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docTableHtml(md)}</div>`;
   if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
 }
@@ -2296,8 +2305,8 @@ const DOC_CSS=`<style>
 .dx table.pay th{background:#4472c4;border-color:#2f5597;font-weight:700}
 .dx table.pay td{border-color:#9db2dd;background:#fff}
 .dx table.pay tr.z td{background:#fff}
-.dx table td.hi{background:#d6f5df}
-.dx table td.lo{background:#fde0e3}
+.dx table td.hi{background:#d6f5df !important}
+.dx table td.lo{background:#fde0e3 !important}
 .dx table td.minus{color:#c0202f;font-weight:700}
 .dx table td.plus{color:#0a7d3c;font-weight:700}
 .dx table.pay td.minus{color:#c0202f;font-weight:700}
@@ -2382,10 +2391,12 @@ async function exportDocPdf(bodyHtml, filename, landscape){
       const last=hdrRows[hdrRows.length-1];
       headH=Math.round((last.getBoundingClientRect().bottom-er.top)*k);
     }
-    const isFoot=r=> /(^|\s)(m|s)(\s|$)/.test(r.className);
-    let fi=trs.length;
-    while(fi>0 && isFoot(trs[fi-1])) fi--;
-    if(fi<trs.length && fi>hdrRows.length){
+    let fi=trs.length;                       // أول صف إجمالي من الآخر
+    for(let i=trs.length-1; i>=0; i--){
+      if(/(^|\s)m(\s|$)/.test(trs[i].className)){ fi=i; break; }
+      if(!/(^|\s)s(\s|$)/.test(trs[i].className)) break;
+    }
+    if(fi<trs.length && fi>hdrRows.length-1){
       footTop=Math.round((trs[fi].getBoundingClientRect().top-er.top)*k);
       footH=canvas.height-footTop;
     }
@@ -2408,8 +2419,9 @@ async function exportDocPdf(bodyHtml, filename, landscape){
       if(!first) pdf.addPage(); first=false;
       let cur=mg;
       if(!simple && headImg){ pdf.addImage(headImg,'JPEG',mg,cur,canvas.width*sc,headH*sc); cur+=headH*sc; }
-      pdf.addImage(band(y,end-y),'JPEG',mg,cur,canvas.width*sc,(end-y)*sc); cur+=(end-y)*sc;
-      if(!simple && footImg) pdf.addImage(footImg,'JPEG',mg,cur,canvas.width*sc,footH*sc);
+      pdf.addImage(band(y,end-y),'JPEG',mg,cur,canvas.width*sc,(end-y)*sc);
+      // الإجمالي دايمًا تحت خالص في كل ورقة
+      if(!simple && footImg) pdf.addImage(footImg,'JPEG',mg,ph-mg-footH*sc,canvas.width*sc,footH*sc);
       y=end;
     }
     pdf.save(filename+'.pdf'); toast('تم تنزيل ملف PDF');

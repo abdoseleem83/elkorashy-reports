@@ -23,6 +23,13 @@ ck('خلايا الكود قابلة للضغط', d.tapCol===1 && (d.rowTap||[])
   JSON.stringify(d.rowTap));
 ck('العلامة ⚙️ ظاهرة في عمود الكود',
   (await pg.evaluate(()=> document.querySelector('table.rep').innerText)).includes('⚙️'));
+// الضغط الحقيقي على «بدون كود» لازم يفتح الشيت (كان باظ بسبب علامات التنصيص)
+await pg.evaluate(()=>{ const sh=document.getElementById('sheet'); if(sh) sh.classList.remove('open'); });
+const cell = pg.locator('table.rep td', {hasText:'بدون كود'}).first();
+await cell.click(); await pg.waitForTimeout(300);
+ck('الضغط على «بدون كود» بيفتح الشيت',
+  /الكود «بدون كود»/.test(await pg.evaluate(()=>document.body.innerText)));
+await pg.evaluate(()=> closeSheet()); await pg.waitForTimeout(200);
 
 await pg.evaluate(()=> doorCodeSheet('بدون كود')); await pg.waitForTimeout(250);
 const sh=await pg.evaluate(()=>document.body.innerText);
