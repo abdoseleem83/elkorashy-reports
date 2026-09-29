@@ -101,7 +101,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.1</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -1447,6 +1447,20 @@ const DOC_CSS=`<style>
 .dx tr.s td{background:#e8eefc;font-weight:700}
 .dx tr.z:nth-child(even) td{background:#f6f8fd}
 .dx .neg{color:#b91c1c;font-weight:700}.dx .pos{color:#15803d;font-weight:700}
+/* كشف الإرسال: نفس شكل الورقة اللي بتتبعت للحسابات */
+.dx table.pay th{background:#4472c4;border-color:#2f5597;font-weight:700}
+.dx table.pay td{border-color:#9db2dd}
+.dx table.pay td.money{background:#e2efda}        /* راتب النصف والصافي */
+.dx table.pay td.inp{background:#fff2cc}          /* الخانات اللي بتتكتب */
+.dx table.pay td.br{color:#1f7a44;font-weight:700}
+.dx table.pay td.v{color:#1230a8;font-weight:700}
+.dx table.pay tr.z:nth-child(even) td{background:#f2f6fc}
+.dx table.pay tr.z:nth-child(even) td.money{background:#d8ead0}
+.dx table.pay tr.z:nth-child(even) td.inp{background:#fbecc2}
+.dx table.pay tr.m td{background:#4472c4;color:#fff;font-weight:700;text-align:center}
+.dx table.pay tr.m td:nth-child(2){text-align:right}
+.dx .payttl{background:#dce6f5;color:#1230a8;font-weight:700;text-align:center;
+  padding:7px;border:1px solid #9db2dd;margin-bottom:0;font-size:13.5px}
 .dxhead{display:flex;align-items:center;justify-content:space-between;gap:12px;
   border-bottom:3px solid #1d4ed8;padding-bottom:8px;margin-bottom:12px}
 .dxhead img{height:42px;width:auto}
@@ -2152,8 +2166,32 @@ function docTableHtml(model, extraCss){
       ? `<tr class="m"><td colspan="${n}">◆ ${esc(r.label)}</td></tr>`
       : `<tr class="${cls[r.type]}">${r.cells.map(c=>`<td>${typeof c==='number'?fmt2(c):esc(c)}</td>`).join('')}</tr>`).join('')+`</table>`;
 }
-function modelToAoa(model){
-  const aoa=[[model.title],[],model.header];
+/* الكشف اللي بيتبعت: كل عمود ليه دوره — الراتب والصافي بخلفية خضرا،
+   والخانات اللي بتتكتب (غياب/تأخير/إضافي/سلف/تأمينات/حوافز) بخلفية كريمي،
+   والرقم اللي مش فاضي بيتكتب أزرق غامق عشان يبان وسط الخانات الفاضية. */
+const PAY_MONEY_COL = /راتب النصف|صافي/;
+const PAY_INPUT_COL = /غياب|تأخير|إضافي|اضافي|جزاء|سلف|تأمين|حواف/;
+function payTableHtml(model){
+  const H = model.header;
+  const kind = H.map(h=> PAY_MONEY_COL.test(h) ? 'money' : (PAY_INPUT_COL.test(h) ? 'inp' : ''));
+  // الساعات والأيام بخانتين عشريتين زي الورقة، والفلوس بفواصل الآلاف
+  const isTime = H.map(h=> /\(ساعات\)|\(أيام\)/.test(h));
+  const num = (v, i)=> isTime[i] ? Number(v).toFixed(2) : fmtN(Math.round(Number(v)));
+  const cell = (c, i)=>{
+    const empty = c === '' || c === 0 || c === null || c === undefined;
+    const cls = [kind[i]];
+    if(i === 2) cls.push('br');
+    if(!empty && kind[i] === 'inp') cls.push('v');
+    const txt = typeof c === 'number' ? (empty ? '' : num(c, i)) : esc(c);
+    return `<td class="${cls.filter(Boolean).join(' ')}">${txt}</td>`;
+  };
+  return `<table class="pay"><tr>${H.map(h=>`<th>${esc(h)}</th>`).join('')}</tr>`
+    + model.body.map(r=> `<tr class="${r.type==='tot'?'m':'z'}">${r.cells.map((c,i)=>
+        r.type==='tot' ? `<td>${typeof c==='number'? (c? num(c,i) : '') : esc(c)}</td>` : cell(c,i)
+      ).join('')}</tr>`).join('') + `</table>`;
+}
+function modelToAoa(model, noTitle){
+  const aoa = noTitle ? [model.header] : [[model.title],[],model.header];
   model.body.forEach(r=>{ if(r.type==='branch') aoa.push(['◆ '+r.label]); else aoa.push(r.cells); });
   return aoa;
 }
@@ -2208,9 +2246,12 @@ function styleSheet(ws, o){
         // صف الإجمالي في الإكسل خلفيته فاتحة (D9E1F5) فالأحمر والأخضر
         // الغامقين بيتقروا عليه عادي
         const paint = sg && (numeric ? cell.v !== 0 : !!String(cell.v || ''));
+        /* colFill[] بتدي لكل عمود لونه الخاص (زي كشف الإرسال: الراتب
+           والصافي أخضر فاتح، وخانات الإدخال كريمي) بدل التخطيط العادي */
+        const cf = (o.colFill || [])[c - R.s.c];
         cell.s = {font:{bold: isTot || !!paint, sz:10.5,
                         color: paint ? {rgb: sg === 'minus' ? XS_RED : XS_GREEN} : undefined},
-                  fill:{fgColor:{rgb: isTot ? XS_TOT : ((r - headRow) % 2 === 0 ? XS_BAND : 'FFFFFF')}},
+                  fill:{fgColor:{rgb: isTot ? XS_TOT : (cf || ((r - headRow) % 2 === 0 ? XS_BAND : 'FFFFFF'))}},
                   alignment:{horizontal: numeric ? 'center' : 'right', vertical:'center'},
                   border: xsAll()};
       }
@@ -2241,7 +2282,7 @@ function saveAoaXlsx(aoa, sheetName, fileName, widths, opt){
   if(widths) ws['!cols'] = widths.map(w=>({wch:w}));
   // دمج سطري الرأس على عرض الجدول كله
   ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:ncol-1}}, {s:{r:1,c:0}, e:{r:1,c:ncol-1}}];
-  styleSheet(ws, {titleRows: 2, headRow: 2, sign: opt.sign || []});
+  styleSheet(ws, {titleRows: 2, headRow: 2, sign: opt.sign || [], colFill: opt.colFill || []});
   const wbk = XLSX.utils.book_new();
   wbk.Workbook = {Views:[{RTL:true}]};   // الشيت يفتح من اليمين لليسار
   XLSX.utils.book_append_sheet(wbk, ws, sheetName);
@@ -2392,10 +2433,14 @@ function renderPayEntry(c){
 }
 // ---- النواتج
 const PAY_COLS={
-  send:[['monthly','المرتب الكامل',r=>r.monthly],['due','المستحق',r=>r.due],['absence','خصم غياب',r=>r.dAbP+r.dAbN],['late','خصم تأخيرات',r=>r.dLate],['ot','إضافي',r=>r.otAmt],['pen','خصم جزاءات',r=>r.dPen],['adv','سلف',r=>r.adv],['ins','تأمينات',r=>r.ins],['ded','إجمالي الخصومات',r=>r.ded],['bonus','حوافز',r=>r.bonus],['net','الصافي',r=>r.net]],
+  /* كشف الإرسال = الورقة اللي بتتبعت للحسابات: الأيام والساعات زي ما
+     اتسجّلت (مش مبالغ محسوبة)، والسلف والتأمينات والحوافز بالجنيه، وراتب
+     النصف والصافي على الطرفين، وملاحظة في الآخر. */
+  send:[['due','راتب النصف',r=>r.due],['abP','غياب بإذن (أيام)',r=>r.abP],['abN','غياب بدون إذن (أيام)',r=>r.abN],['late','تأخيرات (ساعات)',r=>r.late],['ot','إضافي (ساعات)',r=>r.ot],['pen','جزاءات (أيام)',r=>r.pen],['adv','سلف (جنيه)',r=>r.adv],['ins','تأمينات',r=>r.ins],['bonus','حوافز (جنيه)',r=>r.bonus],['net','صافي الراتب',r=>r.net]],
   full:[['monthly','الراتب الشهري',r=>r.monthly],['due','المستحق',r=>r.due],['abP','غياب بإذن (أيام)',r=>r.abP],['abN','غياب بدون إذن (أيام)',r=>r.abN],['late','تأخير (ساعات)',r=>r.late],['ot','إضافي (ساعات)',r=>r.ot],['pen','جزاءات (أيام)',r=>r.pen],['dAb','خصم غياب',r=>r.dAbP+r.dAbN],['dLate','خصم تأخير',r=>r.dLate],['otAmt','مبلغ إضافي',r=>r.otAmt],['dPen','خصم جزاءات',r=>r.dPen],['adv','سلف',r=>r.adv],['ins','تأمينات',r=>r.ins],['bonus','حوافز',r=>r.bonus],['net','الصافي',r=>r.net]]
 };
-let paySendVisible = new Set(load('paySendCols_v1', PAY_COLS.send.map(c=>c[0])));
+const PAY_SEND_DEFAULT = ['due','abP','abN','late','ot','adv','ins','bonus','net'];
+let paySendVisible = new Set(load('paySendCols_v1', PAY_SEND_DEFAULT));
 let payExportBranch = load('_payExportBranch_','');
 function paySendToggle(key){ if(paySendVisible.has(key)) paySendVisible.delete(key); else paySendVisible.add(key); save('paySendCols_v1',[...paySendVisible]); render(); }
 function setPayExportBranch(v){ payExportBranch=v; save('_payExportBranch_',v); render(); }
@@ -2404,13 +2449,36 @@ function paySendColsSheet(){
     ${PAY_COLS.send.map(([k,l])=>`<label style="display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid var(--border)"><input type="checkbox" ${paySendVisible.has(k)?'checked':''} onchange="paySendToggle('${k}')"> ${esc(l)}</label>`).join('')}
     <div class="f-actions"><button class="btn-save" onclick="closeSheet()">تم</button></div>`);
 }
+/* الفترة بالشكل اللي في الكشف المطبوع: «١٦ الى آخر الشهر» مش «16 – 30» */
+const toArabicDigits = n=> String(n).replace(/[0-9]/g, d=> '٠١٢٣٤٥٦٧٨٩'[+d]);
+function payPeriodLabel(month, half){
+  const p = String(month).split('-'), mn = MONTHS_AR[(+p[1]||1)-1] + ' ' + toArabicDigits(p[0]);
+  if(half === 'm') return 'الشهر كامل — ' + mn;
+  return (half === 2 ? 'كشف مرتبات النصف الثاني   الفترة: ١٦ الى آخر الشهر'
+                     : 'كشف مرتبات النصف الأول   الفترة: ١ الى ١٥') + '   ' + mn;
+}
 function payModel(){
   let rows=payRows(payMonth,payHalf);
   if(payExportBranch) rows=rows.filter(r=>(r.emp.branch||'بدون فرع')===payExportBranch);
   let cols=PAY_COLS[payKind];
   if(payKind==='send') cols=cols.filter(c=>paySendVisible.has(c[0]));
   const sums=rs=>cols.map(([k,h,f])=>rs.reduce((a,r)=>a+f(r),0));
-  const branches=[...new Set(rows.map(r=>r.emp.branch||'بدون فرع'))], body=[]; let idx=0;
+  const body=[];
+  if(payKind==='send'){
+    /* الكشف اللي بيتبعت مسطّح: الفرع عمود جنب الموظف، وسطر إجمالي واحد
+       في الآخر — من غير سطور تقسيم على الفروع. وفيه عمود ملاحظات. */
+    // الصفر في خانة إدخال = مفيش حاجة اتسجّلت، فبتفضل فاضية زي الورقة
+    const blank0 = (v, h)=> (PAY_INPUT_COL.test(h) && !v) ? '' : v;
+    rows.forEach((r,i)=>{
+      const ent = payEntry(payMonth, payHalf, r.emp.id) || {};
+      body.push({type:'row', cells:[i+1, r.emp.name, r.emp.branch||'',
+        ...cols.map(([k,h,f])=> blank0(f(r), h)), ent.note||'']});
+    });
+    body.push({type:'tot', cells:['','الإجمالي','', ...cols.map(([k,h,f])=> blank0(rows.reduce((a,r)=>a+f(r),0), h)), '']});
+    return {title: payPeriodLabel(payMonth,payHalf)+(payExportBranch?' — فرع '+payExportBranch:''),
+            header:['م','الموظف','الفرع',...cols.map(c=>c[1]),'ملاحظات'], body, rows, send:true};
+  }
+  const branches=[...new Set(rows.map(r=>r.emp.branch||'بدون فرع'))]; let idx=0;
   branches.forEach(b=>{
     const br=rows.filter(r=>(r.emp.branch||'بدون فرع')===b);
     body.push({type:'branch',label:b});
@@ -2418,9 +2486,15 @@ function payModel(){
     body.push({type:'sub',cells:['','إجمالي '+b,'',...sums(br)]});
   });
   body.push({type:'tot',cells:['','الإجمالي العام','',...sums(rows)]});
-  return {title:(payKind==='send'?'كشف الإرسال — ':'كشف المرتبات — ')+payLabel(payMonth,payHalf)+(payExportBranch?' — فرع '+payExportBranch:''), header:['م','الموظف','الفرع',...cols.map(c=>c[1])], body, rows};
+  return {title:'كشف المرتبات — '+payLabel(payMonth,payHalf)+(payExportBranch?' — فرع '+payExportBranch:''), header:['م','الموظف','الفرع',...cols.map(c=>c[1])], body, rows};
 }
-function payDocBody(){ const md=payModel(); return `<div class="dx" style="font-size:11.5px"><h2>شركة القرشي</h2><div class="sub">${esc(md.title)}</div>${docTableHtml(md)}</div>`; }
+function payDocBody(){
+  const md=payModel();
+  if(md.send) return `<div class="dx" style="font-size:11.5px">
+    <h2>شركة القرشي — كشف المرتبات</h2>
+    <div class="payttl">${esc(md.title)}</div>${payTableHtml(md)}</div>`;
+  return `<div class="dx" style="font-size:11.5px"><h2>شركة القرشي</h2><div class="sub">${esc(md.title)}</div>${docTableHtml(md)}</div>`;
+}
 function payFile(){ return (payKind==='send'?'كشف_الارسال_':'كشف_المرتبات_')+payMonth+(payHalf==='m'?'_شهري':'_نصف'+payHalf)+(payExportBranch?'_'+payExportBranch:''); }
 function exportPayPdf(){ if(!payModel().rows.length){ toast('لا توجد بيانات'); return; } exportDocPdf(payDocBody(),payFile(),true); }
 function exportPayImage(){ if(!payModel().rows.length){ toast('لا توجد بيانات'); return; } exportDocImage(payDocBody(),payFile(),true); }
@@ -2429,8 +2503,14 @@ function exportPayExcel(){
   // أي عمود بيخصم = أحمر، وأي عمود بيزوّد = أخضر (زي الشاشة والـPDF)
   const MINUS=/غياب|تأخير|جزاء|سلف|تأمين|خصم/, PLUS=/إضافي|اضافي|حواف|بونص|مكاف/;
   const sign = md.header.map(h=> MINUS.test(h) ? 'minus' : (PLUS.test(h) ? 'plus' : ''));
-  saveAoaXlsx(modelToAoa(md),'المرتبات',payFile()+'.xlsx',
-    [5,26,12,...md.header.slice(3).map(()=>13)], {title: payLabel(payMonth,payHalf), sign});
+  const opt = {title: md.send ? md.title : payLabel(payMonth,payHalf), sign};
+  if(md.send){
+    // نفس ألوان الورقة المطبوعة: أخضر فاتح للراتب والصافي، وكريمي للإدخال
+    opt.colFill = md.header.map(h=> PAY_MONEY_COL.test(h) ? 'E2EFDA' : (PAY_INPUT_COL.test(h) ? 'FFF2CC' : ''));
+  }
+  const w = md.send ? [5,26,12,...md.header.slice(3,-1).map(()=>13),22]
+                    : [5,26,12,...md.header.slice(3).map(()=>13)];
+  saveAoaXlsx(modelToAoa(md, md.send),'المرتبات',payFile()+'.xlsx', w, opt);
 }
 function renderPayOutput(c){
   const rows=payRows(payMonth,payHalf), T=payTotals(rows);
@@ -2453,6 +2533,9 @@ function renderPayOutput(c){
     <div style="font-size:12px;color:var(--muted);margin-bottom:4px">تصدير فرع:</div>
     <select onchange="setPayExportBranch(this.value)" style="width:100%;padding:9px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px">
       <option value="">كل الفروع مع بعض</option>${branches.map(b=>`<option value="${esc(b)}" ${payExportBranch===b?'selected':''}>${esc(b)} فقط</option>`).join('')}</select>
+    ${payKind==='send'? `<div style="font-size:12px;color:var(--muted);margin:12px 0 4px">شكل الكشف اللي هيتبعت:</div>
+      <div style="overflow-x:auto;background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px">
+        ${DOC_CSS}<div class="dx" style="font-size:10.5px;color:#111">${payTableHtml(payModel())}</div></div>`:''}
     ${floatBar(`<button onclick="exportPayExcel()">📊 إكسل</button><button onclick="exportPayPdf()">📄 PDF</button><button onclick="exportPayImage()">🖼️ صورة</button>`)}`
     : `<div class="empty">لا يوجد موظفين في هذه الفترة</div>`);
 }
