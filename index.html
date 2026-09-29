@@ -101,7 +101,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.8</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.9</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -895,54 +895,74 @@ function importStock(file, whId){
   };
   r.readAsArrayBuffer(file);
 }
-/* الطلب بقى خانتين لكل صنف: كراتين + قطع (باللي الصنف بيتباع بيه: عود/لفة/
-   متر/قطعة). قبل كده كانت خانة واحدة وقايمة وحدات، وكنت بتختار الوحدة كل
-   مرة. السجلات القديمة {order, unit} لسه بتتقرا صح — بتتحوّل لكراتين لو
-   وحدتها كرتونة، وغير كده لقطع. */
-function pieceUnit(name){
-  const it = itemsByName[name] || {};
-  const u = normUnit(it.unit || '');
-  return (u && u !== 'كرتونة') ? u : 'قطعة';
+/* الطلب خانتين لكل صنف، والوحدتين بتتحددوا من مجموعة الصنف:
+     القطاعات (كرافت لاين · نيو لاين · PVC كومبن) → لفة / عود
+     الاكسسوارات وأي حاجة تانية              → كرتونة / قطعة
+   فمفيش قايمة وحدات تختار منها كل مرة.
+   بنقرا السجلات القديمة بكل أشكالها: {order, unit} و {cartons, pieces}. */
+const SHORT_UNITS_ROLL = ['لفة','عود'];      // القطاعات
+const SHORT_UNITS_BOX  = ['كرتونة','قطعة'];  // الاكسسوارات وغيرها
+function isProfileGroup(g){
+  g = String(g || '');
+  return /قطاعات|نيو لاين/.test(g);
 }
-// بيرجّع {cartons, pieces, unit, note} مهما كان شكل السجل
+function shortUnits(name){
+  const it = itemsByName[name] || {};
+  return isProfileGroup(it.mainGroup) ? SHORT_UNITS_ROLL : SHORT_UNITS_BOX;
+}
+// بيرجّع {q1,q2,u1,u2,note} مهما كان شكل السجل المتخزّن
 function shortRec(whId, name){
   const r = (whShortage[whId] || {})[name] || {};
-  if(r.cartons !== undefined || r.pieces !== undefined){
-    return {cartons: r.cartons || '', pieces: r.pieces || '', unit: r.unit || pieceUnit(name), note: r.note || ''};
+  const [u1, u2] = shortUnits(name);
+  const base = {q1:'', q2:'', u1, u2, note: r.note || ''};
+  if(r.q1 !== undefined || r.q2 !== undefined){
+    return Object.assign(base, {q1: r.q1 || '', q2: r.q2 || ''});
   }
-  const legacy = r.order || '';
-  const isCart = normUnit(r.unit || '') === 'كرتونة';
-  return {cartons: isCart ? legacy : '', pieces: isCart ? '' : legacy,
-          unit: (!isCart && r.unit) ? normUnit(r.unit) : pieceUnit(name), note: r.note || ''};
+  if(r.cartons !== undefined || r.pieces !== undefined){   // شكل v2.8
+    return Object.assign(base, {q1: r.cartons || '', q2: r.pieces || ''});
+  }
+  const legacy = r.order || '';                            // شكل v2.7 وأقدم
+  if(!legacy) return base;
+  const u = normUnit(r.unit || '');
+  return Object.assign(base, u === u1 ? {q1: legacy} : {q2: legacy});
 }
 function setShortQty(whId, name, field, val){
   val = String(val || '').trim();
   const r = shortRec(whId, name);
   r[field] = val;
   whShortage[whId] = whShortage[whId] || {};
-  if(!r.cartons && !r.pieces) delete whShortage[whId][name];
-  else whShortage[whId][name] = {cartons:r.cartons, pieces:r.pieces, unit:r.unit, note:r.note};
+  if(!r.q1 && !r.q2) delete whShortage[whId][name];
+  else whShortage[whId][name] = {q1:r.q1, q2:r.q2, u1:r.u1, u2:r.u2, note:r.note};
   save('whShortage_v1', whShortage);
-  const t = shortTotals(whId), el = $('#shTot');
-  if(el) el.innerHTML = shortTotalsHtml(t);
+  const el = $('#shTot');
+  if(el) el.innerHTML = shortTotalsHtml(shortTotals(whId));
 }
-// إجماليات الطلب: عدد الأصناف · الكراتين · القطع مقسّمة على وحداتها
+// إجماليات الطلب: عدد الأصناف + مجموع كل وحدة لوحدها
 function shortTotals(whId){
-  const out = {items:0, cartons:0, pieces:0, byUnit:{}};
+  const out = {items:0, byUnit:{}};
   Object.keys(whShortage[whId] || {}).forEach(n=>{
     const r = shortRec(whId, n);
-    const c = Number(r.cartons) || 0, pc = Number(r.pieces) || 0;
-    if(!c && !pc) return;
-    out.items++; out.cartons += c; out.pieces += pc;
-    if(pc) out.byUnit[r.unit] = (out.byUnit[r.unit] || 0) + pc;
+    const a = Number(r.q1) || 0, b = Number(r.q2) || 0;
+    if(!a && !b) return;
+    out.items++;
+    if(a) out.byUnit[r.u1] = (out.byUnit[r.u1] || 0) + a;
+    if(b) out.byUnit[r.u2] = (out.byUnit[r.u2] || 0) + b;
   });
   return out;
 }
+// ترتيب ثابت للأعمدة عشان التصدير ما يلخبطش من مرة للتانية
+const SHORT_UNIT_ORDER = ['لفة','عود','كرتونة','قطعة'];
+function shortUnitCols(whId){
+  const seen = Object.keys(shortTotals(whId).byUnit);
+  return SHORT_UNIT_ORDER.filter(u=> seen.includes(u))
+    .concat(seen.filter(u=> !SHORT_UNIT_ORDER.includes(u)).sort());
+}
 function shortTotalsHtml(t){
-  const units = Object.keys(t.byUnit).map(u=> `<span style="white-space:nowrap">${esc(u)}: <b>${fmtN(t.byUnit[u])}</b></span>`).join(' · ');
-  return `<span style="white-space:nowrap">أصناف: <b>${t.items}</b></span> · `
-    + `<span style="white-space:nowrap">كراتين: <b style="color:var(--blue)">${fmtN(t.cartons)}</b></span>`
-    + (units ? ' · ' + units : '');
+  const u = Object.keys(t.byUnit).sort((a,b)=>{
+    const ia = SHORT_UNIT_ORDER.indexOf(a), ib = SHORT_UNIT_ORDER.indexOf(b);
+    return (ia<0?99:ia) - (ib<0?99:ib);
+  }).map(k=> `<span style="white-space:nowrap">${esc(k)}: <b style="color:var(--blue)">${fmtN(t.byUnit[k])}</b></span>`).join(' · ');
+  return `<span style="white-space:nowrap">أصناف: <b>${t.items}</b></span>` + (u ? ' · ' + u : '');
 }
 function resetShortage(whId){
   const t = shortTotals(whId);
@@ -989,9 +1009,9 @@ function renderWhShortage(m, whId){
           </label>`;
         return `<div class="card"><div class="info"><div class="name">${esc(it.name)}</div>
           <div class="sub">الرصيد: ${esc(balText(it.name, stock[it.name]))}</div></div>
-          ${box('cartons','كرتونة', rec.cartons, 'var(--blue)')}
-          ${box('pieces', rec.unit, rec.pieces, 'var(--ok)')}
-          ${(rec.cartons||rec.pieces)? `<button title="شيله من الطلب" onclick="unmarkShort('${whId}','${nm}')"
+          ${box('q1', rec.u1, rec.q1, 'var(--blue)')}
+          ${box('q2', rec.u2, rec.q2, 'var(--ok)')}
+          ${(rec.q1||rec.q2)? `<button title="شيله من الطلب" onclick="unmarkShort('${whId}','${nm}')"
             style="padding:7px 9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--danger);cursor:pointer">🗑</button>`:''}
           </div>`;
       }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
@@ -1016,16 +1036,18 @@ function unmarkShort(whId,name){ if(!whShortage[whId]) return; delete whShortage
 function getOrderDate(whId){ const d=load('whOrderDate_v1',{}); return d[whId] || new Date().toISOString().slice(0,10); }
 function buildGroupBreakdown(list, whId){
   const buckets={};
+  const add=(o,u,v)=>{ if(v) o[u]=(o[u]||0)+v; };
   list.forEach(([name])=>{
     const r=shortRec(whId, name);
-    const c=Number(r.cartons)||0, pc=Number(r.pieces)||0;
+    const a=Number(r.q1)||0, b=Number(r.q2)||0;
+    if(!a && !b) return;
     const it=itemsByName[name]||{};
     const bucket=exportBucket(it.mainGroup);
     const sub=it.subGroup||'بدون';
-    buckets[bucket]=buckets[bucket]||{cartons:0, pieces:0, subs:{}};
-    buckets[bucket].cartons+=c; buckets[bucket].pieces+=pc;
-    const sb=buckets[bucket].subs[sub]=buckets[bucket].subs[sub]||{cartons:0,pieces:0};
-    sb.cartons+=c; sb.pieces+=pc;
+    buckets[bucket]=buckets[bucket]||{byUnit:{}, subs:{}};
+    add(buckets[bucket].byUnit, r.u1, a); add(buckets[bucket].byUnit, r.u2, b);
+    const sb=buckets[bucket].subs[sub]=buckets[bucket].subs[sub]||{};
+    add(sb, r.u1, a); add(sb, r.u2, b);
   });
   return buckets;
 }
@@ -1033,17 +1055,19 @@ function exportShortExcel(whId){
   const w=warehouses.find(x=>x.id===whId);
   const list = Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد نواقص'); return; }
-  const data=[['الصنف','كراتين','قطع','الوحدة','ملاحظة'],
-    ...list.map(([n])=>{ const r=shortRec(whId,n); return [n, r.cartons? nz(r.cartons):'', r.pieces? nz(r.pieces):'', r.unit||'', r.note||'']; })];
-  const t=shortTotals(whId);
-  data.push(['الإجمالي', t.cartons||'', t.pieces||'', '', t.items+' صنف']);
+  const t=shortTotals(whId), cols=shortUnitCols(whId);
+  const data=[['الصنف', ...cols, 'ملاحظة'],
+    ...list.map(([n])=>{ const q=shortRowUnits(whId,n); const r=shortRec(whId,n);
+      if(!Object.keys(q).length) return null;
+      return [n, ...cols.map(u=> q[u]? nz(q[u]) : ''), r.note||'']; }).filter(Boolean)];
+  data.push(['الإجمالي', ...cols.map(u=> t.byUnit[u]||''), t.items+' صنف']);
   const buckets=buildGroupBreakdown(list, whId);
-  data.push([],['ملخص الإجمالي حسب المجموعة','كراتين','قطع']);
+  data.push([],['ملخص الإجمالي حسب المجموعة', ...cols]);
   Object.entries(buckets).forEach(([bucket,b])=>{
-    data.push([bucket, b.cartons||'', b.pieces||'']);
-    Object.entries(b.subs).forEach(([sub,x])=>{ data.push(['- '+sub, x.cartons||'', x.pieces||'']); });
+    data.push([bucket, ...cols.map(u=> b.byUnit[u]||'')]);
+    Object.entries(b.subs).forEach(([sub,x])=>{ data.push(['- '+sub, ...cols.map(u=> x[u]||'')]); });
   });
-  saveAoaXlsx(data, 'نواقص', 'نواقص_'+w.name+'.xlsx', [46,11,11,12,28],
+  saveAoaXlsx(data, 'نواقص', 'نواقص_'+w.name+'.xlsx', [46, ...cols.map(()=>11), 28],
     {title:'طلبية نواقص '+w.name+' بتاريخ '+getOrderDate(whId)});
 }
 // ===== مقارنة الفروع (هرمية) + مقارنة بالألوان =====
@@ -1399,33 +1423,45 @@ function downloadBlob(blob, name){ const a=document.createElement('a'); a.href=U
 const todayStr=()=>new Date().toISOString().slice(0,10);
 
 // ----- النواقص -----
-function breakdownTableHtml(buckets){
-  let rows='', tc=0, tp=0;
+function breakdownTableHtml(buckets, cols){
+  const tot={};
+  let rows='';
   Object.entries(buckets).forEach(([bucket,b])=>{
-    tc+=b.cartons; tp+=b.pieces;
-    rows+=`<tr class="m"><td colspan="2">${esc(bucket)}</td><td>${b.cartons||''}</td><td>${b.pieces||''}</td></tr>`;
+    cols.forEach(u=>{ if(b.byUnit[u]) tot[u]=(tot[u]||0)+b.byUnit[u]; });
+    rows+=`<tr class="m"><td colspan="2">${esc(bucket)}</td>${cols.map(u=>`<td>${b.byUnit[u]||''}</td>`).join('')}</tr>`;
     Object.entries(b.subs).forEach(([sub,t])=>{
-      rows+=`<tr class="z"><td></td><td>${esc(sub)}</td><td>${t.cartons||''}</td><td>${t.pieces||''}</td></tr>`; });
+      rows+=`<tr class="z"><td></td><td>${esc(sub)}</td>${cols.map(u=>`<td>${t[u]||''}</td>`).join('')}</tr>`; });
   });
-  rows+=`<tr class="m"><td colspan="2"><b>الإجمالي</b></td><td><b>${tc||''}</b></td><td><b>${tp||''}</b></td></tr>`;
-  return `<table><tr><th colspan="2">المجموعة</th><th>كراتين</th><th>قطع</th></tr>${rows}</table>`;
+  rows+=`<tr class="m"><td colspan="2"><b>الإجمالي</b></td>${cols.map(u=>`<td><b>${tot[u]||''}</b></td>`).join('')}</tr>`;
+  return `<table><tr><th colspan="2">المجموعة</th>${cols.map(u=>`<th>${esc(u)}</th>`).join('')}</tr>${rows}</table>`;
+}
+/* عمود لكل وحدة اتطلبت فعلاً (لفة · عود · كرتونة · قطعة). كده الوحدة
+   مكتوبة فوق الرقم بالظبط، ومجموع كل وحدة لوحده في آخر الجدول. */
+function shortRowUnits(whId, name){
+  const r=shortRec(whId,name), o={};
+  if(r.q1) o[r.u1]=r.q1;
+  if(r.q2) o[r.u2]=r.q2;
+  return o;
 }
 function shortDocBody(whId){
   const w=warehouses.find(x=>x.id===whId), list=Object.entries(whShortage[whId]||{});
-  const t=shortTotals(whId);
-  const unitsLine=Object.keys(t.byUnit).map(u=> u+': '+fmtN(t.byUnit[u])).join(' · ');
+  const t=shortTotals(whId), cols=shortUnitCols(whId);
+  const line=cols.map(u=> u+': '+fmtN(t.byUnit[u])).join(' · ');
   return `<div class="dx"><h2>طلبية نواقص ${esc(w.name)}</h2>
-    <div class="sub">بتاريخ ${getOrderDate(whId)} — ${t.items} صنف · كراتين: ${fmtN(t.cartons)}${unitsLine? ' · '+esc(unitsLine) : ''}</div>
-    <table><tr><th>الصنف</th><th>كراتين</th><th>قطع</th><th>الوحدة</th><th>ملاحظة</th></tr>
-    ${list.map(([n])=>{ const r=shortRec(whId,n); return `<tr class="z"><td>${esc(n)}</td><td>${esc(r.cartons||'')}</td><td>${esc(r.pieces||'')}</td><td>${esc(r.unit||'—')}</td><td>${esc(r.note||'—')}</td></tr>`; }).join('')}</table>
-    <h3>ملخص الإجمالي حسب المجموعة</h3>${breakdownTableHtml(buildGroupBreakdown(list, whId))}</div>`;
+    <div class="sub">بتاريخ ${getOrderDate(whId)} — ${t.items} صنف${line? ' · '+esc(line) : ''}</div>
+    <table><tr><th>الصنف</th>${cols.map(u=>`<th>${esc(u)}</th>`).join('')}<th>ملاحظة</th></tr>
+    ${list.map(([n])=>{ const q=shortRowUnits(whId,n); const r=shortRec(whId,n);
+      if(!Object.keys(q).length) return '';
+      return `<tr class="z"><td>${esc(n)}</td>${cols.map(u=>`<td>${esc(q[u]||'')}</td>`).join('')}<td>${esc(r.note||'—')}</td></tr>`; }).join('')}
+    <tr class="m"><td><b>الإجمالي</b></td>${cols.map(u=>`<td><b>${fmtN(t.byUnit[u])}</b></td>`).join('')}<td>${t.items} صنف</td></tr></table>
+    <h3>ملخص الإجمالي حسب المجموعة</h3>${breakdownTableHtml(buildGroupBreakdown(list, whId), cols)}</div>`;
 }
 function exportShortPdf(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocPdf(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),false); }
 function exportShortImage(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocImage(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),false); }
 function exportOrderSummary(whId){
   const w=warehouses.find(x=>x.id===whId), list=Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد طلبات'); return; }
-  exportDocPdf(`<div class="dx"><h2>طلب أوردر النواقص</h2><div class="sub">الفرع: ${esc(w.name)} — التاريخ: ${getOrderDate(whId)}</div>${breakdownTableHtml(buildGroupBreakdown(list, whId))}</div>`,'اوردر_'+w.name+'_'+getOrderDate(whId),false);
+  exportDocPdf(`<div class="dx"><h2>طلب أوردر النواقص</h2><div class="sub">الفرع: ${esc(w.name)} — التاريخ: ${getOrderDate(whId)}</div>${breakdownTableHtml(buildGroupBreakdown(list, whId), shortUnitCols(whId))}</div>`,'اوردر_'+w.name+'_'+getOrderDate(whId),false);
 }
 
 // ----- مقارنة الفروع -----
