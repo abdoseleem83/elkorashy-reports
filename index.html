@@ -99,7 +99,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.5</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.6</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -117,11 +117,69 @@ const $$=s=>document.querySelectorAll(s);
 const esc=s=>(s??'').toString().replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 function load(k,d){ try{const v=localStorage.getItem(k); return v?JSON.parse(v):d;}catch(e){return d;} }
+/* مساحة المتصفح محدودة (٥-١٠ ميجا للموقع كله). التطبيق القديم كان شايل
+   شهور المبيعات وأرصدة المخازن في نفس المساحة دي تحت مفاتيح cache: — وهي
+   لسه موجودة بعد ما التطبيق اتغيّر، فالمساحة بتتملي والحفظ بيفشل بـ«تعذر
+   الحفظ محلياً» من غير ما حد يفهم ليه. بنشيلها، وبنشيل النسخ الاحتياطية
+   القديمة، ونعيد المحاولة قبل ما نقول للمستخدم فيه مشكلة. */
+const OLD_APP_KEYS = ['activeModule','appToken','cardFold','forceFullSync','nkBootErr',
+  'nkOpenSec','whPdfOrient','whUnkDraft','ordManageToken'];
+function isOldAppKey(k){
+  return k.indexOf('cache:') === 0 || k.indexOf('nk:') === 0 || OLD_APP_KEYS.indexOf(k) >= 0;
+}
+function lsBytes(k){ try{ return ((localStorage.getItem(k)||'').length + k.length) * 2; }catch(e){ return 0; } }
+function lsTotal(){ let n = 0; try{ for(const k of Object.keys(localStorage)) n += lsBytes(k); }catch(e){} return n; }
+function fmtKB(n){ return n > 1048576 ? (n/1048576).toFixed(1) + ' ميجا' : Math.round(n/1024) + ' كيلو'; }
+
+// بيمسح بيانات التطبيق القديم من الجهاز. بيرجع عدد المفاتيح والمساحة اللي اتفضت.
+function cleanOldAppStorage(){
+  let n = 0, bytes = 0;
+  try{
+    for(const k of Object.keys(localStorage)){
+      if(!isOldAppKey(k)) continue;
+      bytes += lsBytes(k); localStorage.removeItem(k); n++;
+    }
+  }catch(e){}
+  return {n, bytes};
+}
+// أقدم النسخ الاحتياطية بتتشال الأول لما المساحة تضيق
+function pruneBackups(keepNewest){
+  const bks = [];
+  try{ for(const k of Object.keys(localStorage)) if(k.indexOf('_backup_') === 0) bks.push(k); }catch(e){}
+  bks.sort();
+  let n = 0;
+  for(const k of bks.slice(0, Math.max(0, bks.length - (keepNewest||0)))){
+    try{ localStorage.removeItem(k); n++; }catch(e){}
+  }
+  return n;
+}
 function save(k,v){
-  try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){ toast('تعذر الحفظ محلياً'); }
+  const str = JSON.stringify(v);
+  try{ localStorage.setItem(k, str); }
+  catch(e){
+    // المساحة اتملت — ننضف اللي مش لازم ونعيد المحاولة قبل ما نفشّل
+    const freed = cleanOldAppStorage();
+    let saved = false;
+    try{ localStorage.setItem(k, str); saved = true; }catch(e2){}
+    if(!saved){ pruneBackups(2); try{ localStorage.setItem(k, str); saved = true; }catch(e3){} }
+    if(!saved){
+      toast('مساحة المتصفح اتملت — افتح ⚙️ ودوس «نضّف مساحة الجهاز»');
+    } else if(freed.n){
+      toast('اتحفظ · اتفضى ' + fmtKB(freed.bytes) + ' من التطبيق القديم');
+    }
+  }
   // أي مفتاح بيانات بياخد ختم جديد عشان المزامنة تعرف إنه اتغيّر عندنا
   try{ if(typeof bumpRev === 'function' && SYNC_KEYS.indexOf(k) >= 0) bumpRev(k); }catch(e){}
 }
+// تنضيفة واحدة أول ما التطبيق يفتح بعد التحديث
+(function(){
+  try{
+    if(localStorage.getItem('_oldCleaned_')) return;
+    const r = cleanOldAppStorage();
+    localStorage.setItem('_oldCleaned_', String(r.bytes));
+    if(r.n) setTimeout(()=> toast('اتفضى ' + fmtKB(r.bytes) + ' من بيانات التطبيق القديم'), 1500);
+  }catch(e){}
+})();
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000); }
 function openSheet(html){ $('#sheet').innerHTML=html; $('#overlay').classList.add('show'); }
 function closeSheet(){ $('#overlay').classList.remove('show'); }
@@ -411,6 +469,8 @@ function openSyncSheet(){
   const at = load('_syncAt_', 0);
   const pend = SYNC_KEYS.filter(k=> (syncRevs[k]||0) > (syncPulled[k]||0));
   const err = load('_syncErr_', '');
+  let oldBytes = 0;
+  try{ for(const k of Object.keys(localStorage)) if(isOldAppKey(k)) oldBytes += lsBytes(k); }catch(e){}
   openSheet(`<h3>⚙️ المزامنة بين الأجهزة</h3>
     <div style="font-size:12.5px;line-height:1.85;background:var(--card2,rgba(22,49,122,.06));border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px">
       المزامنة <b>${c.url ? 'شغّالة تلقائي' : 'مقفولة'}</b> — مش محتاج تظبط أي حاجة على أي جهاز.
@@ -447,8 +507,13 @@ function openSyncSheet(){
     </div>
     <div id="connMsg" style="margin-top:8px;font-size:12.5px;line-height:1.9;white-space:pre-wrap"></div>
     <hr style="border-color:var(--border);margin:14px 0">
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.8;margin-bottom:8px">
+      <b>مساحة الجهاز</b> — مستعمل دلوقتي <b>${fmtKB(lsTotal())}</b>${oldBytes? ' · منها <b style="color:var(--danger)">'+fmtKB(oldBytes)+'</b> بقايا التطبيق القديم' : ''}.<br>
+      المتصفح بيدي الموقع مساحة محدودة، ولو اتملت الحفظ بيفشل.
+    </div>
+    <button onclick="doCleanStorage()" style="width:100%;padding:11px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--fg);font-weight:700;cursor:pointer;margin-bottom:12px">🧽 نضّف مساحة الجهاز</button>
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">
-      <b>تنضيف بيانات التطبيق القديم</b> — بيمسح من السيرفر كل المفاتيح اللي
+      <b>تنضيف بيانات التطبيق القديم من السيرفر</b> — بيمسح من السيرفر كل المفاتيح اللي
       <b>مش</b> بتاعة النسخة الجديدة. بيسألك قبل ما يمسح ويوريك العدد.</div>
     <button onclick="wipeOldServerData()" style="width:100%;padding:11px;border-radius:10px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-weight:700;cursor:pointer">🧹 امسح بيانات التطبيق القديم من السيرفر</button>
     <div id="wipeMsg" style="margin-top:8px;font-size:12.5px"></div>`);
@@ -490,6 +555,14 @@ async function testSyncConn(){
   const pend = SYNC_KEYS.filter(k=> (syncRevs[k]||0) > (syncPulled[k]||0));
   lines.push('', 'مستني يترفع من الجهاز ده: ' + pend.length + (pend.length? ' (' + pend.join('، ') + ')' : ''));
   show();
+}
+function doCleanStorage(){
+  const before = lsTotal();
+  const r = cleanOldAppStorage();
+  const nb = pruneBackups(2);
+  const freed = before - lsTotal();
+  toast(freed ? ('اتفضى ' + fmtKB(freed)) : 'المساحة نضيفة خلاص');
+  closeSheet(); setTimeout(openSyncSheet, 300);
 }
 async function wipeOldServerData(){
   const box = $('#wipeMsg'); if(!syncCfg().url){ toast('اظبط الرابط الأول'); return; }
