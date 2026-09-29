@@ -101,7 +101,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.9</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.0</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -358,13 +358,72 @@ const SYNC_VARS = {
   paySendCols_v1: v=>{ paySendVisible = new Set(v || []); },
   whOrderDate_v1: ()=>{},   // بتتقرا من التخزين مباشرة وقت العرض
 };
+/* ═══ الدمج الثلاثي على مستوى البند ═══
+   قبل كده لو الجهازين لمسوا نفس الملف (whShortage مثلاً) كانت المزامنة تقول
+   «تعارض» وتاخد الأحدث كله وتحط التاني نسخة احتياطية — حتى لو كل واحد كان
+   بيكتب في صنف مختلف خالص. فكنت تشوف تنبيه كل شوية وانت شغال، وممكن اللي
+   كتبته يختفي.
+   دلوقتي بنحتفظ بلقطة من آخر نسخة اتزامنت (الأساس)، وبنقارن بند ببند:
+     • أنا بس اللي غيّرت البند  → بتاعي يفضل
+     • هو بس اللي غيّر البند    → بتاعه ياخد مكانه
+     • البند اتشال من ناحية     → يتشال
+     • الاتنين غيّروا نفس البند → الأحدث يكسب (وده التعارض الحقيقي الوحيد)
+   يعني اتنين بيكتبوا في أصناف مختلفة مابيتعارضوش أصلاً. */
+const isPlainObj = v=> v && typeof v === 'object' && !Array.isArray(v);
+const sameVal = (a,b)=> JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+// مصفوفة كائنات ليها id — بنتعامل معاها كخريطة بالـid
+const isIdArray = v=> Array.isArray(v) && v.length && v.every(x=> isPlainObj(x) && x.id !== undefined);
+
+function merge3(mine, theirs, base, mineWins){
+  if(sameVal(mine, theirs)) return {val: mine, clash: false};
+  if(sameVal(mine, base))   return {val: theirs, clash: false};   // هو بس اللي غيّر
+  if(sameVal(theirs, base)) return {val: mine,   clash: false};   // أنا بس اللي غيّرت
+
+  if(isPlainObj(mine) && isPlainObj(theirs)){
+    const b = isPlainObj(base) ? base : {};
+    const out = {}; let clash = false;
+    for(const k of new Set([...Object.keys(mine), ...Object.keys(theirs), ...Object.keys(b)])){
+      const hm = Object.prototype.hasOwnProperty.call(mine, k);
+      const ht = Object.prototype.hasOwnProperty.call(theirs, k);
+      const hb = Object.prototype.hasOwnProperty.call(b, k);
+      if(!hm && !ht) continue;                               // اتشال من الاتنين
+      if(hb && !hm && sameVal(theirs[k], b[k])) continue;     // أنا شيلته وهو ما لمسوش
+      if(hb && !ht && sameVal(mine[k], b[k])) continue;       // هو شاله وأنا ما لمستوش
+      if(!hm){ out[k] = theirs[k]; continue; }
+      if(!ht){ out[k] = mine[k]; continue; }
+      const r = merge3(mine[k], theirs[k], hb ? b[k] : undefined, mineWins);
+      out[k] = r.val; clash = clash || r.clash;
+    }
+    return {val: out, clash};
+  }
+  if(isIdArray(mine) && isIdArray(theirs)){
+    const toMap = a=>{ const m = {}; (a||[]).forEach(x=>{ if(isPlainObj(x) && x.id !== undefined) m[x.id] = x; }); return m; };
+    const r = merge3(toMap(mine), toMap(theirs), isIdArray(base) ? toMap(base) : {}, mineWins);
+    const order = [], seen = new Set();
+    [...mine, ...theirs].forEach(x=>{ const id = x && x.id;
+      if(id !== undefined && !seen.has(String(id)) && r.val[id]){ seen.add(String(id)); order.push(r.val[id]); } });
+    return {val: order, clash: r.clash};
+  }
+  if(Array.isArray(mine) && Array.isArray(theirs) && !isIdArray(mine) && !isIdArray(theirs)){
+    const bs = Array.isArray(base) ? base : [];
+    const out = [...mine];
+    theirs.forEach(x=>{ if(!out.some(y=> sameVal(x,y)) && !bs.some(y=> sameVal(x,y))) out.push(x); });
+    return {val: out.filter(x=> theirs.some(y=>sameVal(x,y)) || !bs.some(y=>sameVal(x,y)) || mine.some(y=>sameVal(x,y))), clash:false};
+  }
+  return {val: mineWins ? mine : theirs, clash: true};        // قيمتين مختلفتين في نفس البند
+}
+
+const baseKey = k=> '_base_' + k;
+function readBase(k){ try{ const v = localStorage.getItem(baseKey(k)); return v ? JSON.parse(v) : undefined; }catch(e){ return undefined; } }
+function writeBase(k, v){ try{ localStorage.setItem(baseKey(k), JSON.stringify(v)); }catch(e){} }
+
 async function syncNow(quiet){
   const c = syncCfg();
   if(!c.url){ if(!quiet) toast('اظبط رابط المزامنة من ⚙️ الأول'); return; }
   // لو فيه مزامنة شغّالة دلوقتي، ما نرميش الطلب — نعيده بعدها على طول
   if(syncBusy){ syncAgain = true; return; }
   syncBusy = true; syncAgain = false; syncStatus('☁️ بيزامن...');
-  const down = [], up = [], clash = [];
+  const down = [], up = [], clash = [], merged = [];
   const t0 = Date.now();
   // حارس: لو حصل أي شيء غير متوقع، المزامنة ما تفضلش «مقفولة» على نفسها للأبد
   const guard = setTimeout(()=>{ syncBusy = false; syncStatus('☁️ مش متزامن', 'err'); }, 300000);
@@ -392,48 +451,69 @@ async function syncNow(quiet){
     for(const k of todo){
       const mine = syncRevs[k] || 0, theirs = idx[k] || 0, base = syncPulled[k] || 0;
       const iChanged = mine > base, theyChanged = theirs > base;
-      const pull = async (isClash)=>{
-        const r = await syncApi({action:'get', key:SYNC_PREFIX + k}, true);
-        if(!r || !r.ok) return false;
-        const val = JSON.parse(r.value || 'null');
-        if(val === null) return false;
-        if(isClash){ save('_backup_' + k + '_' + mine, load(k, null)); clash.push(k); }
-        // ملاحظة: بنكتب على المفتاح من غير ما نعدّي على save() عشان ما يبقاش
-        // «تعديل جديد» يرفعه تاني — الختم بياخد قيمة السيرفر بالظبط.
+      // بنكتب من غير save() عشان ما يبقاش «تعديل جديد» يترفع تاني
+      const setLocal = (val)=>{
         try{ localStorage.setItem(k, JSON.stringify(val)); }catch(e){}
         if(SYNC_VARS[k]) SYNC_VARS[k](val);
+        writeBase(k, val);                    // لقطة الأساس للدمج الجاي
+      };
+      const getServer = async ()=>{
+        const r = await syncApi({action:'get', key:SYNC_PREFIX + k}, true);
+        if(!r || !r.ok) return undefined;
+        const v = JSON.parse(r.value || 'null');
+        return v === null ? undefined : v;
+      };
+      const pull = async ()=>{
+        const val = await getServer();
+        if(val === undefined) return false;
+        setLocal(val);
         syncRevs[k] = theirs; syncPulled[k] = theirs; down.push(k);
-        saveProgress();                       // اتسجّل على طول
+        saveProgress();
         return true;
       };
-      const push = async ()=>{
-        await syncApi({action:'set', key:SYNC_PREFIX + k, value: JSON.stringify(load(k, null))});
-        idx[k] = mine;
+      const pushVal = async (val, rev)=>{
+        await syncApi({action:'set', key:SYNC_PREFIX + k, value: JSON.stringify(val)});
+        idx[k] = rev;
         /* الفهرس بيتكتب بعد كل حاجة مش في الآخر. لو اتكتبت القيمة والفهرس لأ،
            الأجهزة التانية عمرها ما هتعرف إنها موجودة، وإحنا هنعتبرها مرفوعة
            وما نرفعهاش تاني — يعني تضيع على السيرفر من غير ما حد يشوفها. */
         await syncApi({action:'set', key:SYNC_INDEX, value: JSON.stringify(idx)});
-        syncPulled[k] = mine; up.push(k);
+        syncPulled[k] = rev; up.push(k);
         saveProgress();
       };
       syncStatus('☁️ ' + (++doneN) + '/' + todo.length);
-      if(iChanged && !theyChanged) await push();
-      else if(!iChanged && theyChanged) await pull(false);
+      if(iChanged && !theyChanged){ const v = load(k, null); await pushVal(v, mine); writeBase(k, v); }
+      else if(!iChanged && theyChanged) await pull();
       else {
-        // الاتنين اتغيّروا من غير ما يشوفوا بعض = تعارض حقيقي
-        if(theirs >= mine) await pull(true);
-        else { save('_backup_' + k + '_srv_' + theirs, null); clash.push(k); await push(); }
+        /* الاتنين لمسوا الملف — بنقارن بند ببند بدل ما ناخد ملف ونرمي التاني.
+           في الغالب كل واحد كان في صنف مختلف، فالنتيجة دمج نضيف من غير تنبيه. */
+        const srv = await getServer();
+        const me = load(k, null);
+        if(srv === undefined){ await pushVal(me, mine); writeBase(k, me); }
+        else {
+          const r = merge3(me, srv, readBase(k), mine >= theirs);
+          const rev = Math.max(mine, theirs) + 1;
+          if(r.clash){ save('_backup_' + k + '_' + mine, me); clash.push(k); }
+          setLocal(r.val);
+          syncRevs[k] = rev;
+          await pushVal(r.val, rev);
+          merged.push(k);
+        }
       }
     }
     saveProgress();
     save('_syncAt_', Date.now()); save('_syncErr_', '');
     syncStatus('☁️ ' + new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}), 'ok');
-    if(down.length) render(true);
+    if(down.length || merged.length) render(true);
     if(!quiet || down.length || up.length || clash.length){
-      toast(`مزامنة: نزّل ${down.length} · رفع ${up.length}` + (clash.length ? ` · تعارض ${clash.length}` : ''));
+      toast(`مزامنة: نزّل ${down.length} · رفع ${up.length}` + (merged.length ? ` · دمج ${merged.length}` : ''));
     }
-    if(clash.length) setTimeout(()=> alert('فيه ' + clash.length + ' حاجة اتعدّلت على الجهازين في نفس الوقت:\n'
-      + clash.join('، ') + '\nخدنا الأحدث، والنسخة القديمة محفوظة على الجهاز ده (نسخة احتياطية).'), 300);
+    /* من غير alert: كان بيقطع عليك الكتابة في نص الشغل. التعارض الحقيقي بقى
+       نادر أصلاً بعد الدمج بند ببند، وبيتسجّل في ⚙️ لو حبيت تراجعه. */
+    if(clash.length){
+      save('_lastClash_', {at: Date.now(), keys: clash});
+      toast('اتدمج الشغل من الجهازين · ' + clash.length + ' بند اتاخد الأحدث فيه');
+    }
   }catch(e){
     syncStatus('☁️ مش متزامن', 'err');
     save('_syncErr_', (e && e.message) || String(e));
