@@ -28,7 +28,7 @@ check('الإجمالي صح', /38,446,809/.test(sheet), (sheet.match(/إجما�
 check('لقى أصناف أبواب', /أبواب: \d+ عميل/.test(sheet), (sheet.match(/أبواب: \d+ عميل/)||[''])[0]);
 check('مقالش إن مفيش عمود كمية', !/مفيهوش عمود كمية/.test(sheet));
 
-await pg.fill('#s_month','2026-01');
+await pg.selectOption('#s_mo','01'); await pg.selectOption('#s_yr','2026');
 await pg.evaluate(()=>commitSalesImport()); await pg.waitForTimeout(2500);
 check('الشهر اتحفظ', (await pg.evaluate(()=>Object.keys(monthlySales)))[0]==='2026-01');
 check('العملاء اتضافوا لوحدهم', (await pg.evaluate(()=>customers.length))===147,
