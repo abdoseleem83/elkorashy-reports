@@ -99,7 +99,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.1</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -177,11 +177,29 @@ const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v
   'paySendCols_v1','invCounts_v1','gvOrders_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
-const syncCfg = ()=> load('_sync_', {url:'', token:'', device:''});
+/* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
+   الرابط مدمج في التطبيق نفسه، واسم الجهاز بيتولّد لوحده أول مرة.
+   ⚙️ للمتقدّمين بس (تغيير الرابط أو قفل المزامنة). */
+const SYNC_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbyOOLyOIBu8vl6LyTlCaEJJQceCP1l285yio0_aT18-xDBEKxFiyaEAtShuv1I3YUoNlQ/exec';
+function autoDeviceName(){
+  let d = load('_devName_', '');
+  if(!d){
+    const ua = navigator.userAgent || '';
+    const kind = /iPad|Tablet/i.test(ua) ? 'تابلت' : (/Mobi|Android|iPhone/i.test(ua) ? 'موبايل' : 'كمبيوتر');
+    d = kind + '-' + Math.random().toString(36).slice(2, 6);
+    try{ localStorage.setItem('_devName_', JSON.stringify(d)); }catch(e){}
+  }
+  return d;
+}
+const syncCfg = ()=>{
+  const c = load('_sync_', {});
+  return { url: c.off ? '' : (c.url || SYNC_DEFAULT_URL),
+           token: c.token || '', device: c.device || autoDeviceName(), off: !!c.off };
+};
 const syncCfgSave = (c)=> save('_sync_', c);
 let syncRevs = load('_syncRevs_', {});      // ختم كل مفتاح عندنا
 let syncPulled = load('_syncPulled_', {});  // آخر ختم نزّلناه من السيرفر
-let syncBusy = false, syncTimer = null;
+let syncBusy = false, syncTimer = null, syncAgain = false;
 
 // الختم بيكبر دايمًا حتى لو ساعة الجهاز غلط (نفس فكرة ساعة لامبورت)
 function bumpRev(key){
@@ -230,8 +248,9 @@ const SYNC_VARS = {
 async function syncNow(quiet){
   const c = syncCfg();
   if(!c.url){ if(!quiet) toast('اظبط رابط المزامنة من ⚙️ الأول'); return; }
-  if(syncBusy) return;
-  syncBusy = true; syncStatus('☁️ بيزامن...');
+  // لو فيه مزامنة شغّالة دلوقتي، ما نرميش الطلب — نعيده بعدها على طول
+  if(syncBusy){ syncAgain = true; return; }
+  syncBusy = true; syncAgain = false; syncStatus('☁️ بيزامن...');
   const down = [], up = [], clash = [];
   try{
     // ١) فهرس السيرفر: {مفتاح: ختم}
@@ -286,7 +305,10 @@ async function syncNow(quiet){
   }catch(e){
     syncStatus('☁️ مش متزامن', 'err');
     if(!quiet) toast('المزامنة فشلت: ' + (e.message || ''));
-  }finally{ syncBusy = false; }
+  }finally{
+    syncBusy = false;
+    if(syncAgain){ syncAgain = false; setTimeout(()=> syncNow(true), 300); }
+  }
 }
 // ---- شاشة الإعدادات ----
 function openSyncSheet(){
@@ -294,6 +316,12 @@ function openSyncSheet(){
   const at = load('_syncAt_', 0);
   const pend = SYNC_KEYS.filter(k=> (syncRevs[k]||0) > (syncPulled[k]||0));
   openSheet(`<h3>⚙️ المزامنة بين الأجهزة</h3>
+    <div style="font-size:12.5px;line-height:1.85;background:var(--card2,rgba(22,49,122,.06));border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px">
+      المزامنة <b>${c.url ? 'شغّالة تلقائي' : 'مقفولة'}</b> — مش محتاج تظبط أي حاجة على أي جهاز.
+      افتح التطبيق على الموبايل أو أي كمبيوتر وهو هيزامن لوحده.<br>
+      <span style="color:var(--muted)">الخانات اللي تحت للمتقدّمين بس.</span>
+      <div style="margin-top:8px"><button onclick="toggleSync()" style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--fg);cursor:pointer;font-weight:700">${c.url ? '⏸️ اقفل المزامنة' : '▶️ شغّل المزامنة'}</button></div>
+    </div>
     <div class="f-row"><label>رابط المزامنة (Apps Script /exec)</label>
       <input id="s_url" value="${esc(c.url)}" placeholder="https://script.google.com/macros/s/.../exec"></div>
     <div class="f-row"><label>الكود السري (لو السيرفر بيطلبه)</label>
@@ -318,8 +346,16 @@ function openSyncSheet(){
     <div id="wipeMsg" style="margin-top:8px;font-size:12.5px"></div>`);
 }
 function saveSyncCfg(){
-  syncCfgSave({url: $('#s_url').value.trim(), token: $('#s_tok').value.trim(), device: $('#s_dev').value.trim()});
+  const cur = load('_sync_', {});
+  syncCfgSave({url: $('#s_url').value.trim(), token: $('#s_tok').value.trim(),
+               device: $('#s_dev').value.trim(), off: !!cur.off});
   closeSheet(); toast('اتحفظ'); syncNow(false);
+}
+function toggleSync(){
+  const cur = load('_sync_', {});
+  cur.off = !cur.off; syncCfgSave(cur); closeSheet();
+  if(cur.off){ syncStatus('☁️ مقفولة'); toast('المزامنة اتقفلت'); }
+  else { toast('المزامنة اشتغلت'); syncNow(false); }
 }
 async function wipeOldServerData(){
   const box = $('#wipeMsg'); if(!syncCfg().url){ toast('اظبط الرابط الأول'); return; }
@@ -344,8 +380,20 @@ async function wipeOldServerData(){
 // nav
 const modules=[{id:'items',icon:'📦',name:'الأصناف'},{id:'warehouses',icon:'🏭',name:'المخازن'},{id:'sales',icon:'🧾',name:'المبيعات'},{id:'gv',icon:'📋',name:'جيفز'},{id:'payroll',icon:'💰',name:'المرتبات'}];
 try{ $('#hdrLogo').src = LOGO; }catch(e){}
-// أول ما التطبيق يفتح: لو المزامنة متظبطة، نسحب الجديد من السيرفر
-setTimeout(()=>{ try{ if(syncCfg().url) syncNow(true); else syncStatus('☁️ مقفولة'); }catch(e){} }, 800);
+/* المزامنة التلقائية: أول ما يفتح · كل دقيقة · أول ما ترجع للتطبيق ·
+   وقبل ما تقفله لو فيه حاجة لسه ما اترفعتش. */
+function syncAuto(){ try{ if(syncCfg().url && !document.hidden) syncNow(true); }catch(e){} }
+setTimeout(()=>{ try{ if(!syncCfg().url){ syncStatus('☁️ مقفولة'); return; } syncAuto(); }catch(e){} }, 800);
+setInterval(syncAuto, 60000);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) syncAuto(); });
+window.addEventListener('online', syncAuto);
+window.addEventListener('pagehide', ()=>{
+  try{
+    const c = syncCfg(); if(!c.url) return;
+    if(!SYNC_KEYS.some(k=> (syncRevs[k]||0) > (syncPulled[k]||0))) return;
+    syncNow(true);
+  }catch(e){}
+});
 function renderNav(){
   $('#nav').innerHTML = modules.map(m=>`<button class="nav-btn ${m.id===module?'active':''}" onclick="switchModule('${m.id}')">${m.icon} ${m.name}</button>`).join('');
 }
