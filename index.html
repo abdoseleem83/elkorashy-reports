@@ -101,7 +101,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.7</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.8</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -895,14 +895,63 @@ function importStock(file, whId){
   };
   r.readAsArrayBuffer(file);
 }
-function setOrderQty(whId, name, val, unit){
-  val=(val||'').trim();
-  whShortage[whId]=whShortage[whId]||{};
-  if(!val){ delete whShortage[whId][name]; } else { whShortage[whId][name]={order:val, unit:unit||'', note:(whShortage[whId][name]||{}).note||''}; }
-  save('whShortage_v1',whShortage);
+/* الطلب بقى خانتين لكل صنف: كراتين + قطع (باللي الصنف بيتباع بيه: عود/لفة/
+   متر/قطعة). قبل كده كانت خانة واحدة وقايمة وحدات، وكنت بتختار الوحدة كل
+   مرة. السجلات القديمة {order, unit} لسه بتتقرا صح — بتتحوّل لكراتين لو
+   وحدتها كرتونة، وغير كده لقطع. */
+function pieceUnit(name){
+  const it = itemsByName[name] || {};
+  const u = normUnit(it.unit || '');
+  return (u && u !== 'كرتونة') ? u : 'قطعة';
 }
-function setOrderUnit(whId, name, unit){
-  if(whShortage[whId] && whShortage[whId][name]){ whShortage[whId][name].unit=unit; save('whShortage_v1',whShortage); }
+// بيرجّع {cartons, pieces, unit, note} مهما كان شكل السجل
+function shortRec(whId, name){
+  const r = (whShortage[whId] || {})[name] || {};
+  if(r.cartons !== undefined || r.pieces !== undefined){
+    return {cartons: r.cartons || '', pieces: r.pieces || '', unit: r.unit || pieceUnit(name), note: r.note || ''};
+  }
+  const legacy = r.order || '';
+  const isCart = normUnit(r.unit || '') === 'كرتونة';
+  return {cartons: isCart ? legacy : '', pieces: isCart ? '' : legacy,
+          unit: (!isCart && r.unit) ? normUnit(r.unit) : pieceUnit(name), note: r.note || ''};
+}
+function setShortQty(whId, name, field, val){
+  val = String(val || '').trim();
+  const r = shortRec(whId, name);
+  r[field] = val;
+  whShortage[whId] = whShortage[whId] || {};
+  if(!r.cartons && !r.pieces) delete whShortage[whId][name];
+  else whShortage[whId][name] = {cartons:r.cartons, pieces:r.pieces, unit:r.unit, note:r.note};
+  save('whShortage_v1', whShortage);
+  const t = shortTotals(whId), el = $('#shTot');
+  if(el) el.innerHTML = shortTotalsHtml(t);
+}
+// إجماليات الطلب: عدد الأصناف · الكراتين · القطع مقسّمة على وحداتها
+function shortTotals(whId){
+  const out = {items:0, cartons:0, pieces:0, byUnit:{}};
+  Object.keys(whShortage[whId] || {}).forEach(n=>{
+    const r = shortRec(whId, n);
+    const c = Number(r.cartons) || 0, pc = Number(r.pieces) || 0;
+    if(!c && !pc) return;
+    out.items++; out.cartons += c; out.pieces += pc;
+    if(pc) out.byUnit[r.unit] = (out.byUnit[r.unit] || 0) + pc;
+  });
+  return out;
+}
+function shortTotalsHtml(t){
+  const units = Object.keys(t.byUnit).map(u=> `<span style="white-space:nowrap">${esc(u)}: <b>${fmtN(t.byUnit[u])}</b></span>`).join(' · ');
+  return `<span style="white-space:nowrap">أصناف: <b>${t.items}</b></span> · `
+    + `<span style="white-space:nowrap">كراتين: <b style="color:var(--blue)">${fmtN(t.cartons)}</b></span>`
+    + (units ? ' · ' + units : '');
+}
+function resetShortage(whId){
+  const t = shortTotals(whId);
+  if(!t.items) return toast('الطلب فاضي خلاص');
+  if(!confirm('هيتمسح طلب النواقص كله (' + t.items + ' صنف) وتبدأ من الأول.\n\nمتأكد؟')) return;
+  delete whShortage[whId];
+  save('whShortage_v1', whShortage);
+  toast('اتصفّر — ابدأ من جديد');
+  render(true);
 }
 function setOrderDate(whId, val){ const d=load('whOrderDate_v1',{}); d[whId]=val; save('whOrderDate_v1',d); }
 function renderWhShortage(m, whId){
@@ -930,22 +979,29 @@ function renderWhShortage(m, whId){
     </label>
     ${!shortMain.size? `<div class="empty">اختار مجموعة رئيسية واحدة أو أكتر من فوق عشان تبدأ تكتب طلب الوردر</div>` :
       list.length? list.map(it=>{
-        const bal = stock[it.name]?.balance || 0;
-        const rec = (whShortage[whId]||{})[it.name] || {};
-        const unitOpts = units.length? units : [it.unit].filter(Boolean);
+        const rec = shortRec(whId, it.name);
+        const nm = it.name.replace(/'/g,"\\'");
+        const box = (field, label, val, color)=>`<label style="display:flex;flex-direction:column;align-items:center;gap:2px">
+            <span style="font-size:10.5px;color:${color};font-weight:700">${esc(label)}</span>
+            <input type="number" inputmode="numeric" min="0" placeholder="0" value="${esc(val)}"
+              onchange="setShortQty('${whId}','${nm}','${field}', this.value)"
+              style="width:62px;padding:7px;border-radius:8px;border:1px solid ${val? color : 'var(--border)'};background:var(--panel2);color:var(--text);font-size:13.5px;text-align:center;font-weight:${val?'700':'400'}">
+          </label>`;
         return `<div class="card"><div class="info"><div class="name">${esc(it.name)}</div>
           <div class="sub">الرصيد: ${esc(balText(it.name, stock[it.name]))}</div></div>
-          <input type="number" placeholder="الكمية" value="${esc(rec.order||'')}" style="width:70px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px"
-            onchange="setOrderQty('${whId}','${it.name.replace(/'/g,"\\'")}', this.value, document.getElementById('u_${it.id}').value)">
-          <select id="u_${it.id}" onchange="setOrderUnit('${whId}','${it.name.replace(/'/g,"\\'")}', this.value)" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px">
-            ${unitOpts.map(u=>`<option ${((rec.unit||it.unit)===u)?'selected':''}>${esc(u)}</option>`).join('')}
-          </select>
-          ${rec.order? `<button title="شيله من الطلب" onclick="unmarkShort('${whId}','${it.name.replace(/'/g,"\\'")}')"
+          ${box('cartons','كرتونة', rec.cartons, 'var(--blue)')}
+          ${box('pieces', rec.unit, rec.pieces, 'var(--ok)')}
+          ${(rec.cartons||rec.pieces)? `<button title="شيله من الطلب" onclick="unmarkShort('${whId}','${nm}')"
             style="padding:7px 9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--danger);cursor:pointer">🗑</button>`:''}
           </div>`;
       }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
-    <div style="height:70px"></div>
+    <div style="height:110px"></div>
     <div style="position:sticky;bottom:0;z-index:20;background:var(--bg);padding:8px 0 4px;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:6px">
+        <div id="shTot" style="flex:1;font-size:12.5px;line-height:1.7">${shortTotalsHtml(shortTotals(whId))}</div>
+        <button onclick="resetShortage('${whId}')" title="صفّر الطلب وابدأ من الأول"
+          style="padding:7px 10px;border-radius:8px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-weight:700;cursor:pointer;white-space:nowrap">🧹 صفّر</button>
+      </div>
       <div class="impbar" style="margin:0 0 6px">
         <button onclick="exportShortPdf('${whId}')">📄 PDF</button>
         <button onclick="exportShortExcel('${whId}')">📊 إكسل</button>
@@ -958,15 +1014,18 @@ function renderWhShortage(m, whId){
 }
 function unmarkShort(whId,name){ if(!whShortage[whId]) return; delete whShortage[whId][name]; save('whShortage_v1',whShortage); render(); }
 function getOrderDate(whId){ const d=load('whOrderDate_v1',{}); return d[whId] || new Date().toISOString().slice(0,10); }
-function buildGroupBreakdown(list){
+function buildGroupBreakdown(list, whId){
   const buckets={};
-  list.forEach(([name,s])=>{
+  list.forEach(([name])=>{
+    const r=shortRec(whId, name);
+    const c=Number(r.cartons)||0, pc=Number(r.pieces)||0;
     const it=itemsByName[name]||{};
     const bucket=exportBucket(it.mainGroup);
     const sub=it.subGroup||'بدون';
-    buckets[bucket]=buckets[bucket]||{total:0, subs:{}};
-    buckets[bucket].total+=(Number(s.order)||0);
-    buckets[bucket].subs[sub]=(buckets[bucket].subs[sub]||0)+(Number(s.order)||0);
+    buckets[bucket]=buckets[bucket]||{cartons:0, pieces:0, subs:{}};
+    buckets[bucket].cartons+=c; buckets[bucket].pieces+=pc;
+    const sb=buckets[bucket].subs[sub]=buckets[bucket].subs[sub]||{cartons:0,pieces:0};
+    sb.cartons+=c; sb.pieces+=pc;
   });
   return buckets;
 }
@@ -974,15 +1033,17 @@ function exportShortExcel(whId){
   const w=warehouses.find(x=>x.id===whId);
   const list = Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد نواقص'); return; }
-  const data=[['الصنف','طلب الوردر','الوحدة','ملاحظة'],
-    ...list.map(([n,s])=>[n,nz(s.order),s.unit||'',s.note||''])];
-  const buckets=buildGroupBreakdown(list);
-  data.push([],['ملخص الإجمالي حسب المجموعة']);
+  const data=[['الصنف','كراتين','قطع','الوحدة','ملاحظة'],
+    ...list.map(([n])=>{ const r=shortRec(whId,n); return [n, r.cartons? nz(r.cartons):'', r.pieces? nz(r.pieces):'', r.unit||'', r.note||'']; })];
+  const t=shortTotals(whId);
+  data.push(['الإجمالي', t.cartons||'', t.pieces||'', '', t.items+' صنف']);
+  const buckets=buildGroupBreakdown(list, whId);
+  data.push([],['ملخص الإجمالي حسب المجموعة','كراتين','قطع']);
   Object.entries(buckets).forEach(([bucket,b])=>{
-    data.push([bucket,'','',b.total]);
-    Object.entries(b.subs).forEach(([sub,tot])=>{ data.push(['- '+sub,'','',tot]); });
+    data.push([bucket, b.cartons||'', b.pieces||'']);
+    Object.entries(b.subs).forEach(([sub,x])=>{ data.push(['- '+sub, x.cartons||'', x.pieces||'']); });
   });
-  saveAoaXlsx(data, 'نواقص', 'نواقص_'+w.name+'.xlsx', [46,13,12,30],
+  saveAoaXlsx(data, 'نواقص', 'نواقص_'+w.name+'.xlsx', [46,11,11,12,28],
     {title:'طلبية نواقص '+w.name+' بتاريخ '+getOrderDate(whId)});
 }
 // ===== مقارنة الفروع (هرمية) + مقارنة بالألوان =====
@@ -1339,26 +1400,32 @@ const todayStr=()=>new Date().toISOString().slice(0,10);
 
 // ----- النواقص -----
 function breakdownTableHtml(buckets){
-  let rows='';
+  let rows='', tc=0, tp=0;
   Object.entries(buckets).forEach(([bucket,b])=>{
-    rows+=`<tr class="m"><td colspan="2">${esc(bucket)}</td><td>${b.total}</td></tr>`;
-    Object.entries(b.subs).forEach(([sub,tot])=>{ rows+=`<tr class="z"><td></td><td>${esc(sub)}</td><td>${tot}</td></tr>`; });
+    tc+=b.cartons; tp+=b.pieces;
+    rows+=`<tr class="m"><td colspan="2">${esc(bucket)}</td><td>${b.cartons||''}</td><td>${b.pieces||''}</td></tr>`;
+    Object.entries(b.subs).forEach(([sub,t])=>{
+      rows+=`<tr class="z"><td></td><td>${esc(sub)}</td><td>${t.cartons||''}</td><td>${t.pieces||''}</td></tr>`; });
   });
-  return `<table><tr><th colspan="2">المجموعة</th><th>الإجمالي</th></tr>${rows}</table>`;
+  rows+=`<tr class="m"><td colspan="2"><b>الإجمالي</b></td><td><b>${tc||''}</b></td><td><b>${tp||''}</b></td></tr>`;
+  return `<table><tr><th colspan="2">المجموعة</th><th>كراتين</th><th>قطع</th></tr>${rows}</table>`;
 }
 function shortDocBody(whId){
   const w=warehouses.find(x=>x.id===whId), list=Object.entries(whShortage[whId]||{});
-  return `<div class="dx"><h2>طلبية نواقص ${esc(w.name)}</h2><div class="sub">بتاريخ ${getOrderDate(whId)}</div>
-    <table><tr><th>الصنف</th><th>الكمية</th><th>الوحدة</th><th>ملاحظة</th></tr>
-    ${list.map(([n,s])=>`<tr class="z"><td>${esc(n)}</td><td>${esc(s.order)}</td><td>${esc(s.unit||'—')}</td><td>${esc(s.note||'—')}</td></tr>`).join('')}</table>
-    <h3>ملخص الإجمالي حسب المجموعة</h3>${breakdownTableHtml(buildGroupBreakdown(list))}</div>`;
+  const t=shortTotals(whId);
+  const unitsLine=Object.keys(t.byUnit).map(u=> u+': '+fmtN(t.byUnit[u])).join(' · ');
+  return `<div class="dx"><h2>طلبية نواقص ${esc(w.name)}</h2>
+    <div class="sub">بتاريخ ${getOrderDate(whId)} — ${t.items} صنف · كراتين: ${fmtN(t.cartons)}${unitsLine? ' · '+esc(unitsLine) : ''}</div>
+    <table><tr><th>الصنف</th><th>كراتين</th><th>قطع</th><th>الوحدة</th><th>ملاحظة</th></tr>
+    ${list.map(([n])=>{ const r=shortRec(whId,n); return `<tr class="z"><td>${esc(n)}</td><td>${esc(r.cartons||'')}</td><td>${esc(r.pieces||'')}</td><td>${esc(r.unit||'—')}</td><td>${esc(r.note||'—')}</td></tr>`; }).join('')}</table>
+    <h3>ملخص الإجمالي حسب المجموعة</h3>${breakdownTableHtml(buildGroupBreakdown(list, whId))}</div>`;
 }
 function exportShortPdf(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocPdf(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),false); }
 function exportShortImage(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocImage(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),false); }
 function exportOrderSummary(whId){
   const w=warehouses.find(x=>x.id===whId), list=Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد طلبات'); return; }
-  exportDocPdf(`<div class="dx"><h2>طلب أوردر النواقص</h2><div class="sub">الفرع: ${esc(w.name)} — التاريخ: ${getOrderDate(whId)}</div>${breakdownTableHtml(buildGroupBreakdown(list))}</div>`,'اوردر_'+w.name+'_'+getOrderDate(whId),false);
+  exportDocPdf(`<div class="dx"><h2>طلب أوردر النواقص</h2><div class="sub">الفرع: ${esc(w.name)} — التاريخ: ${getOrderDate(whId)}</div>${breakdownTableHtml(buildGroupBreakdown(list, whId))}</div>`,'اوردر_'+w.name+'_'+getOrderDate(whId),false);
 }
 
 // ----- مقارنة الفروع -----
