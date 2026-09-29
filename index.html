@@ -101,7 +101,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.0</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.1</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -879,13 +879,14 @@ function delWarehouse(id){
 
 function renderWarehouses(m){
   const whTab = load('_whTab_', null);
-  const tabs = [{id:'compare',name:'⚖️ مقارنة الفروع'},{id:'colors',name:'🎨 مقارنة بالألوان'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
+  const tabs = [{id:'compare',name:'⚖️ مقارنة الفروع'},{id:'colors',name:'🎨 مقارنة بالألوان'},{id:'gvbox',name:'📦 جيفز بالكراتين'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
   m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
     ${tabs.map(t=>`<button class="tab ${whTab===t.id?'active':''}" onclick="setWhTab('${t.id}')" style="flex:0 0 auto;padding:9px 12px;border-radius:9px;background:${whTab===t.id?'var(--blue)':'var(--panel2)'};color:${whTab===t.id?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:12.5px;white-space:nowrap">${t.name}</button>`).join('')}
   </div><div id="wh_content"></div>`;
   if(whTab===null) $('#wh_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
   else if(whTab==='compare') renderWhCompare($('#wh_content'));
   else if(whTab==='colors') renderWhColors($('#wh_content'));
+  else if(whTab==='gvbox') renderGvCompare($('#wh_content'));
   else renderWhDetail($('#wh_content'), whTab);
 }
 function setWhTab(id){ const cur=load('_whTab_',null); save('_whTab_', cur===id?null:id); save('_whSub_',null); render(true); }
@@ -1228,7 +1229,10 @@ function buildColorTable(){
   });
   const colorSum={};
   Object.values(groups).forEach(bs=>Object.values(bs).forEach(cs=>Object.entries(cs).forEach(([c,cells])=>{ colorSum[c]=(colorSum[c]||0)+cells.reduce((a,b)=>a+b,0); })));
-  let colors=Object.keys(colorSum); if(!colZero) colors=colors.filter(c=>colorSum[c]>0);
+  /* اللون اللي رصيده صفر في كل الفروع وكل البنود مالوش عمود خالص — كان
+     بيتعرض لو خانة «إظهار الصفرية» متفعّلة، فتلاقي عمود خشبي فاضي واخد
+     عرض الشاشة من غير فايدة. الخانة دلوقتي للأصناف بس. */
+  let colors=Object.keys(colorSum).filter(c=>colorSum[c]>0);
   const pri=['ابيض','بيج']; colors.sort((a,b)=>{ const pa=pri.indexOf(a), pb=pri.indexOf(b); if(pa>=0||pb>=0) return (pa<0?99:pa)-(pb<0?99:pb); return colorSum[b]-colorSum[a]; });
   const W=warehouses.length, rows=[];
   Object.entries(groups).forEach(([mg,bs])=>{
@@ -1582,7 +1586,7 @@ function renderWhColors(m){
   const {rows}=buildColorTable();
   m.innerHTML = `
     ${ddRowMain('col',allMain,colMain)}
-    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${colZero?'checked':''} onchange="colZero=this.checked;render()"> إظهار الألوان/الأصناف الصفرية</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${colZero?'checked':''} onchange="colZero=this.checked;render()"> إظهار الأصناف الصفرية</label>
     ${rows.length? `<div style="overflow-x:auto">${colorsTableHtml('rep stk')}</div>` : `<div class="empty">لا توجد بيانات مطابقة</div>`}
     ${floatBar(`<button onclick="exportColorsExcel()">📊 إكسل</button><button onclick="exportColorsPdf()">📄 PDF</button><button onclick="exportColorsImage()">🖼️ صورة</button>`)}
   `;
@@ -1616,6 +1620,85 @@ async function exportColorsExcel(){
     const buf=await wb.xlsx.writeBuffer();
     downloadBlob(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'مقارنة_بالألوان_'+todayStr()+'.xlsx'); toast('تم تنزيل ملف إكسل');
   }catch(e){ console.error(e); toast('تعذر إنشاء الإكسل — تأكد من الاتصال بالإنترنت'); }
+}
+
+/* ═══════════ مقارنة جيفز بالكراتين بين الفروع ═══════════
+   أصناف جيفز متخزّنة بالقطعة في المخازن، وانت بتفكّر فيها بالكرتونة.
+   هنا كل صنف جيفز بنجيب رصيده في كل فرع ونقسمه على عدد القطع في الكرتونة.
+   المطابقة بالاسم بالظبط الأول، وبعدين بالبصمة (من غير مسافات ولا رموز). */
+let gvcZero = false;
+function gvStockName(name){
+  if(!name) return null;
+  for(const w of warehouses) if((whStock[w.id]||{})[name] !== undefined) return name;
+  const f = ordNorm(name);
+  for(const w of warehouses){
+    for(const n of Object.keys(whStock[w.id]||{})) if(ordNorm(n) === f) return n;
+  }
+  return null;
+}
+function buildGvCompare(){
+  const rows = [];
+  gvcodes.forEach(g=>{
+    const nm = gvStockName(g.name);
+    const pc = nz(g.perCarton);
+    const pieces = warehouses.map(w=> nm ? qtyOf(w.id, nm) : 0);
+    const total = pieces.reduce((a,b)=>a+b,0);
+    if(!total && !gvcZero) return;
+    rows.push({name:g.name, code:g.code||'', pc, pieces,
+      cartons: pieces.map(q=> pc ? q/pc : 0), total, totalCartons: pc ? total/pc : 0, matched: !!nm});
+  });
+  rows.sort((a,b)=> b.totalCartons - a.totalCartons);
+  const tot = {pieces: warehouses.map((_,i)=> rows.reduce((a,r)=> a + r.pieces[i], 0))};
+  tot.cartons = warehouses.map((_,i)=> rows.reduce((a,r)=> a + r.cartons[i], 0));
+  tot.total = rows.reduce((a,r)=> a + r.total, 0);
+  tot.totalCartons = rows.reduce((a,r)=> a + r.totalCartons, 0);
+  return {rows, tot};
+}
+const fmtC = n=> !n ? '' : (Math.abs(n - Math.round(n)) < 0.005 ? String(Math.round(n)) : n.toFixed(2));
+function gvCompareTableHtml(cls){
+  const {rows, tot} = buildGvCompare();
+  return `<table class="${cls||''}" style="width:100%;border-collapse:collapse;font-size:12.5px">
+    <tr><th style="text-align:right">الصنف</th><th>ق/كرتونة</th>${warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')}<th>الإجمالي</th></tr>
+    ${rows.map(r=>`<tr class="z">
+      <td style="text-align:right">${esc(r.name)}${r.code?` <span style="color:var(--muted);font-size:11px">${esc(r.code)}</span>`:''}${r.matched?'':' <span style="color:var(--danger);font-size:11px">مش في الأرصدة</span>'}</td>
+      <td>${r.pc||'—'}</td>
+      ${r.cartons.map((c,i)=>`<td title="${fmtN(r.pieces[i])} قطعة">${fmtC(c)}</td>`).join('')}
+      <td><b>${fmtC(r.totalCartons)}</b></td></tr>`).join('')}
+    <tr class="m"><td style="text-align:right"><b>الإجمالي</b></td><td></td>
+      ${tot.cartons.map(c=>`<td><b>${fmtC(c)}</b></td>`).join('')}<td><b>${fmtC(tot.totalCartons)}</b></td></tr>
+  </table>`;
+}
+function renderGvCompare(m){
+  if(!gvcodes.length){ m.innerHTML = `<div class="empty">مفيش أكواد جيفز — ضيفها من شاشة جيفز أولاً</div>`; return; }
+  if(noStockMsg()){ m.innerHTML = `<div class="empty">لا توجد بيانات أرصدة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
+  const {rows} = buildGvCompare();
+  const noPc = rows.filter(r=> !r.pc).length;
+  m.innerHTML = `
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:2px 0 10px">
+      <input type="checkbox" ${gvcZero?'checked':''} onchange="gvcZero=this.checked;render()"> إظهار الأصناف الصفرية</label>
+    ${noPc? `<div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--border);font-size:12.5px">
+      <b>${noPc}</b> صنف مالوش «عدد القطع بالكرتونة» فالكراتين مش محسوبة ليه — اظبطه من شاشة جيفز.</div>`:''}
+    ${rows.length? `<div style="overflow-x:auto">${gvCompareTableHtml('rep stk')}</div>` : `<div class="empty">لا توجد بيانات</div>`}
+    ${floatBar(`<button onclick="exportGvCompareExcel()">📊 إكسل</button><button onclick="exportGvComparePdf()">📄 PDF</button><button onclick="exportGvCompareImage()">🖼️ صورة</button>`)}`;
+}
+function gvCompareDocBody(){
+  return `<div class="dx"><h2>مقارنة جيفز بالكراتين بين الفروع</h2><div class="sub">${todayStr()}</div>
+    ${gvCompareTableHtml()}</div>`;
+}
+function exportGvComparePdf(){ if(!buildGvCompare().rows.length){ toast('لا توجد بيانات'); return; } exportDocPdf(gvCompareDocBody(),'مقارنة_جيفز_كراتين_'+todayStr(),true); }
+function exportGvCompareImage(){ if(!buildGvCompare().rows.length){ toast('لا توجد بيانات'); return; } exportDocImage(gvCompareDocBody(),'مقارنة_جيفز_كراتين_'+todayStr(),true); }
+function exportGvCompareExcel(){
+  const {rows, tot} = buildGvCompare();
+  if(!rows.length){ toast('لا توجد بيانات'); return; }
+  const data = [['الصنف','الكود','ق/كرتونة', ...warehouses.map(w=> w.name+' (كرتونة)'), 'إجمالي الكراتين',
+                 ...warehouses.map(w=> w.name+' (قطعة)'), 'إجمالي القطع'],
+    ...rows.map(r=> [r.name, r.code, r.pc||'', ...r.cartons.map(c=> c? rnd2(c) : ''), rnd2(r.totalCartons),
+                     ...r.pieces.map(q=> q||''), r.total])];
+  data.push(['الإجمالي','','', ...tot.cartons.map(c=> rnd2(c)), rnd2(tot.totalCartons),
+             ...tot.pieces, tot.total]);
+  saveAoaXlsx(data, 'جيفز كراتين', 'مقارنة_جيفز_كراتين_'+todayStr()+'.xlsx',
+    [34,12,11, ...warehouses.map(()=>13), 15, ...warehouses.map(()=>13), 14],
+    {title:'مقارنة جيفز بالكراتين بين الفروع'});
 }
 
 // ===================== الجرد الفعلي =====================
