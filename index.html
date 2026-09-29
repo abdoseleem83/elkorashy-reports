@@ -125,7 +125,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.8</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.9</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -1475,6 +1475,7 @@ const SALES_REPORTS = [
   {id:'distsec',   name:'🧩 موزعين قطاعات'},
   {id:'doorcode',  name:'🚪 أبواب بالكود'},
   {id:'distdoor',  name:'🚪 موزعين أبواب'},
+  {id:'special',   name:'🏷️ مبيعات خاصة'},
   {id:'cmpmo',     name:'⚖️ مقارنة شهور'},
 ];
 function setSalesReport(id){ const cur=load('_salesRep_',null); save('_salesRep_', cur===id?null:id); render(true); }
@@ -1490,6 +1491,7 @@ function renderSalesReportsHub(m){
   else if(v==='distsec') renderRepDistSectors(c);
   else if(v==='doorcode') renderRepDoorsByCode(c);
   else if(v==='distdoor') renderRepDistDoors(c);
+  else if(v==='special') renderRepSpecial(c);
   else if(v==='cmpmo') renderRepMonthCompare(c);
   else c.innerHTML = `<div class="empty">اختار التقرير من فوق</div>`;
 }
@@ -1698,7 +1700,37 @@ function renderRepDistDoors(m){
   });
 }
 
-/* ═══ ٥) مقارنة المبيعات بين شهرين ═══
+/* ٥) مبيعات خاصة — كل عميل مصنّف «مبيعات خاصة» بسطر وعمود لكل شهر */
+function buildSpecial(){
+  const months=salesMonths();
+  const names=new Set(customers.filter(c=>(c.cls||'')==='مبيعات خاصة').map(c=>c.name));
+  const rows={};
+  months.forEach(mo=> Object.entries(monthlySales[mo]||{}).forEach(([n,net])=>{
+    if(!names.has(n)) return;
+    rows[n]=rows[n]||{}; rows[n][mo]=(rows[n][mo]||0)+net; }));
+  const list=Object.keys(rows).map(n=>{
+    const cells=months.map(mo=> Math.round(rows[n][mo]||0));
+    return {name:n, cells, total:cells.reduce((a,b)=>a+b,0)};
+  }).sort((a,b)=> b.total-a.total);
+  const tot=months.map((mo,i)=> list.reduce((a,r)=> a+r.cells[i],0));
+  return {months, list, tot, total: tot.reduce((a,b)=>a+b,0)};
+}
+function repSpecialModel(){
+  const d=buildSpecial(), body=[];
+  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, ...r.cells, r.total]}));
+  body.push({type:'tot', cells:['','الإجمالي', ...d.tot, d.total]});
+  return {title:'المبيعات الخاصة — '+monthsLabel(d.months),
+    header:['م','العميل', ...d.months.map(moName), 'الإجمالي'], body, d};
+}
+function renderRepSpecial(m){
+  const d=buildSpecial();
+  if(!d.list.length){ m.innerHTML=`<div class="empty">مفيش عملاء مصنّفين «مبيعات خاصة» —<br>صنّفهم من شاشة العملاء</div>`; return; }
+  renderRepTable(m, 'special', repSpecialModel(), {
+    boxes: topBoxes(d.list.map(r=>({name:r.name, val:r.total})), 'أعلى ٣')
+  });
+}
+
+/* ═══ ٦) مقارنة المبيعات بين شهرين ═══
    نفس صفوف تقرير «موزعين إجمالي» (التصنيفات مجمّعة + كل موزع بسطر)،
    بس عمودين لشهرين تختارهم، وعمود فرق وعمود نسبة. */
 function cmpMonths(){
@@ -1717,7 +1749,7 @@ function buildMonthCompare(){
   const add=(mo, key)=>{
     Object.entries(monthlySales[mo]||{}).forEach(([name,net])=>{
       const cls=(custByName[name]||{}).cls||'';
-      if(!cls || cls==='مستبعد' || cls==='عميل ابواب') return;
+      if(!cls || cls==='مستبعد' || cls==='عميل ابواب' || cls==='مبيعات خاصة') return;
       const row = cls==='موزع' ? name : cls;
       agg[row]=agg[row]||{a:0,b:0}; agg[row][key]+=net;
     });
@@ -1780,6 +1812,7 @@ function repModel(id){
   if(id==='distsec')  return repDistSectorsModel();
   if(id==='doorcode') return repDoorsByCodeModel();
   if(id==='distdoor') return repDistDoorsModel();
+  if(id==='special')  return repSpecialModel();
   if(id==='cmpmo')    return repMonthCompareModel();
   return null;
 }
@@ -1892,7 +1925,7 @@ function buildDistTotal(){
   months.forEach(mo=>{
     Object.entries(monthlySales[mo]||{}).forEach(([name,net])=>{
       const cls=(custByName[name]||{}).cls||'';
-      if(cls==='مستبعد' || cls==='عميل ابواب') return;     // عميل الأبواب ليه تقاريره لوحده
+      if(cls==='مستبعد' || cls==='عميل ابواب' || cls==='مبيعات خاصة') return;   // ليهم تقاريرهم لوحدهم
       if(!cls){ unclassified.add(name); return; }
       if(cls==='موزع'){ distRows[name]=distRows[name]||{}; distRows[name][mo]=(distRows[name][mo]||0)+net; }
       else { rollup[cls]=rollup[cls]||{}; rollup[cls][mo]=(rollup[cls][mo]||0)+net; }
@@ -1903,7 +1936,7 @@ function buildDistTotal(){
     return {name:label, cells, total:cells.reduce((a,b)=>a+b,0)};
   };
   const list=[];
-  ['مبيعات جملة','مبيعات خاصة'].forEach(cls=>{ if(rollup[cls]) list.push(mk(cls, rollup[cls])); });
+  ['مبيعات جملة'].forEach(cls=>{ if(rollup[cls]) list.push(mk(cls, rollup[cls])); });
   Object.keys(distRows).forEach(n=> list.push(mk(n, distRows[n])));
   list.sort((a,b)=> b.total-a.total);                       // من الأعلى للأقل
   const tot=months.map((mo,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
