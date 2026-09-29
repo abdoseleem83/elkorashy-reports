@@ -17,7 +17,10 @@
 :root[data-theme="dark"]{--bg:#10131c;--panel:#181c28;--panel2:#20263a;--border:#2b3350;--text:#e7ebf5;--muted:#8b93ac}
 *{box-sizing:border-box}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
-body{margin:0;font-family:Tahoma,Arial,sans-serif;font-size:15.5px;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100vh}
+/* 100vh على الموبايل بيحسب المساحة اللي تحت شريط المتصفح كمان، فآخر
+   حاجة في الصفحة (شريط التصدير اللاصق) بتقع تحت الشريط ومش بتتشاف.
+   100dvh بيحسب المساحة الظاهرة فعلاً. */
+body{margin:0;font-family:Tahoma,Arial,sans-serif;font-size:15.5px;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100vh;height:100dvh}
 input,select,textarea,button{font-family:inherit}
 header{background:var(--blue);color:#fff;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;
   display:flex;align-items:center;justify-content:space-between;flex-shrink:0;position:relative;z-index:20}
@@ -103,7 +106,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.1</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -1118,7 +1121,7 @@ function renderWhShortage(m, whId){
           </div>`;
       }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
     <div style="height:110px"></div>
-    <div style="position:sticky;bottom:0;z-index:20;background:var(--bg);padding:8px 0 4px;border-top:1px solid var(--border)">
+    <div style="position:sticky;bottom:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px))">
       <div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:6px">
         <div id="shTot" style="flex:1;font-size:12.5px;line-height:1.7">${shortTotalsHtml(shortTotals(whId))}</div>
         <button onclick="resetShortage('${whId}')" title="صفّر الطلب وابدأ من الأول"
@@ -1220,7 +1223,12 @@ function stockOrphans(){
   }
   return [...new Set(out)];
 }
-function floatBar(inner){ return `<div style="height:70px"></div><div style="position:sticky;bottom:0;z-index:20;background:var(--bg);padding:8px 0 4px;border-top:1px solid var(--border)"><div class="impbar" style="margin:0">${inner}</div></div>`; }
+function floatBar(inner){
+  return `<div style="height:76px"></div>
+    <div style="position:sticky;bottom:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);
+      padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px))">
+      <div class="impbar" style="margin:0">${inner}</div></div>`;
+}
 function noStockMsg(){ return !warehouses.some(w=>Object.keys(whStock[w.id]||{}).length); }
 
 function buildCompareTree(){

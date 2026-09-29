@@ -157,6 +157,28 @@ const xg = await pg.evaluate(()=>{
 check('الإكسل كمان بالاسم المختصر', xg && !xg.slice(1).some(r=> /GEVIS/.test(String(r[0]||''))),
   JSON.stringify((xg||[]).slice(1,3).map(r=>r[0])));
 
+// ── أزرار التصدير ظاهرة في المقارنات التلاتة
+for(const [v,nm] of [['compare','الفروع'],['colors','الألوان'],['gvbox','جيفز']]){
+  await pg.evaluate(x=>{ module='warehouses'; save('_whTab_','cmpx'); save('_cmpView_',x); render(true); }, v);
+  await pg.waitForTimeout(350);
+  const r = await pg.evaluate(()=>{
+    const m=document.getElementById('main'); m.scrollTop=m.scrollHeight;
+    const bar=document.querySelector('#cmp_c .impbar');
+    if(!bar) return {ok:false, why:'مفيش شريط'};
+    const b2=bar.getBoundingClientRect();
+    const hit=document.elementFromPoint((b2.left+b2.right)/2, (b2.top+b2.bottom)/2);
+    return {ok:true, n:bar.querySelectorAll('button').length,
+      onScreen: b2.bottom>0 && b2.top<=innerHeight,
+      covered: !bar.contains(hit) && hit!==bar,
+      gap: Math.round(innerHeight - b2.bottom)};
+  });
+  check('تصدير '+nm+': الشريط موجود وظاهر', r.ok && r.onScreen && r.n===3, JSON.stringify(r));
+  check('تصدير '+nm+': مش متغطّي ولا لازق في الحافة', r.ok && !r.covered && r.gap>=0, JSON.stringify(r));
+}
+check('الصفحة بتستخدم الطول الظاهر فعلاً (dvh)',
+  (await pg.evaluate(()=>getComputedStyle(document.body).height)) !== '',
+  await pg.evaluate(()=>getComputedStyle(document.body).height));
+
 check('مفيش أخطاء جافاسكريبت', errs.length===0, errs.join(' | '));
 console.log(`\n${pass} نجح · ${fail} فشل`);
 await b.close();
