@@ -103,7 +103,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.7</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.8</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -223,7 +223,7 @@ function exportBucket(mainGroup){ return EXPORT_GROUP_MAP[mainGroup] || mainGrou
 /* أول ما تفتح التطبيق تبدأ من الصفحة الرئيسية دايمًا — مش من آخر شاشة
    كنت فيها. الأقسام الفرعية كمان بترجع مقفولة. */
 let module=null, q='', openGroups=new Set(), pendingImport=null;
-try{ ['_whTab_','_whSub_','_payTab_','_itemsTab_','_salesTab_','_gvCur_'].forEach(k=> localStorage.removeItem(k)); }catch(e){}
+try{ ['_whTab_','_whSub_','_cmpView_','_payTab_','_itemsTab_','_salesTab_','_gvCur_'].forEach(k=> localStorage.removeItem(k)); }catch(e){}
 let whFilterMain=new Set(), whFilterSub=new Set();
 let shortMain=new Set(), shortSub=new Set();
 
@@ -238,7 +238,7 @@ let shortMain=new Set(), shortSub=new Set();
                             على الجهاز** ونقولك بالاسم إيه اللي اتغيّر.
    البيانات كلها صغيرة (كيلوبايتات) فكل مفتاح بيترفع رفعة واحدة — مفيش تقطيع
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
-const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1',
+const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','customers_v1','monthlySales_v1','monthlySector_v1','employees_v1','payData_v1',
   'paySendCols_v1','invCounts_v1','gvOrders_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
@@ -355,7 +355,7 @@ const SYNC_VARS = {
   whShortage_v1: v=>{ whShortage = v; }, customers_v1: v=>{ customers = v; },
   monthlySales_v1: v=>{ monthlySales = v; }, monthlySector_v1: v=>{ monthlySector = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
-  invCounts_v1: v=>{ invCounts = v; }, ordMap_v1: v=>{ ordMap = v; },
+  invCounts_v1: v=>{ invCounts = v; }, ordMap_v1: v=>{ ordMap = v; }, gvMap_v1: v=>{ gvMap = v; },
   // ⚠️ التلاتة دول كانوا في SYNC_KEYS بس مش في SYNC_VARS — يعني بيتنزّلوا
   // في التخزين المحلي والمتغيّر اللي الشاشة بتقرا منه يفضل القديم، فالبيانات
   // ما تبانش غير لما التطبيق يتقفل ويتفتح تاني.
@@ -884,17 +884,33 @@ function delWarehouse(id){
 
 function renderWarehouses(m){
   const whTab = load('_whTab_', null);
-  const tabs = [{id:'compare',name:'⚖️ مقارنة الفروع'},{id:'colors',name:'🎨 مقارنة بالألوان'},{id:'gvbox',name:'📦 جيفز بالكراتين'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
+  /* المقارنات كانت مفروشة جنب المخازن في نفس الصف. دلوقتي تبويب واحد
+     «مقارنات» وتحته التلاتة، فالصف فيه المخازن والمقارنات بس. */
+  const tabs = [{id:'cmpx',name:'📊 مقارنات'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
   m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
     ${tabs.map(t=>`<button class="tab ${whTab===t.id?'active':''}" onclick="setWhTab('${t.id}')" style="flex:0 0 auto;padding:9px 12px;border-radius:9px;background:${whTab===t.id?'var(--blue)':'var(--panel2)'};color:${whTab===t.id?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:12.5px;white-space:nowrap">${t.name}</button>`).join('')}
   </div><div id="wh_content"></div>`;
   if(whTab===null) $('#wh_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
-  else if(whTab==='compare') renderWhCompare($('#wh_content'));
-  else if(whTab==='colors') renderWhColors($('#wh_content'));
-  else if(whTab==='gvbox') renderGvCompare($('#wh_content'));
+  else if(whTab==='cmpx') renderCompareHub($('#wh_content'));
   else renderWhDetail($('#wh_content'), whTab);
 }
 function setWhTab(id){ const cur=load('_whTab_',null); save('_whTab_', cur===id?null:id); save('_whSub_',null); render(true); }
+// تبويب «مقارنات»: جواه التلات مقارنات
+const CMP_VIEWS = [{id:'compare',name:'⚖️ الفروع'},{id:'colors',name:'🎨 الألوان'},{id:'gvbox',name:'📦 جيفز بالكراتين'}];
+function setCmpView(id){ const cur=load('_cmpView_',null); save('_cmpView_', cur===id?null:id); render(true); }
+function renderCompareHub(m){
+  const v = load('_cmpView_', null);
+  m.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
+      ${CMP_VIEWS.map(x=>`<button onclick="setCmpView('${x.id}')" style="flex:1 0 auto;padding:10px 12px;border-radius:9px;
+        background:${v===x.id?'var(--blue)':'var(--panel2)'};color:${v===x.id?'#fff':'var(--text)'};
+        border:1px solid var(--border);font-weight:700;font-size:13.5px;white-space:nowrap">${x.name}</button>`).join('')}
+    </div><div id="cmp_c"></div>`;
+  const c = $('#cmp_c');
+  if(v==='compare') renderWhCompare(c);
+  else if(v==='colors') renderWhColors(c);
+  else if(v==='gvbox') renderGvCompare(c);
+  else c.innerHTML = `<div class="empty">اختار نوع المقارنة من فوق</div>`;
+}
 
 function setWhSub(n){ const cur=load('_whSub_',null); save('_whSub_', cur===n?null:n); render(true); }
 
@@ -1494,11 +1510,11 @@ function loadLib(key, test){
   });
 }
 const DOC_CSS=`<style>
-.dx{font-size:13px}.dx h2{text-align:center;margin:0 0 4px;font-size:20px}.dx h3{margin:18px 0 8px;font-size:15px}
-.dx .sub{text-align:center;color:#555;margin-bottom:12px}
+.dx{font-size:16px;font-weight:700}.dx h2{text-align:center;margin:0 0 4px;font-size:24px}.dx h3{margin:18px 0 8px;font-size:18px}
+.dx .sub{text-align:center;color:#444;margin-bottom:12px;font-size:15px}
 .dx table{width:100%;border-collapse:collapse}
-.dx th{background:#1d4ed8;color:#fff;padding:7px 6px;border:1px solid #173fb0;font-size:12.5px}
-.dx td{padding:6px;border:1px solid #cfd6e6;text-align:center}
+.dx th{background:#1d4ed8;color:#fff;padding:9px 7px;border:1px solid #173fb0;font-size:15.5px;font-weight:700}
+.dx td{padding:8px 6px;border:1px solid #cfd6e6;text-align:center;font-weight:700}
 .dx td:first-child{text-align:right}
 .dx tr.m td{background:#cfdcff;font-weight:700;text-align:right}
 .dx tr.s td{background:#e8eefc;font-weight:700}
@@ -1754,20 +1770,48 @@ async function exportColorsExcel(){
    هنا كل صنف جيفز بنجيب رصيده في كل فرع ونقسمه على عدد القطع في الكرتونة.
    المطابقة بالاسم بالظبط الأول، وبعدين بالبصمة (من غير مسافات ولا رموز). */
 let gvcZero = false;
-function gvStockName(name){
-  if(!name) return null;
-  for(const w of warehouses) if(stockKey(w.id, name) !== null) return name;
+/* أصناف جيفز اسمها في شيت الأرصدة غالبًا مختلف عن اسمها في أكواد جيفز
+   (مثلاً «سبلونة مفصلى 30 سم GEVIS» مقابل «سبلونه مفصلي 30 GEVIS ISP-M300»).
+   بنجرّب بالترتيب: الاسم بالظبط → البصمة → الكود جوه اسم الرصيد → احتواء
+   جزئي → وأخيرًا ربط يدوي محفوظ (gvMap) بيتزامن بين الأجهزة. */
+let gvMap = load('gvMap_v1', {});
+function gvMapSet(codeId, stockName){
+  if(stockName) gvMap[codeId] = stockName; else delete gvMap[codeId];
+  save('gvMap_v1', gvMap); render();
+}
+function allStockNames(){
+  const out = new Set();
+  for(const w of warehouses) for(const n of Object.keys(whStock[w.id]||{})) out.add(n);
+  return [...out];
+}
+function gvStockName(name, codeId, code){
+  if(codeId && Object.prototype.hasOwnProperty.call(gvMap, codeId)){
+    const m = gvMap[codeId];
+    return m ? m : null;                       // '' = متجاهل بطلبك
+  }
+  if(name) for(const w of warehouses) if(stockKey(w.id, name) !== null) return name;
+  const names = allStockNames();
+  const cf = ordNorm(code || '');
+  if(cf && cf.length >= 3){
+    const hit = names.find(n=> ordNorm(n).indexOf(cf) >= 0);
+    if(hit) return hit;
+  }
+  const nf = ordNorm(name || '');
+  if(nf && nf.length >= 4){
+    const hit = names.find(n=>{ const x = ordNorm(n); return x.indexOf(nf) >= 0 || nf.indexOf(x) >= 0; });
+    if(hit) return hit;
+  }
   return null;
 }
 function buildGvCompare(){
   const rows = [];
   gvcodes.forEach(g=>{
-    const nm = gvStockName(g.name);
+    const nm = gvStockName(g.name, g.id, g.code);
     const pc = nz(g.perCarton);
     const pieces = warehouses.map(w=> nm ? qtyOf(w.id, nm) : 0);
     const total = pieces.reduce((a,b)=>a+b,0);
     if(!total && !gvcZero) return;
-    rows.push({name:g.name, code:g.code||'', pc, pieces,
+    rows.push({id:g.id, name:g.name, code:g.code||'', pc, pieces, stockName:nm,
       cartons: pieces.map(q=> pc ? q/pc : 0), total, totalCartons: pc ? total/pc : 0, matched: !!nm});
   });
   rows.sort((a,b)=> b.totalCartons - a.totalCartons);
@@ -1783,7 +1827,9 @@ function gvCompareTableHtml(cls){
   return `<table class="${cls||''}" style="width:100%;border-collapse:collapse;font-size:12.5px">
     <tr><th style="text-align:right">الصنف</th><th>ق/كرتونة</th>${warehouses.map(w=>`<th>${esc(w.name)}</th>`).join('')}<th>الإجمالي</th></tr>
     ${rows.map(r=>`<tr class="z">
-      <td style="text-align:right">${esc(r.name)}${r.code?` <span style="color:var(--muted);font-size:11px">${esc(r.code)}</span>`:''}${r.matched?'':' <span style="color:var(--danger);font-size:11px">مش في الأرصدة</span>'}</td>
+      <td style="text-align:right">${esc(r.name)}${r.code?` <span style="color:var(--muted);font-size:11px">${esc(r.code)}</span>`:''}${
+        r.matched? (ordNorm(r.stockName)!==ordNorm(r.name)? ` <span style="color:var(--muted);font-size:11px">← ${esc(r.stockName)}</span>`:'')
+                 : ' <span style="color:var(--danger);font-size:11px">مش في الأرصدة</span>'}</td>
       <td>${r.pc||'—'}</td>
       ${r.cartons.map((c,i)=>`<td title="${fmtN(r.pieces[i])} قطعة">${fmtC(c)}</td>`).join('')}
       <td><b>${fmtC(r.totalCartons)}</b></td></tr>`).join('')}
@@ -1802,7 +1848,32 @@ function renderGvCompare(m){
     ${noPc? `<div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--border);font-size:12.5px">
       <b>${noPc}</b> صنف مالوش «عدد القطع بالكرتونة» فالكراتين مش محسوبة ليه — اظبطه من شاشة جيفز.</div>`:''}
     ${rows.length? `<div style="overflow-x:auto">${gvCompareTableHtml('rep stk')}</div>` : `<div class="empty">لا توجد بيانات</div>`}
+    ${gvLinkHtml()}
     ${floatBar(`<button onclick="exportGvCompareExcel()">📊 إكسل</button><button onclick="exportGvComparePdf()">📄 PDF</button><button onclick="exportGvCompareImage()">🖼️ صورة</button>`)}`;
+}
+/* الأصناف اللي التطبيق ما عرفش يلاقيها في الأرصدة — تربطها بإيدك مرة
+   واحدة من قايمة أسماء الأرصدة، والربط بيتزامن على كل أجهزتك. */
+function gvLinkHtml(){
+  const miss = gvcodes.filter(g=> !gvStockName(g.name, g.id, g.code));
+  const linked = gvcodes.filter(g=> gvMap[g.id]);
+  if(!miss.length && !linked.length) return '';
+  const names = allStockNames();
+  return `<div class="panelbox" style="margin-top:10px">
+    <b style="font-size:14px">🔗 ربط أصناف جيفز بالأرصدة</b>
+    <div style="color:var(--muted);font-size:13px;margin:4px 0 8px">
+      ${miss.length? `<b style="color:var(--danger)">${miss.length}</b> صنف التطبيق ما لقاهوش في الأرصدة — اختار اسمه من عندك مرة واحدة وخلاص.`
+                   : 'كل الأصناف متربطة ✅'}
+      ${linked.length? ` (<b>${linked.length}</b> متربط يدوي)` : ''}
+    </div>
+    <datalist id="gvStockNames">${names.slice(0,4000).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+    ${miss.concat(linked.filter(g=> miss.indexOf(g)<0)).slice(0,80).map(g=>`
+      <div style="display:flex;gap:6px;align-items:center;border-top:1px solid var(--border);padding:7px 0">
+        <span style="flex:1;font-size:13px">${esc(g.name)}${g.code?` <span style="color:var(--muted);font-size:11.5px">${esc(g.code)}</span>`:''}</span>
+        <input list="gvStockNames" value="${esc(gvMap[g.id]||'')}" placeholder="اسمه في الأرصدة"
+          onchange="gvMapSet('${g.id}', this.value.trim())"
+          style="flex:1.3;padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px">
+      </div>`).join('')}
+  </div>`;
 }
 function gvCompareDocBody(){
   return `<div class="dx"><h2>مقارنة جيفز بالكراتين بين الفروع</h2><div class="sub">${todayStr()}</div>
