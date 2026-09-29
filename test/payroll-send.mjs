@@ -120,6 +120,25 @@ check('صافي الموظف نفسه اتحدّث',
 check('اللي اتكتب اتحفظ',
   (await pg.evaluate(()=>{ const e=employees.find(x=>x.name==='محمد فوزي'); return payEntry('2026-09',2,e.id).bonus; }))===500);
 
+// ── أزرار التصدير موجودة وظاهرة فعلاً (مش متغطية بالمعاينة)
+await pg.evaluate(()=>{ save('_payTab_',2); setPayKind('send'); render(true); });
+await pg.waitForTimeout(400);
+const expBtns = await pg.evaluate(()=>[...document.querySelectorAll('#pay_c button')].map(x=>x.textContent.trim()).filter(t=>/إكسل|PDF|صورة/.test(t)));
+check('أزرار التصدير موجودة في النواتج', expBtns.length===3, expBtns.join('|'));
+const vis = await pg.evaluate(()=>{
+  const m=document.getElementById('main'); m.scrollTop=m.scrollHeight;
+  const bar=document.querySelector('#pay_c .impbar'); const r=bar.getBoundingClientRect();
+  // مفيش حاجة مغطياها في نُص الشريط
+  const hit=document.elementFromPoint((r.left+r.right)/2, (r.top+r.bottom)/2);
+  return {onScreen: r.bottom>0 && r.top<innerHeight, covered: !bar.contains(hit) && hit!==bar};
+});
+check('شريط التصدير ظاهر على الشاشة', vis.onScreen, JSON.stringify(vis));
+check('مفيش حاجة مغطياه', !vis.covered, JSON.stringify(vis));
+const cap = await pg.evaluate(()=>{
+  const d=[...document.querySelectorAll('#pay_c div')].find(x=>/max-height/.test(x.getAttribute('style')||''));
+  return d? d.getBoundingClientRect().height : 0; });
+check('المعاينة محدودة الطول مش ماخدة الصفحة', cap>0 && cap<=340, String(Math.round(cap)));
+
 check('مفيش أخطاء جافاسكريبت', errs.length===0, errs.join(' | '));
 console.log(`\n${pass} نجح · ${fail} فشل`);
 await b.close();
