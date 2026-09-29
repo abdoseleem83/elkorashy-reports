@@ -97,6 +97,29 @@ check('عرض الأعمدة مطابق للعدد', x.w.length===x.d[0].length,
 const full = await pg.evaluate(()=>{ payKind='full'; const m=payModel(); payKind='send'; return m; });
 check('الكشف التفصيلي لسه مقسّم بالفروع', full.body.some(r=>r.type==='branch') && full.body.some(r=>r.type==='sub'));
 
+// ── شاشة تسجيل الحضور: الأعمدة جنب بعضها في جدول
+await pg.evaluate(()=>{ save('_payTab_',1); render(true); });
+await pg.waitForTimeout(400);
+const th = await pg.evaluate(()=>[...document.querySelectorAll('#pay_c table.payin tr:first-child th')].map(x=>x.textContent.trim()));
+check('شاشة الحضور بقت جدول بأعمدة جنب بعض',
+  th.join('|')==='الموظف|راتب النصف|غياب بإذن (أيام)|غياب بدون إذن (أيام)|تأخيرات (ساعات)|إضافي (ساعات)|جزاءات (أيام)|سلف (جنيه)|تأمينات (جنيه)|حوافز (جنيه)|ملاحظات|الصافي',
+  th.join('|'));
+const nInputs = await pg.evaluate(()=>document.querySelectorAll('#pay_c table.payin input').length);
+check('لكل موظف خانة في كل عمود', nInputs===6*9, nInputs+' خانة');
+check('مفيش قوايم منسدلة تفتح لكل موظف', (await pg.evaluate(()=>document.querySelectorAll('#pay_c .grp').length))===0);
+check('اسم الموظف ثابت وانت بتسحب',
+  await pg.evaluate(()=>getComputedStyle(document.querySelector('#pay_c table.payin td')).position)==='sticky');
+// الكتابة بتحدّث الصافي في سطره والإجمالي فوق من غير إعادة رسم
+const before = await pg.evaluate(()=>document.querySelector('#payTot').textContent);
+await pg.evaluate(()=>{ const e=employees.find(x=>x.name==='محمد فوزي'); payUpdate(e.id,'bonus','500'); });
+await pg.waitForTimeout(150);
+const after = await pg.evaluate(()=>document.querySelector('#payTot').textContent);
+check('الإجمالي بيتحدّث لحظيًا وانت بتكتب', before!==after, before+' → '+after);
+check('صافي الموظف نفسه اتحدّث',
+  (await pg.evaluate(()=>{ const e=employees.find(x=>x.name==='محمد فوزي'); return document.getElementById('pn_'+e.id).textContent; }))==='6,000');
+check('اللي اتكتب اتحفظ',
+  (await pg.evaluate(()=>{ const e=employees.find(x=>x.name==='محمد فوزي'); return payEntry('2026-09',2,e.id).bonus; }))===500);
+
 check('مفيش أخطاء جافاسكريبت', errs.length===0, errs.join(' | '));
 console.log(`\n${pass} نجح · ${fail} فشل`);
 await b.close();
