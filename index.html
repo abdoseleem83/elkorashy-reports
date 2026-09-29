@@ -17,7 +17,8 @@
 :root[data-theme="dark"]{--bg:#10131c;--panel:#181c28;--panel2:#20263a;--border:#2b3350;--text:#e7ebf5;--muted:#8b93ac}
 *{box-sizing:border-box}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
-body{margin:0;font-family:Tahoma,Arial,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100vh}
+body{margin:0;font-family:Tahoma,Arial,sans-serif;font-size:15.5px;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100vh}
+input,select,textarea,button{font-family:inherit}
 header{background:var(--blue);color:#fff;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;
   display:flex;align-items:center;justify-content:space-between;flex-shrink:0;position:relative;z-index:20}
 header h1{font-size:16px;margin:0;font-weight:700}
@@ -73,12 +74,13 @@ main{flex:1;overflow-y:auto;padding:10px}
 @media (prefers-color-scheme:dark){ .warn{background:#332a12;color:#f0c36d;border-color:#5a4a1f} }
 .pill{display:inline-block;background:var(--panel2);border:1px solid var(--border);border-radius:16px;padding:8px 12px;margin:0 6px 8px 0;font-size:12.5px;cursor:pointer}
 .pill.on{background:var(--blue);color:#fff;border-color:var(--blue)}
-table.rep{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--panel);border-radius:10px;overflow:hidden}
-table.rep th,table.rep td{padding:8px 6px;border-bottom:1px solid var(--border);text-align:center}
-table.rep th{background:var(--panel2);font-size:11.5px}
-table.rep td:first-child,table.rep th:first-child{text-align:right}
+table.rep{width:100%;border-collapse:collapse;font-size:14.5px;font-weight:700;background:var(--panel);border-radius:10px;overflow:hidden}
+table.rep th,table.rep td{padding:7px 5px;border-bottom:1px solid var(--border);text-align:center;
+  white-space:nowrap;width:1%}
+table.rep th{background:var(--panel2);font-size:13.5px;font-weight:700}
+table.rep td:first-child,table.rep th:first-child{text-align:right;white-space:normal;width:auto}
 table.rep.stk{width:max-content;min-width:100%;overflow:visible}
-table.rep.stk td:first-child,table.rep.stk th:first-child{position:sticky;right:0;z-index:1;background:var(--panel);min-width:130px;max-width:160px}
+table.rep.stk td:first-child,table.rep.stk th:first-child{position:sticky;right:0;z-index:1;background:var(--panel);min-width:120px;max-width:190px}
 table.rep.stk th:first-child{background:var(--panel2)}
 .qs{display:flex;gap:10px;font-size:12px;align-items:center;flex-wrap:wrap}
 .qs small{color:var(--muted)}
@@ -101,7 +103,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.4</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.6</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -218,7 +220,10 @@ const EXPORT_GROUP_MAP={
 };
 function exportBucket(mainGroup){ return EXPORT_GROUP_MAP[mainGroup] || mainGroup || 'غير مصنف'; }
 
-let module='items', q='', openGroups=new Set(), pendingImport=null;
+/* أول ما تفتح التطبيق تبدأ من الصفحة الرئيسية دايمًا — مش من آخر شاشة
+   كنت فيها. الأقسام الفرعية كمان بترجع مقفولة. */
+let module=null, q='', openGroups=new Set(), pendingImport=null;
+try{ ['_whTab_','_whSub_','_payTab_','_itemsTab_','_salesTab_','_gvCur_'].forEach(k=> localStorage.removeItem(k)); }catch(e){}
 let whFilterMain=new Set(), whFilterSub=new Set();
 let shortMain=new Set(), shortSub=new Set();
 
@@ -1539,9 +1544,33 @@ async function docToCanvas(el){
   while(area*sc*sc>12e6 && sc>0.7) sc=Math.round((sc-0.1)*10)/10;
   return window.html2canvas(el,{scale:sc,backgroundColor:'#fff',useCORS:true});
 }
+/* الصورة بتفتح شاشة المشاركة بتاعة الموبايل على طول (واتس/تيليجرام/ميل)
+   بدل ما تنزّلها وتروح تدوّر عليها في الملفات. لو الجهاز مش بيدعم
+   المشاركة (كمبيوتر مثلاً) بتتنزّل عادي. */
+function canvasToBlob(c){ return new Promise(r=> c.toBlob(r, 'image/png')); }
+async function shareOrDownload(blob, filename, title){
+  const file = new File([blob], filename, {type:'image/png'});
+  try{
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title: title||filename});
+      return 'share';
+    }
+  }catch(e){
+    // المستخدم قفل شاشة المشاركة — مش غلط، ما ننزّلش ورا ظهره
+    if(e && e.name === 'AbortError') return 'cancel';
+  }
+  downloadBlob(blob, filename);
+  return 'download';
+}
 async function exportDocImage(bodyHtml, filename, landscape){
   toast('جاري تجهيز الصورة...'); const el=mkDoc(bodyHtml,landscape);
-  try{ const c=await docToCanvas(el); const a=document.createElement('a'); a.download=filename+'.png'; a.href=c.toDataURL('image/png'); document.body.appendChild(a); a.click(); a.remove(); toast('تم تنزيل الصورة'); }
+  try{
+    const c = await docToCanvas(el);
+    const blob = await canvasToBlob(c);
+    if(!blob) throw new Error('no blob');
+    const how = await shareOrDownload(blob, filename+'.png', filename);
+    toast(how === 'share' ? 'اتبعتت' : (how === 'cancel' ? '' : 'تم تنزيل الصورة'));
+  }
   catch(e){ console.error(e); toast('تعذر التصدير — تأكد من الاتصال بالإنترنت'); }
   finally{ el.remove(); }
 }
@@ -1646,11 +1675,43 @@ function colorsTableHtml(cls){
   </table>`;
 }
 function colorsDocBody(){ return `<div class="dx"><h2>مقارنة الأرصدة بالألوان</h2><div class="sub">${todayStr()}</div>${colorsTableHtml('')}</div>`; }
+/* أزرار سريعة تحت مقارنة الألوان: كل واحد بيفلتر على مجموعته على طول
+   بدل ما تفتح القايمة وتختار. الضغط تاني بيرجّع الكل. */
+const COLOR_QUICK = [
+  {id:'komben', name:'🧩 كومبن',   re:/كومبن/},
+  {id:'kraft',  name:'📐 كرافت',   re:/كرافت/},
+  {id:'newline',name:'📏 نيو لاين', re:/نيو\s*لاين/},
+  {id:'gv',     name:'📋 جيفز',    re:/جيف/},
+];
+function colorQuickGroups(q){
+  return [...new Set(items.filter(i=>i.baseName&&i.color).map(i=>i.mainGroup).filter(Boolean))]
+    .filter(g=> q.re.test(g));
+}
+function colorQuick(id){
+  const q = COLOR_QUICK.find(x=>x.id===id); if(!q) return;
+  const gs = colorQuickGroups(q);
+  const on = gs.length && gs.every(g=>colMain.has(g)) && colMain.size===gs.length;
+  colMain.clear();
+  if(!on) gs.forEach(g=>colMain.add(g));
+  render();
+}
+function colorQuickHtml(){
+  return `<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
+    ${COLOR_QUICK.map(q=>{
+      const gs = colorQuickGroups(q);
+      const on = gs.length && gs.every(g=>colMain.has(g)) && colMain.size===gs.length;
+      return `<button onclick="colorQuick('${q.id}')" ${gs.length?'':'disabled'}
+        style="flex:1 0 auto;padding:9px 12px;border-radius:9px;border:1px solid var(--border);
+        background:${on?'var(--blue)':'var(--panel2)'};color:${on?'#fff':(gs.length?'var(--text)':'var(--muted)')};
+        font-weight:700;font-size:13px;white-space:nowrap;cursor:${gs.length?'pointer':'not-allowed'};opacity:${gs.length?1:.5}">${q.name}</button>`;
+    }).join('')}
+  </div>`;
+}
 function renderWhColors(m){
   if(noStockMsg()){ m.innerHTML=`<div class="empty">لا توجد بيانات أرصدة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
   const allMain=[...new Set(items.filter(i=>i.baseName&&i.color).map(i=>i.mainGroup).filter(Boolean))];
   const {rows}=buildColorTable();
-  m.innerHTML = stockWarnHtml() + `
+  m.innerHTML = stockWarnHtml() + colorQuickHtml() + `
     ${ddRowMain('col',allMain,colMain)}
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${colZero?'checked':''} onchange="colZero=this.checked;render()"> إظهار الأصناف الصفرية</label>
     ${rows.length? `<div style="overflow-x:auto">${colorsTableHtml('rep stk')}</div>` : `<div class="empty">لا توجد بيانات مطابقة</div>`}
@@ -2455,6 +2516,9 @@ function renderPayEmployees(c){
   $('#impEmp').onchange=e=>{ if(e.target.files[0]) importEmployees(e.target.files[0]); };
 }
 // ---- الحضور والخصومات
+// وانت بتكتب في جدول عريض، رأس العمود بيطلع برّه الشاشة — الشريط ده
+// بيقولك انت في أنهي عمود أول ما تدوس على الخانة.
+function payHint(label){ const el = $('#payHint'); if(el) el.textContent = label; }
 function payUpdate(id,field,val){
   const h='h'+payHalf;
   payData[payMonth]=payData[payMonth]||{}; const per=payData[payMonth][h]=payData[payMonth][h]||{}; const e=per[id]=per[id]||{};
@@ -2472,16 +2536,16 @@ function renderPayEntry(c){
   /* الإدخال بقى جدول بنفس أعمدة كشف الإرسال جنب بعض: بتمشي بالعرض على
      الموظف وتكتب، بدل ما تفتح كل موظف لوحده وتنزل جوه قايمة.
      الصافي بيتحدّث في سطره على طول، والإجمالي فوق كمان. */
-  const cell='width:100%;padding:6px 4px;border-radius:7px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;text-align:center';
+  const cell='width:100%;padding:6px 4px;border-radius:7px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:14px;text-align:center';
   c.innerHTML=payBar(false)+`<div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--border)">إجمالي الصافي: <b id="payTot">${fmtN(rows.reduce((a,r)=>a+r.net,0))}</b> ج — ${rows.length} موظف</div>`+
     (rows.length? `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table class="payin" style="width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;min-width:${360+PAY_FIELDS.length*76}px">
         <tr>
-          <th style="position:sticky;right:0;z-index:3;background:var(--blue);color:#fff;padding:8px 6px;text-align:right;min-width:130px">الموظف</th>
-          <th style="background:var(--blue);color:#fff;padding:8px 4px;min-width:74px">راتب النصف</th>
-          ${PAY_FIELDS.map(([f,l])=>`<th style="background:var(--blue);color:#fff;padding:8px 4px;min-width:76px;font-size:11px;line-height:1.3">${esc(l)}</th>`).join('')}
-          <th style="background:var(--blue);color:#fff;padding:8px 4px;min-width:150px">ملاحظات</th>
-          <th style="background:var(--blue);color:#fff;padding:8px 4px;min-width:84px">الصافي</th>
+          <th style="position:sticky;top:0;right:0;z-index:4;background:var(--blue);color:#fff;padding:8px 6px;text-align:right;min-width:130px">الموظف</th>
+          <th style="position:sticky;top:0;z-index:3;background:var(--blue);color:#fff;padding:8px 4px;min-width:74px">راتب النصف</th>
+          ${PAY_FIELDS.map(([f,l])=>`<th style="position:sticky;top:0;z-index:3;background:var(--blue);color:#fff;padding:8px 4px;min-width:78px;font-size:12px;line-height:1.3">${esc(l)}</th>`).join('')}
+          <th style="position:sticky;top:0;z-index:3;background:var(--blue);color:#fff;padding:8px 4px;min-width:150px">ملاحظات</th>
+          <th style="position:sticky;top:0;z-index:3;background:var(--blue);color:#fff;padding:8px 4px;min-width:84px">الصافي</th>
         </tr>
         ${rows.map((r,i)=>{ const e=r.emp, ent=payEntry(payMonth,payHalf,e.id), bg=i%2?'var(--panel2)':'var(--panel)';
           return `<tr>
@@ -2489,15 +2553,18 @@ function renderPayEntry(c){
               <div style="font-weight:700">${esc(e.name)}</div>
               <div style="font-size:11px;color:var(--muted)">${esc(e.branch||'')} · اليوم ${fmt2(r.day)} · الساعة ${fmt2(r.hour)}</div></td>
             <td style="background:${bg};padding:6px 4px;border-bottom:1px solid var(--border);text-align:center;font-weight:700">${fmtN(r.due)}</td>
-            ${PAY_FIELDS.map(([f])=>`<td style="background:${bg};padding:4px 3px;border-bottom:1px solid var(--border)">
-              <input type="number" inputmode="decimal" value="${ent[f]??''}" style="${cell}" oninput="payUpdate('${e.id}','${f}',this.value)"></td>`).join('')}
+            ${PAY_FIELDS.map(([f,l])=>`<td style="background:${bg};padding:4px 3px;border-bottom:1px solid var(--border)">
+              <input type="number" inputmode="decimal" value="${ent[f]??''}" style="${cell}" title="${esc(l)}" placeholder="${esc(l.replace(/\s*\([^)]*\)/,''))}"
+                onfocus="payHint('${esc(l).replace(/'/g,"\\'")}')" oninput="payUpdate('${e.id}','${f}',this.value)"></td>`).join('')}
             <td style="background:${bg};padding:4px 3px;border-bottom:1px solid var(--border)">
               <input type="text" value="${esc(ent.note||'')}" style="${cell};text-align:right" oninput="payUpdate('${e.id}','note',this.value)"></td>
             <td style="background:${bg};padding:6px 4px;border-bottom:1px solid var(--border);text-align:center">
               <b id="pn_${e.id}" style="font-size:13.5px">${fmtN(r.net)}</b></td>
           </tr>`; }).join('')}
       </table></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:6px">اسحب الجدول يمين وشمال عشان تشوف باقي الأعمدة — اسم الموظف بيفضل ثابت.</div>`
+      <div id="payHint" style="position:sticky;bottom:0;z-index:5;background:var(--blue);color:#fff;font-weight:700;
+        text-align:center;padding:8px;border-radius:9px;margin-top:6px;font-size:13.5px">
+        اضغط على أي خانة يقولك اسم عمودها هنا</div>`
     : `<div class="empty">لا يوجد موظفين في هذا النصف — ضيفهم من تاب العاملين</div>`);
 }
 // ---- النواتج
@@ -2704,18 +2771,220 @@ function gvImportExcel(file){
   };
   r.readAsArrayBuffer(file);
 }
+/* ═══════════ جيفز: ٣ شاشات ═══════════
+   📋 الطلبيات — تبني الطلبية وتشوفها. الطلبيات مجمّعة بالتاريخ في قوايم
+      منسدلة: تدوس على التاريخ تتفتح وتشوف طلبياته.
+   📥 الاستلام — تسجّل اللي وصل فعلاً بالكرتونة أو بالقطعة، وتقارنه
+      بالمطلوب، وتقفل الطلبية وتأرشفها.
+   💵 التسعير — بياخد **المستلم** (مش المطلوب) ويوزّع مصاريف الشحن
+      والجمارك عليه ويطلّع تكلفة القطعة بالجنيه. التسعير بيتصدّر من هنا بس. */
+let gvTab = 0;
+function setGvTab(n){ gvTab = n; render(true); }
+const GV_COST = [
+  ['invoice',  'إجمالي الفاتورة $'],
+  ['bankUsd',  'مصاريف بنكية $'],
+  ['bankEgp',  'مصاريف بنكية جنيه'],
+  ['customs',  'مصاريف تخليص جمركي'],
+  ['shipUsd',  'شحن وكارجو $'],
+  ['rate',     'سعر صرف الدولار'],
+];
+function gvCostSet(f, v){ const o=gvGet(); if(!o) return; o.cost=o.cost||{}; o.cost[f]=nz(v); gvSave(); render(); }
+function gvRecvSet(i, kind, v){
+  const o=gvGet(); if(!o) return; const r=o.rows[i]; if(!r) return;
+  const g=gvcodes.find(x=>x.id===r.gid)||{}, pc=nz(g.perCarton);
+  if(kind==='c'){ if(!pc){ toast('الصنف ده مفيهوش عدد قطع بالكرتونة'); return; } r.recv=Math.round(nz(v)*pc*1000)/1000; }
+  else r.recv=nz(v);
+  gvSave();
+  const el=$('#gvRecvTot'); if(el) el.innerHTML=gvRecvTotHtml(gvCalc(o));
+}
+function gvRecvAll(){
+  const o=gvGet(); if(!o) return;
+  if(!confirm('هيتسجّل إن كل صنف وصل بالكمية المطلوبة بالظبط. تكمل؟')) return;
+  o.rows.forEach(r=>{ r.recv=nz(r.qty); }); gvSave(); render();
+}
+function gvMarkReceived(){
+  const o=gvGet(); if(!o) return;
+  o.received=!o.received; o.recvDate=o.received? todayStr() : '';
+  gvSave(); toast(o.received?'اتسجّلت مستلمة':'رجعت جارية'); render(true);
+}
+// حسبة الاستلام: المستلم مقابل المطلوب
+function gvRecvRows(o){
+  return gvCalc(o).rows.map(r=>{
+    const src=o.rows[r.i]||{}, recv=nz(src.recv);
+    return Object.assign({}, r, {recv, recvCartons: r.pc? recv/r.pc : 0,
+      diff: recv - r.qty, recvWeight: recv*r.w, recvValue: recv*r.p});
+  });
+}
+function gvRecvTot(o){
+  const rows=gvRecvRows(o), t={qty:0,recv:0,cartons:0,weight:0,value:0,diff:0,short:0,over:0};
+  rows.forEach(r=>{ t.qty+=r.qty; t.recv+=r.recv; t.cartons+=r.recvCartons; t.weight+=r.recvWeight;
+    t.value+=r.recvValue; t.diff+=r.diff; if(r.diff<0) t.short++; if(r.diff>0) t.over++; });
+  return {rows, t};
+}
+function gvRecvTotHtml(c){
+  const o=gvGet(); const {t}=gvRecvTot(o);
+  return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">
+    <div><div style="font-size:12px;color:var(--muted)">مطلوب</div><div style="font-size:17px;font-weight:700">${fmtN(t.qty)}</div></div>
+    <div><div style="font-size:12px;color:var(--muted)">مستلم</div><div style="font-size:17px;font-weight:700">${fmtN(t.recv)}</div></div>
+    <div><div style="font-size:12px;color:var(--muted)">كراتين</div><div style="font-size:17px;font-weight:700">${fmt1(t.cartons)}</div></div>
+    <div><div style="font-size:12px;color:var(--muted)">الفرق</div><div style="font-size:17px;font-weight:700;color:${t.diff<0?'var(--danger)':(t.diff>0?'var(--ok)':'inherit')}">${fmt1(t.diff)}</div></div>
+  </div>${t.short||t.over? `<div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+    ${t.short? `<b style="color:var(--danger)">${t.short}</b> صنف ناقص` : ''}${t.short&&t.over?' · ':''}${t.over? `<b style="color:var(--ok)">${t.over}</b> صنف زيادة` : ''}</div>`:''}`;
+}
+/* التسعير: كل المصاريف بتتحوّل جنيه وتتوزّع على الأصناف **بنسبة قيمتها**
+   من إجمالي الفاتورة المستلمة. فالصنف الغالي بياخد نصيب أكبر من الشحن. */
+function gvPricing(o){
+  const {rows, t} = gvRecvTot(o);
+  const c = o.cost || {};
+  const rate = nz(c.rate) || 0;
+  const invoice = nz(c.invoice) || t.value;          // لو ما كتبتش الفاتورة بنحسبها من المستلم
+  const baseUsd = t.value || invoice;                 // أساس التوزيع
+  const extrasEgp = nz(c.bankUsd)*rate + nz(c.bankEgp) + nz(c.customs) + nz(c.shipUsd)*rate;
+  const goodsEgp  = invoice * rate;
+  const totalEgp  = goodsEgp + extrasEgp;
+  /* التكلفة الكاملة (فاتورة + مصاريف) بتتوزّع على الأصناف بنسبة قيمتها.
+     مهم: بنوزّع **الإجمالي كله** مش قيمة كل صنف + نصيبه من المصاريف —
+     عشان مجموع تكاليف الأصناف يساوي الإجمالي بالظبط حتى لو الفاتورة
+     مختلفة عن قيمة اللي وصل فعلاً (نقص أو زيادة في الشحنة). */
+  const priced = rows.filter(r=> r.recv > 0).map(r=>{
+    const share = baseUsd ? (r.recvValue / baseUsd) : 0;
+    const costEgp = totalEgp * share;
+    return Object.assign({}, r, {share, costEgp, unitEgp: r.recv ? costEgp/r.recv : 0,
+      cartonEgp: r.recvCartons ? costEgp/r.recvCartons : 0});
+  });
+  // فرق الفاتورة عن قيمة المستلم — بنقوله للمستخدم بدل ما يعدّي في صمت
+  const gap = nz(c.invoice) ? (t.value - nz(c.invoice)) : 0;
+  return {rows: priced, rate, invoice, extrasEgp, goodsEgp, totalEgp, t, gap};
+}
+function gvDateGroups(){
+  const list = gvOrders.filter(o=> gvShowArch || !o.archived);
+  const by = {};
+  list.forEach(o=>{ (by[o.date||'بدون تاريخ'] = by[o.date||'بدون تاريخ'] || []).push(o); });
+  return Object.keys(by).sort().reverse().map(d=>({date:d, orders:by[d]}));
+}
+function gvStatus(o){
+  if(o.archived) return {t:'مؤرشفة', c:'var(--muted)'};
+  if(o.received) return {t:'مستلمة', c:'var(--ok)'};
+  return {t:'جارية', c:'var(--blue)'};
+}
 function renderGV(m){
-  const shown=gvOrders.filter(o=>gvShowArch||!o.archived||o.id===gvCur), o=gvGet();
-  const head=`<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
-    <select onchange="gvSelect(this.value)" style="flex:1;min-width:0;padding:9px;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:13px">
-      <option value="">— اختار طلبية —</option>${shown.map(x=>`<option value="${x.id}" ${x.id===gvCur?'selected':''}>${x.archived?'📦 ':''}${esc(x.name)}</option>`).join('')}</select>
-    <button class="iconbtn" onclick="gvNew()" title="طلبية جديدة" style="width:auto;padding:0 12px;font-size:13px;font-weight:700;color:var(--blue)">➕ جديدة</button></div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px"><input type="checkbox" ${gvShowArch?'checked':''} onchange="gvShowArch=this.checked;render()"> إظهار الطلبيات المؤرشفة</label>`;
-  if(!o){ m.innerHTML=head+`<div class="empty">${gvOrders.length?'اختار طلبية من فوق':'لسه مفيش طلبيات — دوس ➕ جديدة'}</div>`; return; }
+  const tabs = ['📋 الطلبيات','📥 الاستلام','💵 التسعير'];
+  m.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px">
+      ${tabs.map((t,i)=>`<button onclick="setGvTab(${i})" style="flex:1;padding:10px 4px;border-radius:9px;
+        background:${gvTab===i?'var(--blue)':'var(--panel2)'};color:${gvTab===i?'#fff':'var(--text)'};
+        border:1px solid var(--border);font-weight:700;font-size:13.5px">${t}</button>`).join('')}
+    </div><div id="gv_c"></div>`;
+  const c = $('#gv_c');
+  if(gvTab===0) renderGvOrders(c);
+  else if(gvTab===1) renderGvReceive(c);
+  else renderGvPricing(c);
+}
+// ── ١) الطلبيات: قوايم منسدلة بالتاريخ
+function renderGvOrders(m){
+  const groups = gvDateGroups();
+  m.innerHTML = `
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button onclick="gvNew()" style="flex:1;padding:11px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:14px">➕ طلبية جديدة</button>
+    </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-bottom:10px">
+      <input type="checkbox" ${gvShowArch?'checked':''} onchange="gvShowArch=this.checked;render()"> إظهار المؤرشفة</label>
+    ${groups.length? groups.map(g=>{
+      const k='gvd:'+g.date, open=openGroups.has(k);
+      const tot=g.orders.reduce((a,x)=>{ const cc=gvCalc(x); return {ct:a.ct+cc.tot.cartons, v:a.v+cc.tot.value}; },{ct:0,v:0});
+      return `<div class="grp ${open?'open':''}">
+        <div class="grp-h" onclick="toggleGroup('${esc(k)}')">
+          <span>📅 ${esc(g.date)} <span class="cnt">(${g.orders.length})</span></span>
+          <span class="qs"><span><small>كراتين</small> <b>${fmt1(tot.ct)}</b></span><span><small>$</small> <b>${fmt2(tot.v)}</b></span><span class="arrow">▾</span></span>
+        </div>
+        <div class="grp-body">${g.orders.map(x=>{
+          const st=gvStatus(x), cc=gvCalc(x), on=x.id===gvCur;
+          return `<div class="card" onclick="gvSelect('${x.id}')" style="cursor:pointer;border:1px solid ${on?'var(--blue)':'var(--border)'}">
+            <div class="info"><div class="name">${esc(x.name)}</div>
+              <div class="sub"><span style="color:${st.c};font-weight:700">${st.t}</span> · ${x.rows.length} صنف · ${fmt1(cc.tot.cartons)} كرتونة · ${fmt2(cc.tot.value)} $</div></div>
+            <span class="arrow" style="transform:rotate(${on?'90':'0'}deg)">▾</span></div>
+            ${on? `<div style="border:1px solid var(--blue);border-radius:12px;padding:10px;margin:6px 0 10px"><div id="gv_ed"></div></div>`:''}`;
+        }).join('')}</div></div>`;
+    }).join('') : `<div class="empty">لسه مفيش طلبيات — دوس ➕ طلبية جديدة</div>`}`;
+  const ed = $('#gv_ed'); if(ed) gvOrderEditor(ed);
+}
+// ── ٢) الاستلام
+function gvPickerHtml(filter, label){
+  const list = gvOrders.filter(filter);
+  return `<div style="margin-bottom:10px"><label style="font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px">${label}</label>
+    <select onchange="gvSelect(this.value)" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:14px">
+      <option value="">— اختار طلبية —</option>
+      ${list.map(x=>`<option value="${x.id}" ${x.id===gvCur?'selected':''}>${x.archived?'📦 ':''}${esc(x.name)} — ${x.date}</option>`).join('')}
+    </select></div>`;
+}
+function renderGvReceive(m){
+  const pick = gvPickerHtml(o=> gvShowArch || !o.archived, 'الطلبية اللي وصلت');
+  const o = gvGet();
+  if(!o){ m.innerHTML = pick + `<div class="empty">اختار طلبية عشان تسجّل استلامها</div>`; return; }
+  if(!o.rows.length){ m.innerHTML = pick + `<div class="empty">الطلبية فاضية</div>`; return; }
+  const {rows} = gvRecvTot(o);
+  const qi='width:64px;padding:7px 3px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:14px;text-align:center';
+  m.innerHTML = pick + `
+    <div class="panelbox" id="gvRecvTot">${gvRecvTotHtml()}</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button onclick="gvRecvAll()" style="flex:1;padding:10px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:700;font-size:13px">✔️ وصل كله بالكامل</button>
+      <button onclick="gvMarkReceived()" style="flex:1;padding:10px;border-radius:9px;border:none;background:${o.received?'var(--ok)':'var(--blue)'};color:#fff;font-weight:700;font-size:13px">${o.received?'✅ مستلمة':'📥 اقفل الاستلام'}</button>
+      <button onclick="gvArchive()" style="padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:700;font-size:13px">${o.archived?'♻️':'📦'}</button>
+    </div>
+    ${rows.map(r=>`<div class="card" style="flex-wrap:wrap">
+      <div class="info" style="flex-basis:100%"><div class="name" style="font-size:13.5px">${r.i+1}. ${esc(r.name)}</div>
+        <div class="sub">مطلوب <b>${fmtN(r.qty)}</b> قطعة${r.pc?` (${fmt1(r.qty/r.pc)} كرتونة)`:''} · ${esc(r.code)}</div></div>
+      <label style="display:flex;flex-direction:column;align-items:center;gap:2px">
+        <span style="font-size:11px;color:var(--blue);font-weight:700">كرتونة</span>
+        <input type="number" inputmode="decimal" placeholder="0" value="${r.recv&&r.pc? Math.round(r.recvCartons*100)/100 : ''}" style="${qi}" onchange="gvRecvSet(${r.i},'c',this.value)"></label>
+      <label style="display:flex;flex-direction:column;align-items:center;gap:2px">
+        <span style="font-size:11px;color:var(--ok);font-weight:700">قطعة</span>
+        <input type="number" inputmode="numeric" placeholder="0" value="${r.recv||''}" style="${qi}" onchange="gvRecvSet(${r.i},'q',this.value)"></label>
+      <div class="sub" style="flex:1;min-width:110px;font-weight:700;color:${r.diff<0?'var(--danger)':(r.diff>0?'var(--ok)':'var(--muted)')}">
+        ${r.recv? (r.diff===0?'مطابق':(r.diff<0?'ناقص '+fmt1(-r.diff):'زيادة '+fmt1(r.diff))) : 'لسه ما وصلش'}</div>
+    </div>`).join('')}
+    <div class="impbar" style="margin-top:10px"><button onclick="exportGvRecvExcel()">📊 إكسل</button><button onclick="exportGvRecvPdf()">📄 PDF</button><button onclick="exportGvRecvImage()">🖼️ صورة</button></div>`;
+}
+// ── ٣) التسعير
+function renderGvPricing(m){
+  const pick = gvPickerHtml(o=> gvShowArch || !o.archived, 'طلبية للتسعير');
+  const o = gvGet();
+  if(!o){ m.innerHTML = pick + `<div class="empty">اختار طلبية عشان تسعّرها</div>`; return; }
+  const P = gvPricing(o), c = o.cost || {};
+  const inp='width:100%;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:14px';
+  if(!P.rows.length){ m.innerHTML = pick + `<div class="empty">مفيش كميات مستلمة — سجّل الاستلام الأول من 📥</div>`; return; }
+  m.innerHTML = pick + `
+    <div class="panelbox"><b style="font-size:14px">مصاريف الطلبية</b>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        ${GV_COST.map(([f,l])=>`<div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:3px">${l}</label>
+          <input type="number" inputmode="decimal" value="${c[f]??''}" style="${inp}" onchange="gvCostSet('${f}',this.value)"></div>`).join('')}
+      </div>
+      ${!nz(c.rate)? `<div style="color:var(--danger);font-size:12.5px;margin-top:8px;font-weight:700">اكتب سعر الصرف عشان التكلفة تتحسب بالجنيه.</div>`:''}
+      ${Math.abs(P.gap)>0.5? `<div style="font-size:12.5px;margin-top:8px;color:#b45309;font-weight:700">
+        قيمة اللي وصل فعلاً <b>${fmt2(P.t.value)} $</b> — ${P.gap>0?'أكبر':'أقل'} من الفاتورة بـ <b>${fmt2(Math.abs(P.gap))} $</b>.
+        التوزيع بيتم على الإجمالي اللي انت كاتبه.</div>`:''}
+    </div>
+    <div class="panelbox">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
+        <div><div style="font-size:12px;color:var(--muted)">قيمة البضاعة</div><div style="font-size:16px;font-weight:700">${fmtN(Math.round(P.goodsEgp))}</div></div>
+        <div><div style="font-size:12px;color:var(--muted)">المصاريف</div><div style="font-size:16px;font-weight:700">${fmtN(Math.round(P.extrasEgp))}</div></div>
+        <div><div style="font-size:12px;color:var(--muted)">الإجمالي بالجنيه</div><div style="font-size:16px;font-weight:700;color:var(--blue)">${fmtN(Math.round(P.totalEgp))}</div></div>
+      </div></div>
+    <div style="overflow-x:auto"><table class="rep stk">
+      <tr><th>الصنف</th><th>مستلم</th><th>كراتين</th><th>قيمة $</th><th>تكلفة القطعة</th><th>تكلفة الكرتونة</th><th>الإجمالي ج</th></tr>
+      ${P.rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${fmtN(r.recv)}</td><td>${fmt1(r.recvCartons)}</td>
+        <td>${fmt2(r.recvValue)}</td><td><b>${fmt2(r.unitEgp)}</b></td><td>${fmt2(r.cartonEgp)}</td><td>${fmtN(Math.round(r.costEgp))}</td></tr>`).join('')}
+      <tr class="m" style="background:var(--panel2);font-weight:700"><td>الإجمالي</td><td>${fmtN(P.t.recv)}</td><td>${fmt1(P.t.cartons)}</td>
+        <td>${fmt2(P.t.value)}</td><td></td><td></td><td>${fmtN(Math.round(P.totalEgp))}</td></tr>
+    </table></div>
+    <div class="impbar" style="margin-top:10px"><button onclick="exportGvPriceExcel()">📊 إكسل</button><button onclick="exportGvPricePdf()">📄 PDF</button><button onclick="exportGvPriceImage()">🖼️ صورة</button></div>`;
+}
+function gvOrderEditor(m){
+  const o=gvGet();
+  if(!o){ m.innerHTML=`<div class="empty">اختار طلبية</div>`; return; }
   const c=gvCalc(o), pct=c.cap? Math.min(100,c.tot.weight/c.cap*100):0, over=c.diff<-0.0001;
   const inp='width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13.5px';
   const qi='width:70px;padding:8px 4px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;text-align:center';
-  m.innerHTML=head+`
+  m.innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
       <div style="grid-column:1/-1"><label style="font-size:11.5px;color:var(--muted)">اسم الطلبية</label><input style="${inp}" value="${esc(o.name)}" onchange="gvField('name',this.value)"></div>
       <div><label style="font-size:11.5px;color:var(--muted)">التاريخ</label><input type="date" style="${inp}" value="${o.date}" onchange="gvField('date',this.value)"></div>
@@ -2741,7 +3010,7 @@ function renderGV(m){
       <div class="sub" style="flex:1;min-width:120px">${fmt1(r.weight)} كجم · ${fmt2(r.value)} $${r.pc && r.qty && Math.abs(r.cartons-Math.round(r.cartons))>0.0001?' <span style="color:var(--danger)">⚠️ كرتونة مش كاملة</span>':''}</div>
       <button onclick="gvDelRow(${r.i})" style="border:none;background:none;color:var(--danger);font-size:16px">✕</button></div>`).join('')
       : `<div class="empty">الطلبية فاضية — دوس ➕ إضافة أصناف</div>`}
-    ${floatBar(`<button onclick="exportGvExcel()">📊 إكسل</button><button onclick="exportGvPdf()">📄 PDF</button><button onclick="exportGvImage()">🖼️ صورة</button>`)}`;
+    <div class="impbar" style="margin-top:10px"><button onclick="exportGvExcel()">📊 إكسل</button><button onclick="exportGvPdf()">📄 PDF</button><button onclick="exportGvImage()">🖼️ صورة</button></div>`;
   const fi=document.getElementById('impGvOrder'); if(fi) fi.onchange=e=>{ if(e.target.files[0]) gvImportExcel(e.target.files[0]); };
 }
 function gvModel(){
@@ -2760,6 +3029,61 @@ function gvHasRows(){ const o=gvGet(); if(!o||!o.rows.length){ toast('الطلب
 function gvFile(){ return 'طلبية_جيفز_'+gvGet().date; }
 function exportGvPdf(){ if(gvHasRows()) exportDocPdf(gvDocBody(),gvFile(),true); }
 function exportGvImage(){ if(gvHasRows()) exportDocImage(gvDocBody(),gvFile(),true); }
+/* ═══ تصدير الاستلام والتسعير ═══
+   التسعير بيتصدّر من شاشة التسعير **بس** — ورقة الطلبية وورقة الاستلام
+   مفيهمش أسعار تكلفة عشان تتبعت للمورّد أو للمخزن من غير ما تكشف تكلفتك. */
+function gvRecvModel(){
+  const o=gvGet(), {rows,t}=gvRecvTot(o), body=[];
+  rows.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, r.code, r.qty,
+    r.pc? rnd2(r.qty/r.pc):'', r.recv||'', r.pc&&r.recv? rnd2(r.recvCartons):'',
+    r.recv? rnd2(r.diff):'', r.recv? (r.diff===0?'مطابق':(r.diff<0?'ناقص':'زيادة')) : 'لم يصل']}));
+  body.push({type:'tot', cells:['','الإجمالي','', t.qty, '', t.recv, rnd2(t.cartons), rnd2(t.diff), '']});
+  return {title:o.name+' — استلام '+(o.recvDate||todayStr()),
+    header:['م','اسم الصنف','الكود','المطلوب','كراتين مطلوبة','المستلم','كراتين مستلمة','الفرق','الحالة'], body, o};
+}
+function gvRecvDocBody(){ const md=gvRecvModel();
+  return `<div class="dx" style="font-size:12px"><h2>استلام طلبية جيفيز</h2><div class="sub">${esc(md.title)}</div>${docTableHtml(md)}</div>`; }
+function gvRecvOk(){ const o=gvGet(); if(!o||!o.rows.length){ toast('اختار طلبية فيها أصناف'); return false; } return true; }
+function gvRecvFile(){ return 'استلام_جيفز_'+(gvGet().recvDate||todayStr()); }
+function exportGvRecvPdf(){ if(gvRecvOk()) exportDocPdf(gvRecvDocBody(), gvRecvFile(), true); }
+function exportGvRecvImage(){ if(gvRecvOk()) exportDocImage(gvRecvDocBody(), gvRecvFile(), true); }
+function exportGvRecvExcel(){
+  if(!gvRecvOk()) return; const md=gvRecvModel();
+  saveAoaXlsx(modelToAoa(md),'الاستلام',gvRecvFile()+'.xlsx',[5,38,14,11,14,11,14,10,12],
+    {title:md.title, sign:['','','','','','','','auto','auto']});
+}
+function gvPriceModel(){
+  const o=gvGet(), P=gvPricing(o), body=[];
+  P.rows.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, r.code, r.recv, rnd2(r.recvCartons),
+    rnd2(r.recvValue), rnd2(r.unitEgp), rnd2(r.cartonEgp), Math.round(r.costEgp)]}));
+  body.push({type:'tot', cells:['','الإجمالي','', P.t.recv, rnd2(P.t.cartons), rnd2(P.t.value), '', '', Math.round(P.totalEgp)]});
+  return {title:o.name+' — تسعير المستلم', header:['م','اسم الصنف','الكود','المستلم','الكراتين','قيمة $','تكلفة القطعة ج','تكلفة الكرتونة ج','الإجمالي ج'], body, P, o};
+}
+function gvPriceDocBody(){
+  const md=gvPriceModel(), P=md.P, c=md.o.cost||{};
+  return `<div class="dx" style="font-size:12px"><h2>تسعير طلبية جيفيز</h2><div class="sub">${esc(md.title)}</div>
+    <table><tr>${GV_COST.map(([f,l])=>`<th>${esc(l)}</th>`).join('')}</tr>
+      <tr class="z">${GV_COST.map(([f])=>`<td>${fmtN(nz(c[f]))}</td>`).join('')}</tr></table>
+    ${docTableHtml(md)}
+    <h3>الإجمالي بالجنيه</h3><table><tr><th>قيمة البضاعة</th><th>المصاريف</th><th>الإجمالي</th></tr>
+      <tr class="z"><td>${fmtN(Math.round(P.goodsEgp))}</td><td>${fmtN(Math.round(P.extrasEgp))}</td><td><b>${fmtN(Math.round(P.totalEgp))}</b></td></tr></table></div>`;
+}
+function gvPriceOk(){
+  const o=gvGet(); if(!o){ toast('اختار طلبية'); return false; }
+  if(!gvPricing(o).rows.length){ toast('مفيش كميات مستلمة'); return false; }
+  return true;
+}
+function gvPriceFile(){ return 'تسعير_جيفز_'+(gvGet().recvDate||gvGet().date); }
+function exportGvPricePdf(){ if(gvPriceOk()) exportDocPdf(gvPriceDocBody(), gvPriceFile(), true); }
+function exportGvPriceImage(){ if(gvPriceOk()) exportDocImage(gvPriceDocBody(), gvPriceFile(), true); }
+function exportGvPriceExcel(){
+  if(!gvPriceOk()) return; const md=gvPriceModel(), c=md.o.cost||{}, aoa=modelToAoa(md);
+  aoa.push([], ['المصاريف'], ...GV_COST.map(([f,l])=> ['', l, '', nz(c[f])]));
+  aoa.push([], ['','قيمة البضاعة بالجنيه','', Math.round(md.P.goodsEgp)],
+               ['','المصاريف بالجنيه','', Math.round(md.P.extrasEgp)],
+               ['','الإجمالي بالجنيه','', Math.round(md.P.totalEgp)]);
+  saveAoaXlsx(aoa,'التسعير',gvPriceFile()+'.xlsx',[5,38,14,11,11,12,15,16,14],{title:md.title});
+}
 function exportGvExcel(){
   if(!gvHasRows()) return; const md=gvModel(), c=md.c, o=md.o, aoa=modelToAoa(md);
   aoa.push([],['','وزن الحاوية (كجم)','',nz(o.cap)],['','عدد الحاويات','',nz(o.containers)],['','إجمالي وزن الحاويات','',c.cap],['','الفرق في الميزان','',rnd2(c.diff)],['','الحالة','',c.status]);
