@@ -106,7 +106,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -208,6 +208,8 @@ let ordMap = load('ordMap_v1', {});        // اسمنا(مطبّع) -> اسمه
 let customers = load('customers_v1', []);
 let monthlySales = load('monthlySales_v1', {});
 let monthlySector = load('monthlySector_v1', {});
+// تفصيل الأبواب لكل شهر: {شهر: {عميل: {صنف: {qty, val, code}}}}
+let monthlyDoors = load('monthlyDoors_v1', {});
 
 const CLS_OPTS=['موزع','مبيعات جملة','مبيعات خاصة','عميل ابواب','مستبعد'];
 const SECTOR_MAP={
@@ -226,7 +228,7 @@ function exportBucket(mainGroup){ return EXPORT_GROUP_MAP[mainGroup] || mainGrou
 /* أول ما تفتح التطبيق تبدأ من الصفحة الرئيسية دايمًا — مش من آخر شاشة
    كنت فيها. الأقسام الفرعية كمان بترجع مقفولة. */
 let module=null, q='', openGroups=new Set(), pendingImport=null;
-try{ ['_whTab_','_whSub_','_cmpView_','_payTab_','_itemsTab_','_salesTab_','_gvCur_'].forEach(k=> localStorage.removeItem(k)); }catch(e){}
+try{ ['_whTab_','_whSub_','_cmpView_','_payTab_','_itemsTab_','_salesTab_','_salesRep_','_gvCur_'].forEach(k=> localStorage.removeItem(k)); }catch(e){}
 let whFilterMain=new Set(), whFilterSub=new Set();
 let shortMain=new Set(), shortSub=new Set();
 
@@ -242,7 +244,7 @@ let shortMain=new Set(), shortSub=new Set();
    البيانات كلها صغيرة (كيلوبايتات) فكل مفتاح بيترفع رفعة واحدة — مفيش تقطيع
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
-  'whOrderDate_v1','customers_v1','monthlySales_v1','monthlySector_v1','employees_v1','payData_v1',
+  'whOrderDate_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
   'paySendCols_v1','invCounts_v1','gvOrders_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
@@ -356,7 +358,7 @@ const SYNC_VARS = {
   gvcodes_v1: v=>{ gvcodes = v; }, units_v1: v=>{ units = v; },
   warehouses_v1: v=>{ warehouses = v; }, whStock_v1: v=>{ whStock = v; },
   whShortage_v1: v=>{ whShortage = v; }, customers_v1: v=>{ customers = v; },
-  monthlySales_v1: v=>{ monthlySales = v; }, monthlySector_v1: v=>{ monthlySector = v; },
+  monthlySales_v1: v=>{ monthlySales = v; }, monthlySector_v1: v=>{ monthlySector = v; }, monthlyDoors_v1: v=>{ monthlyDoors = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
   invCounts_v1: v=>{ invCounts = v; }, ordMap_v1: v=>{ ordMap = v; }, gvMap_v1: v=>{ gvMap = v; },
   // ⚠️ التلاتة دول كانوا في SYNC_KEYS بس مش في SYNC_VARS — يعني بيتنزّلوا
@@ -1360,15 +1362,166 @@ function renderSales(m){
   if(!customers.length && !Object.keys(monthlySales).length){ 
     m.innerHTML=`<div class="empty">ابدأ باستيراد عملاء ومبيعات</div>`; return; 
   }
-  const tabs=['عملاء','استيراد','مقارنة'];
+  const tabs=['📥 رفع شيت المبيعات','👥 العملاء','📊 التقارير'];
   const st = load('_salesTab_',null);
-  m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px">
-    ${tabs.map((t,i)=>`<button class="tab ${st===i?'active':''}" onclick="setSalesTab(${i})" style="flex:1;padding:9px;border-radius:9px;background:${st===i?'var(--blue)':'var(--panel2)'};color:${st===i?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700">${t}</button>`).join('')}
+  m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
+    ${tabs.map((t,i)=>`<button class="tab ${st===i?'active':''}" onclick="setSalesTab(${i})" style="flex:1 0 auto;padding:10px 12px;border-radius:9px;background:${st===i?'var(--blue)':'var(--panel2)'};color:${st===i?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13.5px;white-space:nowrap">${t}</button>`).join('')}
   </div><div id="st_content"></div>`;
   if(st===null) $('#st_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
-  else if(st===0) renderSalesCustomers($('#st_content'));
-  else if(st===1) renderSalesImport($('#st_content'));
-  else renderSalesReport($('#st_content'));
+  else if(st===0) renderSalesImport($('#st_content'));
+  else if(st===1) renderSalesCustomers($('#st_content'));
+  else renderSalesReportsHub($('#st_content'));
+}
+/* ═══ تقارير المبيعات: أربع تقارير جوه أيقونة واحدة ═══ */
+const SALES_REPORTS = [
+  {id:'dist',      name:'📈 موزعين إجمالي'},
+  {id:'distsec',   name:'🧩 موزعين قطاعات'},
+  {id:'doorcode',  name:'🚪 أبواب بالكود'},
+  {id:'distdoor',  name:'🚪 موزعين أبواب'},
+];
+function setSalesReport(id){ const cur=load('_salesRep_',null); save('_salesRep_', cur===id?null:id); render(true); }
+function renderSalesReportsHub(m){
+  const v = load('_salesRep_', null);
+  m.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
+      ${SALES_REPORTS.map(x=>`<button onclick="setSalesReport('${x.id}')" style="flex:1 0 auto;padding:10px 12px;border-radius:9px;
+        background:${v===x.id?'var(--blue)':'var(--panel2)'};color:${v===x.id?'#fff':'var(--text)'};
+        border:1px solid var(--border);font-weight:700;font-size:13px;white-space:nowrap">${x.name}</button>`).join('')}
+    </div><div id="srep_c"></div>`;
+  const c = $('#srep_c');
+  if(v==='dist') renderSalesReport(c);
+  else if(v==='distsec') renderRepDistSectors(c);
+  else if(v==='doorcode') renderRepDoorsByCode(c);
+  else if(v==='distdoor') renderRepDistDoors(c);
+  else c.innerHTML = `<div class="empty">اختار التقرير من فوق</div>`;
+}
+// الموزعين بس (العملاء المصنّفين «موزع»)
+function distributorNames(){
+  return customers.filter(c=> (c.cls||'')==='موزع').map(c=> c.name);
+}
+function salesMonths(){ return Object.keys(monthlySales).sort(); }
+const repFmt = n=> n? Math.round(n).toLocaleString('en-US') : '—';
+
+/* ٢) موزعين × قطاعات */
+function buildDistSectors(){
+  const months = salesMonths(), dists = new Set(distributorNames());
+  const secs = new Set(), rows = {};
+  months.forEach(mo=>{
+    Object.entries(monthlySector[mo]||{}).forEach(([cname, bySec])=>{
+      if(!dists.has(cname)) return;
+      Object.entries(bySec).forEach(([sec, v])=>{
+        secs.add(sec); rows[cname]=rows[cname]||{}; rows[cname][sec]=(rows[cname][sec]||0)+v;
+      });
+    });
+  });
+  const cols = [...secs].sort();
+  const list = Object.keys(rows).map(n=>({name:n, cells: cols.map(s=> rows[n][s]||0),
+    total: cols.reduce((a,s)=> a+(rows[n][s]||0), 0)})).sort((a,b)=> b.total-a.total);
+  const tot = cols.map((s,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
+  return {cols, list, tot, total: tot.reduce((a,b)=>a+b,0), months};
+}
+function repDistSectorsModel(){
+  const d = buildDistSectors(), body=[];
+  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, ...r.cells.map(v=> Math.round(v)), Math.round(r.total)]}));
+  body.push({type:'tot', cells:['','الإجمالي', ...d.tot.map(v=>Math.round(v)), Math.round(d.total)]});
+  return {title:'مبيعات الموزعين حسب القطاع — '+(d.months[0]||'')+(d.months.length>1?' إلى '+d.months[d.months.length-1]:''),
+    header:['م','الموزع', ...d.cols, 'الإجمالي'], body, d};
+}
+function renderRepDistSectors(m){
+  const d = buildDistSectors();
+  if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات لموزعين — صنّف العملاء «موزع» من شاشة العملاء</div>`; return; }
+  m.innerHTML = `<div style="overflow-x:auto"><table class="rep stk">
+      <tr><th>الموزع</th>${d.cols.map(c=>`<th>${esc(c)}</th>`).join('')}<th>الإجمالي</th></tr>
+      ${d.list.map(r=>`<tr><td>${esc(r.name)}</td>${r.cells.map(v=>`<td>${repFmt(v)}</td>`).join('')}<td><b>${repFmt(r.total)}</b></td></tr>`).join('')}
+      <tr class="m"><td><b>الإجمالي</b></td>${d.tot.map(v=>`<td><b>${repFmt(v)}</b></td>`).join('')}<td><b>${repFmt(d.total)}</b></td></tr>
+    </table></div>
+    ${floatBar(`<button onclick="exportRep('distsec','x')">📊 إكسل</button><button onclick="exportRep('distsec','p')">📄 PDF</button><button onclick="exportRep('distsec','i')">🖼️ صورة</button>`)}`;
+}
+
+/* ٣) الأبواب بالكود — قيمة وكمية */
+function buildDoorsByCode(){
+  const rows = {};
+  Object.keys(monthlyDoors).sort().forEach(mo=>{
+    Object.values(monthlyDoors[mo]||{}).forEach(byItem=>{
+      Object.entries(byItem).forEach(([name, d])=>{
+        const key = d.code || name;
+        const r = rows[key] = rows[key] || {code: d.code||'—', name, qty:0, val:0};
+        r.qty += (d.qty||0); r.val += (d.val||0);
+        if(!r.name) r.name = name;
+      });
+    });
+  });
+  const list = Object.values(rows).sort((a,b)=> b.val-a.val);
+  return {list, qty: list.reduce((a,r)=>a+r.qty,0), val: list.reduce((a,r)=>a+r.val,0)};
+}
+function repDoorsByCodeModel(){
+  const d = buildDoorsByCode(), body=[];
+  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.code, r.name, rnd2(r.qty), Math.round(r.val)]}));
+  body.push({type:'tot', cells:['','','الإجمالي', rnd2(d.qty), Math.round(d.val)]});
+  return {title:'مبيعات الأبواب بالكود — كمية وقيمة', header:['م','الكود','الصنف','الكمية','القيمة'], body, d};
+}
+function renderRepDoorsByCode(m){
+  const d = buildDoorsByCode();
+  if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات أبواب — ارفع شيت مبيعات فيه أصناف أبواب</div>`; return; }
+  m.innerHTML = `${!d.qty? `<div class="warn">الشيت المرفوع مكانش فيه عمود كمية، فالتقرير بالقيمة بس.</div>`:''}
+    <div style="overflow-x:auto"><table class="rep stk">
+      <tr><th>الصنف</th><th>الكود</th><th>الكمية</th><th>القيمة</th></tr>
+      ${d.list.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.code)}</td><td>${r.qty? fmt1(r.qty) : '—'}</td><td>${repFmt(r.val)}</td></tr>`).join('')}
+      <tr class="m"><td><b>الإجمالي</b></td><td></td><td><b>${d.qty? fmt1(d.qty):'—'}</b></td><td><b>${repFmt(d.val)}</b></td></tr>
+    </table></div>
+    ${floatBar(`<button onclick="exportRep('doorcode','x')">📊 إكسل</button><button onclick="exportRep('doorcode','p')">📄 PDF</button><button onclick="exportRep('doorcode','i')">🖼️ صورة</button>`)}`;
+}
+
+/* ٤) موزعين × أبواب — قيمة وكمية */
+function buildDistDoors(){
+  const dists = new Set(distributorNames()), rows = {};
+  Object.keys(monthlyDoors).sort().forEach(mo=>{
+    Object.entries(monthlyDoors[mo]||{}).forEach(([cname, byItem])=>{
+      if(!dists.has(cname)) return;
+      const r = rows[cname] = rows[cname] || {qty:0, val:0};
+      Object.values(byItem).forEach(d=>{ r.qty += (d.qty||0); r.val += (d.val||0); });
+    });
+  });
+  const list = Object.keys(rows).map(n=> ({name:n, qty:rows[n].qty, val:rows[n].val})).sort((a,b)=> b.val-a.val);
+  return {list, qty: list.reduce((a,r)=>a+r.qty,0), val: list.reduce((a,r)=>a+r.val,0)};
+}
+function repDistDoorsModel(){
+  const d = buildDistDoors(), body=[];
+  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, rnd2(r.qty), Math.round(r.val)]}));
+  body.push({type:'tot', cells:['','الإجمالي', rnd2(d.qty), Math.round(d.val)]});
+  return {title:'مبيعات الأبواب للموزعين — كمية وقيمة', header:['م','الموزع','الكمية','القيمة'], body, d};
+}
+function renderRepDistDoors(m){
+  const d = buildDistDoors();
+  if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات أبواب لموزعين</div>`; return; }
+  m.innerHTML = `${!d.qty? `<div class="warn">الشيت المرفوع مكانش فيه عمود كمية، فالتقرير بالقيمة بس.</div>`:''}
+    <div style="overflow-x:auto"><table class="rep stk">
+      <tr><th>الموزع</th><th>الكمية</th><th>القيمة</th></tr>
+      ${d.list.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.qty? fmt1(r.qty):'—'}</td><td>${repFmt(r.val)}</td></tr>`).join('')}
+      <tr class="m"><td><b>الإجمالي</b></td><td><b>${d.qty? fmt1(d.qty):'—'}</b></td><td><b>${repFmt(d.val)}</b></td></tr>
+    </table></div>
+    ${floatBar(`<button onclick="exportRep('distdoor','x')">📊 إكسل</button><button onclick="exportRep('distdoor','p')">📄 PDF</button><button onclick="exportRep('distdoor','i')">🖼️ صورة</button>`)}`;
+}
+
+/* تصدير موحّد للتقارير التلاتة الجداد */
+function repModel(id){
+  if(id==='dist')     return repDistTotalModel();
+  if(id==='distsec')  return repDistSectorsModel();
+  if(id==='doorcode') return repDoorsByCodeModel();
+  if(id==='distdoor') return repDistDoorsModel();
+  return null;
+}
+function exportRep(id, kind){
+  const md = repModel(id);
+  if(!md || !md.body.length){ toast('لا توجد بيانات'); return; }
+  const file = md.title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_');
+  if(kind==='x'){
+    const w = md.header[0]==='م' ? [5, 34, ...md.header.slice(2).map(()=>14)]
+                                  : [34, ...md.header.slice(1).map(()=>14)];
+    saveAoaXlsx(modelToAoa(md, true), 'تقرير', file+'.xlsx', w, {title: md.title});
+    return;
+  }
+  const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docTableHtml(md)}</div>`;
+  if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
 }
 function setSalesTab(n){ const cur=load('_salesTab_',null); save('_salesTab_', cur===n?null:n); q=''; render(true); }
 function renderSalesCustomers(m){
@@ -1427,8 +1580,36 @@ function renderSalesReport(m){
     rowsHtml+=`<tr><td>${esc(name)}</td>${months.map(mo=>`<td>${fmt(distRows[name][mo])}</td>`).join('')}<td><b>${fmt(tot)}</b></td></tr>`;
   });
   m.innerHTML=`${unclassified.size? `<div class="warn">⚠️ عندك ${unclassified.size} عميل لسه غير مصنّف ومش داخل في الجدول ده — صنّفهم من تاب العملاء: ${[...unclassified].slice(0,6).join('، ')}${unclassified.size>6?' ...':''}</div>`:''}
-    <div style="overflow-x:auto"><table class="rep">
-    <tr><th>بيان</th>${months.map(mo=>`<th>${mo}</th>`).join('')}<th>الإجمالي</th></tr>${rowsHtml}</table></div>`;
+    <div style="overflow-x:auto"><table class="rep stk">
+    <tr><th>بيان</th>${months.map(mo=>`<th>${mo}</th>`).join('')}<th>الإجمالي</th></tr>${rowsHtml}</table></div>
+    ${floatBar(`<button onclick="exportRep('dist','x')">📊 إكسل</button><button onclick="exportRep('dist','p')">📄 PDF</button><button onclick="exportRep('dist','i')">🖼️ صورة</button>`)}`;
+}
+// نفس أرقام الجدول اللي فوق، بس في شكل نموذج عشان يتصدّر
+function repDistTotalModel(){
+  const months=salesMonths();
+  const custByName={}; customers.forEach(c=>custByName[c.name]=c);
+  const rollup={}, distRows={};
+  months.forEach(mo=>{
+    Object.entries(monthlySales[mo]||{}).forEach(([name,net])=>{
+      const cls=(custByName[name]||{}).cls||'';
+      if(cls==='مستبعد' || !cls) return;
+      if(cls==='موزع'){ distRows[name]=distRows[name]||{}; distRows[name][mo]=(distRows[name][mo]||0)+net; }
+      else { rollup[cls]=rollup[cls]||{}; rollup[cls][mo]=(rollup[cls][mo]||0)+net; }
+    });
+  });
+  const body=[]; const colTot=months.map(()=>0); let grand=0;
+  const push=(label, byMo)=>{
+    const cells=months.map(mo=> Math.round(byMo[mo]||0));
+    const tot=cells.reduce((a,b)=>a+b,0);
+    cells.forEach((v,i)=> colTot[i]+=v); grand+=tot;
+    body.push({type:'row', cells:[label, ...cells, tot]});
+  };
+  ['مبيعات جملة','مبيعات خاصة','عميل ابواب'].forEach(cls=>{ if(rollup[cls]) push(cls, rollup[cls]); });
+  Object.keys(distRows).sort((a,b)=>{
+    const ta=months.reduce((s,mo)=>s+(distRows[a][mo]||0),0), tb=months.reduce((s,mo)=>s+(distRows[b][mo]||0),0);
+    return tb-ta; }).forEach(n=> push(n, distRows[n]));
+  body.push({type:'tot', cells:['الإجمالي', ...colTot, grand]});
+  return {title:'مبيعات الموزعين — إجمالي', header:['بيان', ...months, 'الإجمالي'], body};
 }
 function importCustomers(file){
   const r=new FileReader();
@@ -1461,8 +1642,15 @@ function importSales(file){
       const hdr = rows[hdrRow];
       const idx=n=>hdr.indexOf(n);
       const ci=idx('c_name'), ii=idx('Item_Name'), voi=idx('vout'), vii=idx('vin');
+      /* الكمية اسم عمودها بيختلف من تصدير للتاني — بندوّر على أشهر الأسماء.
+         لو ملقيناش، تقارير الكميات بتقول كده بصراحة بدل ما تطلع أصفار. */
+      const QOUT=['qout','q_out','qty_out','qtyout','quantity_out','الكمية','كمية','العدد','qty','quantity'];
+      const QIN =['qin','q_in','qty_in','qtyin','quantity_in','كمية مرتجع','الكمية المرتجعة'];
+      const findCol=(names)=>{ for(const n of names){
+        const i=hdr.findIndex(h=> String(h||'').trim().toLowerCase()===n.toLowerCase()); if(i!==-1) return i; } return -1; };
+      const qoi=findCol(QOUT), qii=findCol(QIN), coi=idx('Item_Code');
       const dataRows = rows.slice(hdrRow+1).filter(r=>r[ci]);
-      const custMap={}, sectorMap={};
+      const custMap={}, sectorMap={}, doorMap={};
       const unmatchedCust=new Set(), unmatchedItems=new Set();
       const custByName={}; customers.forEach(c=>custByName[c.name]=c);
       for(const row of dataRows){
@@ -1475,12 +1663,23 @@ function importSales(file){
         const sector = it? (SECTOR_MAP[it.mainGroup]||'أخرى') : 'غير معروف';
         if(!it && iname) unmatchedItems.add(iname);
         sectorMap[cname]=sectorMap[cname]||{}; sectorMap[cname][sector]=(sectorMap[cname][sector]||0)+net;
+        // تفصيل الأبواب: لازم الكمية والكود عشان تقارير الأبواب
+        if(sector==='ابواب WPC' || (it && /ابواب/.test(it.mainGroup||''))){
+          const qty=(qoi>=0? (parseFloat(row[qoi])||0) : 0) - (qii>=0? (parseFloat(row[qii])||0) : 0);
+          const code=coi>=0? String(row[coi]||'').trim() : '';
+          doorMap[cname]=doorMap[cname]||{};
+          const d=doorMap[cname][iname]=doorMap[cname][iname]||{qty:0, val:0, code};
+          d.qty+=qty; d.val+=net; if(!d.code && code) d.code=code;
+        }
       }
       const total=Object.values(custMap).reduce((a,b)=>a+b,0);
-      pendingImport={type:'sales', custMap, sectorMap, unmatchedCust:[...unmatchedCust], unmatchedItems:[...unmatchedItems], total};
+      pendingImport={type:'sales', custMap, sectorMap, doorMap, hasQty: qoi>=0,
+        unmatchedCust:[...unmatchedCust], unmatchedItems:[...unmatchedItems], total};
       openSheet(`<h3>تأكيد المبيعات</h3>
         <div class="f-row"><label>الشهر (YYYY-MM) *</label><input id="s_month" placeholder="2026-01"></div>
-        <p style="font-size:13px">عملاء: ${Object.keys(custMap).length} — إجمالي: ${Math.round(total).toLocaleString('en-US')}</p>
+        <p style="font-size:13px">عملاء: ${Object.keys(custMap).length} — إجمالي: ${Math.round(total).toLocaleString('en-US')}
+          ${Object.keys(doorMap).length? ` — أبواب: ${Object.keys(doorMap).length} عميل` : ''}</p>
+        ${qoi<0? `<div class="warn">الملف مفيهوش عمود كمية، فتقارير الأبواب هتطلع بالقيمة بس.</div>`:''}
         ${pendingImport.unmatchedCust.length?`<div class="warn">عملاء جدد: ${pendingImport.unmatchedCust.slice(0,5).join('، ')}</div>`:''}
         <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
         <button class="btn-save" onclick="commitSalesImport()">💾 حفظ</button></div>`);
@@ -1495,7 +1694,9 @@ function commitSalesImport(){
   p.unmatchedCust.forEach(name=>{ customers.push({id:uid(),name,cls:''}); });
   save('customers_v1',customers);
   monthlySales[month]=p.custMap; monthlySector[month]=p.sectorMap;
+  monthlyDoors[month]=p.doorMap||{};
   save('monthlySales_v1',monthlySales); save('monthlySector_v1',monthlySector);
+  save('monthlyDoors_v1',monthlyDoors);
   pendingImport=null; closeSheet(); render(); toast('تم حفظ '+month);
 }
 
