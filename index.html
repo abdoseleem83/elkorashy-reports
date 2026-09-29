@@ -111,7 +111,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.6</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.7</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -1389,6 +1389,7 @@ const SALES_REPORTS = [
   {id:'distsec',   name:'🧩 موزعين قطاعات'},
   {id:'doorcode',  name:'🚪 أبواب بالكود'},
   {id:'distdoor',  name:'🚪 موزعين أبواب'},
+  {id:'cmpmo',     name:'⚖️ مقارنة شهور'},
 ];
 function setSalesReport(id){ const cur=load('_salesRep_',null); save('_salesRep_', cur===id?null:id); render(true); }
 function renderSalesReportsHub(m){
@@ -1403,6 +1404,7 @@ function renderSalesReportsHub(m){
   else if(v==='distsec') renderRepDistSectors(c);
   else if(v==='doorcode') renderRepDoorsByCode(c);
   else if(v==='distdoor') renderRepDistDoors(c);
+  else if(v==='cmpmo') renderRepMonthCompare(c);
   else c.innerHTML = `<div class="empty">اختار التقرير من فوق</div>`;
 }
 // الموزعين بس (العملاء المصنّفين «موزع»)
@@ -1513,12 +1515,88 @@ function renderRepDistDoors(m){
     ${floatBar(`<button onclick="exportRep('distdoor','x')">📊 إكسل</button><button onclick="exportRep('distdoor','p')">📄 PDF</button><button onclick="exportRep('distdoor','i')">🖼️ صورة</button>`)}`;
 }
 
+/* ═══ ٥) مقارنة المبيعات بين شهرين ═══
+   نفس صفوف تقرير «موزعين إجمالي» (التصنيفات مجمّعة + كل موزع بسطر)،
+   بس عمودين لشهرين تختارهم، وعمود فرق وعمود نسبة. */
+function cmpMonths(){
+  const mos = salesMonths();
+  let a = load('_cmpMoA_', null), b = load('_cmpMoB_', null);
+  if(!mos.includes(a)) a = mos[mos.length-2] || mos[0] || null;
+  if(!mos.includes(b)) b = mos[mos.length-1] || null;
+  return {mos, a, b};
+}
+function setCmpMo(which, mo){ save(which==='a'?'_cmpMoA_':'_cmpMoB_', mo); render(true); }
+function buildMonthCompare(){
+  const {mos, a, b} = cmpMonths();
+  if(mos.length<2 || !a || !b) return {mos, a, b, list:[], ta:0, tb:0};
+  const custByName={}; customers.forEach(c=> custByName[c.name]=c);
+  const agg={};   // المفتاح: اسم الموزع، أو اسم التصنيف للباقي
+  const add=(mo, key)=>{
+    Object.entries(monthlySales[mo]||{}).forEach(([name,net])=>{
+      const cls=(custByName[name]||{}).cls||'';
+      if(!cls || cls==='مستبعد') return;
+      const row = cls==='موزع' ? name : cls;
+      agg[row]=agg[row]||{a:0,b:0}; agg[row][key]+=net;
+    });
+  };
+  add(a,'a'); add(b,'b');
+  const list=Object.keys(agg).map(name=>{
+    const va=agg[name].a, vb=agg[name].b, diff=vb-va;
+    return {name, va, vb, diff, pct: va? Math.round(diff/va*100) : null};
+  }).sort((x,y)=> y.vb - x.vb);
+  const ta=list.reduce((s2,r)=>s2+r.va,0), tb=list.reduce((s2,r)=>s2+r.vb,0);
+  return {mos, a, b, list, ta, tb};
+}
+const pctTxt = p => p===null ? '—' : (p>0?'+':'')+p+'%';
+function repMonthCompareModel(){
+  const d=buildMonthCompare(); const body=[];
+  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, Math.round(r.va), Math.round(r.vb),
+    Math.round(r.diff), pctTxt(r.pct)]}));
+  const tdiff=d.tb-d.ta, tpct=d.ta? Math.round(tdiff/d.ta*100) : null;
+  body.push({type:'tot', cells:['','الإجمالي', Math.round(d.ta), Math.round(d.tb), Math.round(tdiff), pctTxt(tpct)]});
+  return {title:`مقارنة المبيعات — ${d.a||''} مقابل ${d.b||''}`,
+    header:['م','بيان', d.a||'—', d.b||'—', 'الفرق', 'النسبة'],
+    body, sign:['','','','','auto','auto'], d};
+}
+function renderRepMonthCompare(m){
+  const d=buildMonthCompare();
+  if(d.mos.length<2){
+    m.innerHTML=`<div class="empty">المقارنة محتاجة شهرين على الأقل —
+      لسه مرفوع ${d.mos.length} شهر.<br>ارفع شيت شهر تاني من «رفع شيت المبيعات».</div>`;
+    return;
+  }
+  const sel=(which,cur)=>`<select onchange="setCmpMo('${which}',this.value)"
+    style="padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:var(--panel);
+    color:var(--text);font-weight:700;font-size:13.5px">
+    ${d.mos.map(mo=>`<option ${mo===cur?'selected':''}>${mo}</option>`).join('')}</select>`;
+  const tdiff=d.tb-d.ta, tpct=d.ta? Math.round(tdiff/d.ta*100) : null;
+  const col=v=> v>0?'var(--green,#0a7d3c)' : (v<0?'var(--red,#c0202f)':'inherit');
+  const cell=v=>{ const n=Math.round(v);
+    const t = n===0 ? '—' : (n>0?'+':'−')+Math.abs(n).toLocaleString('en-US');
+    return `<td style="color:${col(n)};font-weight:700">${t}</td>`; };
+  const pcell=p=>`<td style="color:${col(p===null?0:p)};font-weight:700">${pctTxt(p)}</td>`;
+  m.innerHTML=`
+    <div class="toolbar" style="align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:13px;color:var(--muted)">من</span>${sel('a',d.a)}
+      <span style="font-size:13px;color:var(--muted)">إلى</span>${sel('b',d.b)}
+    </div>
+    <div style="overflow-x:auto"><table class="rep stk">
+      <tr><th>م</th><th>بيان</th><th>${d.a}</th><th>${d.b}</th><th>الفرق</th><th>النسبة</th></tr>
+      ${d.list.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td>
+        <td>${repFmt(r.va)}</td><td>${repFmt(r.vb)}</td>${cell(r.diff)}${pcell(r.pct)}</tr>`).join('')}
+      <tr class="m"><td></td><td><b>الإجمالي</b></td><td><b>${repFmt(d.ta)}</b></td>
+        <td><b>${repFmt(d.tb)}</b></td>${cell(tdiff)}${pcell(tpct)}</tr>
+    </table></div>
+    ${floatBar(`<button onclick="exportRep('cmpmo','x')">📊 إكسل</button><button onclick="exportRep('cmpmo','p')">📄 PDF</button><button onclick="exportRep('cmpmo','i')">🖼️ صورة</button>`)}`;
+}
+
 /* تصدير موحّد للتقارير التلاتة الجداد */
 function repModel(id){
   if(id==='dist')     return repDistTotalModel();
   if(id==='distsec')  return repDistSectorsModel();
   if(id==='doorcode') return repDoorsByCodeModel();
   if(id==='distdoor') return repDistDoorsModel();
+  if(id==='cmpmo')    return repMonthCompareModel();
   return null;
 }
 function exportRep(id, kind){
@@ -1528,7 +1606,7 @@ function exportRep(id, kind){
   if(kind==='x'){
     const w = md.header[0]==='م' ? [5, 34, ...md.header.slice(2).map(()=>14)]
                                   : [34, ...md.header.slice(1).map(()=>14)];
-    saveAoaXlsx(modelToAoa(md, true), 'تقرير', file+'.xlsx', w, {title: md.title});
+    saveAoaXlsx(modelToAoa(md, true), 'تقرير', file+'.xlsx', w, {title: md.title, sign: md.sign||[]});
     return;
   }
   const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docTableHtml(md)}</div>`;
@@ -1808,6 +1886,8 @@ const DOC_CSS=`<style>
 .dx table.pay th{background:#4472c4;border-color:#2f5597;font-weight:700}
 .dx table.pay td{border-color:#9db2dd;background:#fff}
 .dx table.pay tr.z td{background:#fff}
+.dx table td.minus{color:#c0202f;font-weight:700}
+.dx table td.plus{color:#0a7d3c;font-weight:700}
 .dx table.pay td.minus{color:#c0202f;font-weight:700}
 .dx table.pay td.plus{color:#0a7d3c;font-weight:700}
 .dx table.pay td.money{font-weight:700}
@@ -2658,13 +2738,24 @@ const rnd0=x=>Math.round(x+1e-9);
 const mr5=x=>Math.round(x/5+1e-9)*5;
 const fmt1=n=>Number(n).toLocaleString('en-US',{maximumFractionDigits:1});
 const fmt2=n=>Number(n).toLocaleString('en-US',{maximumFractionDigits:2});
+/* إشارة الخانة: رقم بالسالب/الموجب، أو نص زي «+12%» و«عجز» */
+function signOf(c){
+  if(typeof c === 'number') return c<0 ? 'minus' : (c>0 ? 'plus' : '');
+  const t = String(c||'');
+  if(/^-/.test(t) || /عجز/.test(t)) return 'minus';
+  if(/^\+/.test(t) || /زياد/.test(t)) return 'plus';
+  return '';
+}
 function docTableHtml(model, extraCss){
   const n=model.header.length;
   const cls={branch:'m',sub:'s',tot:'m',row:'z'};
   return `<table><tr>${model.header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr>`+
     model.body.map(r=> r.type==='branch'
       ? `<tr class="m"><td colspan="${n}">◆ ${esc(r.label)}</td></tr>`
-      : `<tr class="${cls[r.type]}">${r.cells.map(c=>`<td>${typeof c==='number'?fmt2(c):esc(c)}</td>`).join('')}</tr>`).join('')+`</table>`;
+      : `<tr class="${cls[r.type]}">${r.cells.map((c,i)=>{
+          const sg = (model.sign||[])[i]==='auto' ? signOf(c) : '';
+          return `<td class="${sg}">${typeof c==='number'?fmt2(c):esc(c)}</td>`;
+        }).join('')}</tr>`).join('')+`</table>`;
 }
 /* الكشف اللي بيتبعت: كل عمود ليه دوره — الراتب والصافي بخلفية خضرا،
    والخانات اللي بتتكتب (غياب/تأخير/إضافي/سلف/تأمينات/حوافز) بخلفية كريمي،
@@ -2741,8 +2832,9 @@ function styleSheet(ws, o){
         let sg = sign[c - R.s.c];
         if(sg === 'auto'){
           if(numeric) sg = cell.v < 0 ? 'minus' : (cell.v > 0 ? 'plus' : '');
-          else sg = /عجز/.test(String(cell.v || '')) ? 'minus'
-                  : (/زياد/.test(String(cell.v || '')) ? 'plus' : '');
+          else { const t=String(cell.v || '');
+                 sg = (/^-/.test(t) || /عجز/.test(t)) ? 'minus'
+                    : ((/^\+/.test(t) || /زياد/.test(t)) ? 'plus' : ''); }
         }
         // صف الإجمالي في الإكسل خلفيته فاتحة (D9E1F5) فالأحمر والأخضر
         // الغامقين بيتقروا عليه عادي

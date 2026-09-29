@@ -45,8 +45,8 @@ check('فتح المجموعة بيوري الأسماء', (await pg.evaluate(()
 // ── الأربع تقارير
 await pg.evaluate(()=>{ save('_salesTab_',2); render(true); }); await pg.waitForTimeout(350);
 const reps = await pg.evaluate(()=>[...document.querySelectorAll('#st_content > div:first-child button')].map(x=>x.textContent.trim()));
-check('٤ تقارير جوه أيقونة التقارير',
-  reps.join('|')==='📈 موزعين إجمالي|🧩 موزعين قطاعات|🚪 أبواب بالكود|🚪 موزعين أبواب', reps.join('|'));
+check('٥ تقارير جوه أيقونة التقارير',
+  reps.join('|')==='📈 موزعين إجمالي|🧩 موزعين قطاعات|🚪 أبواب بالكود|🚪 موزعين أبواب|⚖️ مقارنة شهور', reps.join('|'));
 
 // ١) موزعين إجمالي
 const d1 = await pg.evaluate(()=>repModel('dist'));
@@ -117,8 +117,8 @@ check('زرار رفع المبيعات موجود على جهاز فاضي', aw
 await pg2.evaluate(()=>{ save('_salesTab_',1); render(true); }); await pg2.waitForTimeout(300);
 check('زرار استيراد العملاء موجود على جهاز فاضي', await pg2.evaluate(()=>!!document.querySelector('#impCust')));
 await pg2.evaluate(()=>{ save('_salesTab_',2); render(true); }); await pg2.waitForTimeout(300);
-check('التقارير الأربعة ظاهرة حتى لو فاضية',
-  (await pg2.evaluate(()=>[...document.querySelectorAll('#st_content > div:first-child button')].length))===4);
+check('التقارير الخمسة ظاهرة حتى لو فاضية',
+  (await pg2.evaluate(()=>[...document.querySelectorAll('#st_content > div:first-child button')].length))===5);
 
 check('مفيش أخطاء جافاسكريبت', errs.length===0, errs.join(' | '));
 console.log(`\n${pass} نجح · ${fail} فشل`);
