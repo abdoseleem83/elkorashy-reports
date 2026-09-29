@@ -103,7 +103,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.0</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.1</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -1811,23 +1811,30 @@ function gvStockName(name, codeId, code){
   }
   return null;
 }
-/* أسماء جيفز طويلة وبتتكرر فيها نفس الكلمات (GEVIS · الكود · SUR)، فالسطر
-   بياخد تلات أسطر في الجدول. الاسم المختصر بيشيل التكرار ويسيب اللي
-   بيفرّق: النوع والمقاس. الاسم الكامل بيفضل في الربط وفي tooltip. */
+/* أسماء جيفز طويلة وبيتكرر فيها نفس الكلام (GEVIS · ISP · SUR · الكود).
+   المطلوب اسم عربي بس وبترتيب: الكلمة الأولى ثم المقاس ثم النوع —
+   «سبلونة مفصلى 40 سم GEVIS ISP-M400»  →  «سبلونة 40 مفصلى».
+   الاسم الكامل بيفضل في tooltip وفي لوحة الربط. */
 function gvShortName(name, code){
-  let t = String(name || '').trim();
-  if(code){
-    // الكود نفسه أو أجزاؤه لو مكتوبين جوه الاسم
-    String(code).split(/[\s\-\/]+/).filter(x=> x.length >= 3).forEach(part=>{
-      t = t.replace(new RegExp(part.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'gi'), ' ');
-    });
+  const orig = String(name || '').trim();
+  /* ١) نشيل الأكواد كاملة الأول (M300 · ISP-M1600 · A01) — لو شلنا الحروف
+     بس، الأرقام اللي جواها بتفضل وتبان كأنها مقاس (M300 → 300). */
+  let t = orig.replace(/[A-Za-z][A-Za-z0-9\-]*/g, ' ')   // بيبدأ بحرف لاتيني
+              .replace(/[\d]+[A-Za-z][A-Za-z0-9]*/g, ' ') // بيبدأ برقم وفيه حرف
+              .replace(/جيفيز|جيفز/g, ' ')
+              .replace(/[\-–—/_]+/g, ' ')
+              .replace(/\.(?![\d٠-٩])|(?<![\d٠-٩])\./g, ' '); // النقطة بين رقمين تفضل
+  // ٢) نشيل وحدات القياس المكرّرة
+  t = t.replace(/(^|\s)(سم|مم|متر|م)(?=\s|$)/g, ' ');
+  const parts = t.split(/\s+/).filter(Boolean);
+  if(!parts.length) return orig;
+  // ٣) المقاس يجي بعد الكلمة الأولى
+  const numAt = parts.findIndex((w,k)=> k > 0 && /^[\d٠-٩]+([.,][\d٠-٩]+)?$/.test(w));
+  if(numAt > 1){
+    const [num] = parts.splice(numAt, 1);
+    parts.splice(1, 0, num);
   }
-  t = t.replace(/\bGEVIS\b|\bGEVIZ\b|جيفيز|جيفز/gi, ' ')
-       .replace(/\bSUR\b|\bISP\b/gi, ' ')
-       .replace(/[\-–—/]+/g, ' ')
-       .replace(/\s{2,}/g, ' ')
-       .trim();
-  return t || String(name || '').trim();
+  return parts.join(' ') || orig;
 }
 function buildGvCompare(){
   const rows = [];
