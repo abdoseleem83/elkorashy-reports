@@ -22,10 +22,11 @@ await pg.addInitScript(()=>{
     '2026-09':{'موزع طنطا':{'قطاعات PVC كومبن':90000,'ابواب WPC':30000},
                'موزع المحلة':{'ابواب WPC':40000}}}));
   localStorage.setItem('monthlyDoors_v1', JSON.stringify({
-    '2026-08':{'موزع طنطا':{'باب كامل 80 A05':{qty:30,val:30000,code:'A05'}},
-               'موزع المحلة':{'باب كامل 90 A07':{qty:40,val:40000,code:'A07'}}},
-    '2026-09':{'موزع طنطا':{'باب كامل 80 A05':{qty:25,val:30000,code:'A05'}},
-               'موزع المحلة':{'باب كامل 80 A05':{qty:35,val:40000,code:'A05'}}}}));
+    '2026-08':{'موزع طنطا':{'باب كامل 80 سم A05':{qty:30,val:30000,code:'A05',sub:'ابواب'}},
+               'موزع المحلة':{'باب كامل 90 سم A07':{qty:40,val:40000,code:'A07',sub:'ابواب'}}},
+    '2026-09':{'موزع طنطا':{'باب كامل 80 سم A05':{qty:25,val:30000,code:'A05',sub:'ابواب'},
+                            'كالون سلندر نحاس ابواب WPC':{qty:500,val:9000,code:'',sub:'اكسسوارات ابواب wpc'}},
+               'موزع المحلة':{'باب كامل 80 سم A05':{qty:35,val:40000,code:'A05',sub:'ابواب'}}}}));
 });
 await pg.goto(APP); await pg.waitForTimeout(1200);
 await pg.evaluate(()=>{ module='sales'; render(true); }); await pg.waitForTimeout(350);
@@ -50,36 +51,43 @@ check('٥ تقارير جوه أيقونة التقارير',
 
 // ١) موزعين إجمالي
 const d1 = await pg.evaluate(()=>repModel('dist'));
-check('الإجمالي: الشهور أعمدة', d1.header.join('|')==='بيان|2026-08|2026-09|الإجمالي', d1.header.join('|'));
+check('الإجمالي: الشهور أعمدة بأسماء عربية',
+  d1.header.join('|')==='م|بيان|أغسطس 2026|سبتمبر 2026|الإجمالي', d1.header.join('|'));
 const t1 = d1.body[d1.body.length-1].cells;
-check('أغسطس ١٩٠ ألف (المستبعد مش داخل)', t1[1]===190000, String(t1[1]));
-check('سبتمبر ١٨٠ ألف والإجمالي ٣٧٠', t1[2]===180000 && t1[3]===370000, t1.join('/'));
+check('أغسطس ١٩٠ ألف (المستبعد مش داخل)', t1[2]===190000, String(t1[2]));
+check('سبتمبر ١٨٠ ألف والإجمالي ٣٧٠', t1[3]===180000 && t1[4]===370000, t1.join('/'));
+check('مرتّب من الأعلى للأقل', d1.body[0].cells[1]==='موزع طنطا', String(d1.body[0].cells[1]));
 
 // ٢) موزعين قطاعات
 const d2 = await pg.evaluate(()=>repModel('distsec'));
-check('القطاعات أعمدة والموزعين صفوف',
-  d2.header.join('|')==='م|الموزع|ابواب WPC|اكسسوارات|قطاعات PVC كومبن|الإجمالي', d2.header.join('|'));
+check('القطاعات بالترتيب المطلوب: كومبن قبل اكسسوارات قبل ابواب',
+  d2.header.join('|')==='م|الموزع|كومبن|اكسسوارات|ابواب|الإجمالي', d2.header.join('|'));
 const t2 = d2.body[d2.body.length-1].cells;
-check('أبواب ١٤٠ ألف · اكسسوارات ٢٠ · كومبن ١٦٠', t2[2]===140000 && t2[3]===20000 && t2[4]===160000, t2.join('/'));
+check('كومبن ١٦٠ · اكسسوارات ٢٠ · أبواب ١٤٠', t2[2]===160000 && t2[3]===20000 && t2[4]===140000, t2.join('/'));
 check('الموزعين بس (محل الجملة مش موجود)',
   !d2.body.some(r=> String(r.cells[1]||'').includes('محل جملة')), '');
 
 // ٣) أبواب بالكود — كمية وقيمة
 const d3 = await pg.evaluate(()=>repModel('doorcode'));
-check('أعمدة الكود والكمية والقيمة', d3.header.join('|')==='م|الكود|الصنف|الكمية|القيمة', d3.header.join('|'));
+check('صف = الكود وأعمدة المقاسات من غير عمود الصنف',
+  d3.header.join('|')==='م|الكود|70|80|90|متر|برور وحلق|خدمات|الكمية|الإجمالي', d3.header.join('|'));
 const a05 = d3.body.find(r=> r.cells[1]==='A05');
-check('A05 اتجمّع من الشهرين ومن العميلين: ٩٠ قطعة', a05 && a05.cells[3]===90, JSON.stringify(a05&&a05.cells));
-check('وقيمته ١٠٠ ألف', a05 && a05.cells[4]===100000, String(a05&&a05.cells[4]));
+const a07 = d3.body.find(r=> r.cells[1]==='A07');
+check('A05 اتجمّع من الشهرين ومن العميلين: ٩٠ قطعة', a05 && a05.cells[8]===90, JSON.stringify(a05&&a05.cells));
+check('وقيمته ١٠٠ ألف', a05 && a05.cells[9]===100000, String(a05&&a05.cells[9]));
+check('A05 (٨٠ سم) وقع في عمود ٨٠ مش ٩٠', a05 && a05.cells[3]===100000 && a05.cells[4]===0, JSON.stringify(a05&&a05.cells));
+check('A07 (٩٠ سم) وقع في عمود ٩٠', a07 && a07.cells[4]===40000, JSON.stringify(a07&&a07.cells));
 const t3 = d3.body[d3.body.length-1].cells;
-check('إجمالي الأبواب ١٣٠ قطعة و١٤٠ ألف', t3[3]===130 && t3[4]===140000, t3.join('/'));
+check('إجمالي الأبواب ١٣٠ باب + ٥٠٠ كالون', t3[8]===630 && t3[9]===149000, t3.join('/'));
 
 // ٤) موزعين أبواب — كمية وقيمة
 const d4 = await pg.evaluate(()=>repModel('distdoor'));
-check('أعمدة الموزع والكمية والقيمة', d4.header.join('|')==='م|الموزع|الكمية|القيمة', d4.header.join('|'));
+check('أعمدة العميل والكمية والقيمة', d4.header.join('|')==='م|العميل|الكمية|القيمة', d4.header.join('|'));
 const tanta = d4.body.find(r=> r.cells[1]==='موزع طنطا');
 check('طنطا ٥٥ قطعة و٦٠ ألف', tanta && tanta.cells[2]===55 && tanta.cells[3]===60000, JSON.stringify(tanta&&tanta.cells));
 const t4 = d4.body[d4.body.length-1].cells;
-check('إجمالي الأبواب للموزعين نفس إجمالي الأبواب بالكود', t4[2]===t3[3] && t4[3]===t3[4], t4.join('/'));
+check('موزعين أبواب: الأبواب بس — الكالون (قطاع فرعي إكسسوارات) مش داخل',
+  t4[2]===130 && t4[3]===140000, t4.join('/'));
 
 // ── التصدير في كل تقرير
 for(const [id,nm] of [['dist','إجمالي'],['distsec','قطاعات'],['doorcode','أبواب بالكود'],['distdoor','موزعين أبواب']]){
@@ -99,7 +107,8 @@ const x = await pg.evaluate(()=>{
   window.saveAoaXlsx=(d,sh,fn,w,o)=>{ got={d,w,fn}; };
   try{ exportRep('doorcode','x'); } finally { window.saveAoaXlsx=real; }
   return got; });
-check('إكسل الأبواب بالكود', x && x.d[0].join('|')==='م|الكود|الصنف|الكمية|القيمة', x? x.d[0].join('|'):'مفيش');
+check('إكسل الأبواب بالكود',
+  x && x.d[0].join('|')==='م|الكود|70|80|90|متر|برور وحلق|خدمات|الكمية|الإجمالي', x? x.d[0].join('|'):'مفيش');
 check('عرض الأعمدة مطابق', x.w.length===x.d[0].length, x.w.length+' vs '+x.d[0].length);
 
 // ── جهاز فاضي خالص: لازم يوصل لزرار الرفع، مايبقاش طريق مسدود
