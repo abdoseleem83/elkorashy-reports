@@ -44,6 +44,12 @@ main{flex:1;overflow-y:auto;padding:10px}
 .card .name{font-weight:700;font-size:14px}
 .card .sub{font-size:12px;color:var(--muted);margin-top:2px}
 /* أول تلاتة فوق كل تقرير */
+.mobar{margin-bottom:8px}
+.morow{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;align-items:center}
+.mochip{border:1px solid var(--border);background:var(--panel2);color:var(--muted);border-radius:999px;
+  padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.5}
+.mochip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.mosep{font-size:11.5px;color:var(--muted);font-weight:700;margin-inline-start:6px}
 .top3{display:flex;gap:6px;margin-bottom:8px}
 .t3{flex:1 1 0;min-width:0;background:var(--panel);border:1px solid var(--border);border-top:3px solid var(--border);
   border-radius:11px;padding:7px 6px;text-align:center}
@@ -55,6 +61,7 @@ main{flex:1;overflow-y:auto;padding:10px}
 .t3v{font-size:13.5px;font-weight:800;margin-top:2px;color:var(--blue)}
 .t3lbl{font-size:12px;color:var(--muted);font-weight:700;margin:2px 0 4px}
 /* أعلى رقم في العمود أخضر وأقل رقم أحمر */
+table.rep tr.qsub td{font-size:12px;color:var(--muted);background:var(--panel2);font-weight:700}
 table.rep td.hi{background:rgba(10,125,60,.18)}
 table.rep td.lo{background:rgba(192,32,47,.16)}
 .clsrow{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
@@ -125,7 +132,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.9</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.0</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -274,7 +281,7 @@ function exportBucket(mainGroup){ return EXPORT_GROUP_MAP[mainGroup] || mainGrou
 /* أول ما تفتح التطبيق تبدأ من الصفحة الرئيسية دايمًا — مش من آخر شاشة
    كنت فيها. الأقسام الفرعية كمان بترجع مقفولة. */
 let module=null, q='', openGroups=new Set(), pendingImport=null;
-try{ ['_whTab_','_whSub_','_cmpView_','_payTab_','_itemsTab_','_salesTab_','_salesRep_','_gvCur_'].forEach(k=> localStorage.removeItem(k)); }catch(e){}
+try{ ['_whTab_','_whSub_','_cmpView_','_payTab_','_itemsTab_','_salesTab_','_salesRep_','_gvCur_','_moSel_','_moGroup_'].forEach(k=> localStorage.removeItem(k)); }catch(e){}
 let whFilterMain=new Set(), whFilterSub=new Set();
 let shortMain=new Set(), shortSub=new Set();
 
@@ -1485,7 +1492,7 @@ function renderSalesReportsHub(m){
       ${SALES_REPORTS.map(x=>`<button onclick="setSalesReport('${x.id}')" style="flex:1 0 auto;padding:10px 12px;border-radius:9px;
         background:${v===x.id?'var(--blue)':'var(--panel2)'};color:${v===x.id?'#fff':'var(--text)'};
         border:1px solid var(--border);font-weight:700;font-size:13px;white-space:nowrap">${x.name}</button>`).join('')}
-    </div><div id="srep_c"></div>`;
+    </div>${periodBar()}<div id="srep_c"></div>`;
   const c = $('#srep_c');
   if(v==='dist') renderSalesReport(c);
   else if(v==='distsec') renderRepDistSectors(c);
@@ -1499,7 +1506,57 @@ function renderSalesReportsHub(m){
 function distributorNames(){
   return customers.filter(c=> (c.cls||'')==='موزع').map(c=> c.name);
 }
-function salesMonths(){ return Object.keys(monthlySales).sort().filter(mo=> !isArchived(mo)); }
+function monthsLive(){ return Object.keys(monthlySales).sort().filter(mo=> !isArchived(mo)); }
+function salesMonths(){
+  const sel=load('_moSel_',null);
+  return monthsLive().filter(mo=> !sel || sel.indexOf(mo)>=0);
+}
+/* أعمدة التقرير: شهور، أو أرباع سنة، أو سنة واحدة */
+function periodCols(){
+  const ms=salesMonths(), grp=load('_moGroup_','month');
+  if(grp==='month') return ms.map(mo=>({key:mo, label:moName(mo), months:[mo]}));
+  const by={};
+  if(grp==='year'){
+    ms.forEach(mo=>{ const y=mo.slice(0,4); (by[y]=by[y]||[]).push(mo); });
+    return Object.keys(by).sort().map(y=>({key:y, label:'سنة '+y, months:by[y]}));
+  }
+  ms.forEach(mo=>{ const q=Math.ceil(parseInt(mo.slice(5,7),10)/3);
+    const k=mo.slice(0,4)+'-Q'+q; (by[k]=by[k]||[]).push(mo); });
+  return Object.keys(by).sort().map(k=>({key:k, label:'ربع '+k.slice(-1)+' · '+k.slice(0,4), months:by[k]}));
+}
+function periodLabel(){
+  const c=periodCols();
+  if(!c.length) return '';
+  return c.length===1 ? c[0].label : c[0].label+' إلى '+c[c.length-1].label;
+}
+/* شريط اختيار الشهور والتجميع — فوق كل تقارير المبيعات */
+const GRPS=[['month','شهور'],['quarter','كوارترات'],['year','سنة']];
+function toggleMo(mo){
+  const all=monthsLive(); let sel=load('_moSel_',null) || all.slice();
+  sel = sel.indexOf(mo)>=0 ? sel.filter(x=>x!==mo) : sel.concat([mo]);
+  if(!sel.length){ toast('لازم شهر واحد على الأقل'); return; }
+  save('_moSel_', sel.length===all.length ? null : sel); render(true);
+}
+function pickQuarter(q){
+  const sel=monthsLive().filter(mo=> Math.ceil(parseInt(mo.slice(5,7),10)/3)===q);
+  if(!sel.length){ toast('مفيش شهور في الربع ده'); return; }
+  save('_moSel_', sel); save('_moGroup_','month'); render(true);
+}
+function allMonths(){ save('_moSel_', null); render(true); }
+function setMoGroup(g){ save('_moGroup_', g); render(true); }
+function periodBar(){
+  const all=monthsLive(); if(all.length<2) return '';
+  const sel=load('_moSel_',null), grp=load('_moGroup_','month');
+  const on=mo=> !sel || sel.indexOf(mo)>=0;
+  const chip=(txt,active,fn)=>`<button class="mochip${active?' on':''}" onclick="${fn}">${txt}</button>`;
+  return `<div class="mobar">
+    <div class="morow">${chip('الكل', !sel, 'allMonths()')}
+      ${[1,2,3,4].map(q=> chip('ربع '+q, false, 'pickQuarter('+q+')')).join('')}
+      <span class="mosep">تجميع</span>
+      ${GRPS.map(([g,n])=> chip(n, grp===g, `setMoGroup('${g}')`)).join('')}</div>
+    <div class="morow">${all.map(mo=> chip(moName(mo), on(mo), `toggleMo('${mo}')`)).join('')}</div>
+  </div>`;
+}
 const repFmt = n=> n? Math.round(n).toLocaleString('en-US') : '—';
 
 /* ═══ أدوات مشتركة لكل تقارير المبيعات ═══ */
@@ -1545,7 +1602,6 @@ const repCell = v => typeof v==='number'
 function renderRepTable(m, id, md, opt){
   opt = opt || {};
   const rows = md.body.filter(r=> r.type==='row');
-  const totR = md.body.filter(r=> r.type==='tot');
   const hasIdx = md.header[0]==='م';
   const hiLo = md.hiLo || (md.hiLo = modelHiLo(md, opt.noColor));
   const td=(v,c)=>{
@@ -1553,15 +1609,44 @@ function renderRepTable(m, id, md, opt){
     if(e && typeof v==='number' && v!==0) k = v===e.mx?'hi':(v===e.mn?'lo':'');
     return `<td class="${k}">${repCell(v)}</td>`;
   };
+  let n=0;
+  const bodyHtml = md.body.map(r=>{
+    if(r.type==='sub')
+      return `<tr class="qsub">${r.cells.map(v=>`<td>${v===''?'':repCell(v)}</td>`).join('')}</tr>`;
+    if(r.type==='tot')
+      return `<tr class="m">${r.cells.map(v=>`<td><b>${repCell(v)}</b></td>`).join('')}</tr>`;
+    const i=n++;
+    return `<tr>${r.cells.map((v,c)=>
+      (hasIdx && c===0) ? `<td>${i<3?MEDALS[i]:(i+1)}</td>` : td(v,c)).join('')}</tr>`;
+  }).join('');
   m.innerHTML = `${opt.warn? `<div class="warn">${opt.warn}</div>`:''}
     ${opt.boxes||''}
     <div style="overflow-x:auto"><table class="rep stk">
-      <tr>${md.header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr>
-      ${rows.map((r,i)=>`<tr>${r.cells.map((v,c)=>
-        (hasIdx && c===0) ? `<td>${i<3?MEDALS[i]:(i+1)}</td>` : td(v,c)).join('')}</tr>`).join('')}
-      ${totR.map(r=>`<tr class="m">${r.cells.map(v=>`<td><b>${repCell(v)}</b></td>`).join('')}</tr>`).join('')}
+      <tr>${md.header.map(h=> h==='غير معروف'
+        ? `<th style="cursor:pointer;text-decoration:underline" onclick="showUnknownItems()">${esc(h)} ℹ️</th>`
+        : `<th>${esc(h)}</th>`).join('')}</tr>
+      ${bodyHtml}
     </table></div>
     ${floatBar(`<button onclick="exportRep('${id}','x')">📊 إكسل</button><button onclick="exportRep('${id}','p')">📄 PDF</button><button onclick="exportRep('${id}','i')">🖼️ صورة</button>`)}`;
+}
+/* «غير معروف» = أصناف مش موجودة في قايمة الأصناف، فمش عارفين قطاعها */
+function unknownItems(){
+  const agg={};
+  salesMonths().forEach(mo=> Object.entries(monthlyItems[mo]||{}).forEach(([n,d])=>{
+    if(itemsByName[n]) return;
+    agg[n]=(agg[n]||0)+(d.val||0); }));
+  return Object.keys(agg).map(n=>({name:n, val:agg[n]})).sort((a,b)=> b.val-a.val);
+}
+function showUnknownItems(){
+  const l=unknownItems();
+  openSheet(`<h3>أصناف غير معروفة</h3>
+    <p style="font-size:13px;color:var(--muted);line-height:1.7">الأصناف دي مش موجودة في «الأصناف»، فمش عارفين قطاعها.
+      ضيفها في شاشة الأصناف بمجموعتها الرئيسية وهتتوزّع على قطاعها لوحدها في الاستيراد الجاي.</p>
+    ${l.length? `<div style="max-height:50vh;overflow:auto">${l.map(r=>
+      `<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(r.name)}</div></div>
+       <div style="font-weight:800;color:var(--blue)">${repFmt(r.val)}</div></div>`).join('')}</div>`
+    : `<div class="empty">مفيش — أو الشيت اللي مرفوع قديم ومفيهوش تفصيل الأصناف</div>`}
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">تمام</button></div>`);
 }
 /* أول ٣ أصناف من كل الشهور الشغّالة */
 function topItems(){
@@ -1584,7 +1669,8 @@ function buildDistSectors(){
       });
     });
   });
-  const cols = [...secs].sort(secSort);          // كرافت · نيو · كومبن · اكسسوارات · جيفز · ابواب
+  // العمود اللي كله أصفار ما يظهرش
+  const cols = [...secs].filter(sec=> Object.keys(rows).some(n=> rows[n][sec])).sort(secSort);
   const list = Object.keys(rows).map(n=>({name:n, cells: cols.map(s2=> rows[n][s2]||0),
     total: cols.reduce((a,s2)=> a+(rows[n][s2]||0), 0)})).sort((a,b)=> b.total-a.total);
   const tot = cols.map((s2,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
@@ -1594,7 +1680,7 @@ function repDistSectorsModel(){
   const d = buildDistSectors(), body=[];
   d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, ...r.cells.map(v=> Math.round(v)), Math.round(r.total)]}));
   body.push({type:'tot', cells:['','الإجمالي', ...d.tot.map(v=>Math.round(v)), Math.round(d.total)]});
-  return {title:'مبيعات الموزعين حسب القطاع — '+monthsLabel(d.months),
+  return {title:'مبيعات الموزعين حسب القطاع — '+periodLabel(),
     header:['م','الموزع', ...d.cols, 'الإجمالي'], body, d};
 }
 function renderRepDistSectors(m){
@@ -1627,28 +1713,34 @@ function buildDoorsByCode(){
     Object.values(monthlyDoors[mo]||{}).forEach(byItem=>{
       Object.entries(byItem).forEach(([name, d])=>{
         const code = d.code || 'بدون كود';
-        const r = rows[code] = rows[code] || {code, names:new Set(), cells:{}, qty:0, val:0};
+        const r = rows[code] = rows[code] || {code, names:new Set(), cells:{}, qtys:{}, qty:0, val:0};
         r.names.add(name);
         const c = doorCol(name);
         r.cells[c]=(r.cells[c]||0)+(d.val||0);
+        r.qtys[c]=(r.qtys[c]||0)+(d.qty||0);
         r.qty += (d.qty||0); r.val += (d.val||0);
       });
     });
   });
   const list=Object.values(rows).map(r=>({
     code:r.code, name:[...r.names][0]||'', many:r.names.size>1,
-    cells:DOOR_COLS.map(c=> r.cells[c]||0), qty:r.qty, val:r.val
+    cells:DOOR_COLS.map(c=> r.cells[c]||0), qtys:DOOR_COLS.map(c=> rnd2(r.qtys[c]||0)),
+    qty:r.qty, val:r.val
   })).sort((a,b)=> b.val-a.val);
   const tot=DOOR_COLS.map((c,i)=> list.reduce((a,r)=> a+r.cells[i],0));
-  return {cols:DOOR_COLS, list, tot,
+  const totQ=DOOR_COLS.map((c,i)=> rnd2(list.reduce((a,r)=> a+r.qtys[i],0)));
+  return {cols:DOOR_COLS, list, tot, totQ,
     qty:list.reduce((a,r)=>a+r.qty,0), val:list.reduce((a,r)=>a+r.val,0)};
 }
 function repDoorsByCodeModel(){
   const d=buildDoorsByCode(), body=[];
-  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.code,
-    ...r.cells.map(v=>Math.round(v)), rnd2(r.qty), Math.round(r.val)]}));
+  d.list.forEach((r,i)=>{
+    body.push({type:'row', cells:[i+1, r.code, ...r.cells.map(v=>Math.round(v)), rnd2(r.qty), Math.round(r.val)]});
+    body.push({type:'sub', cells:['', 'كمية', ...r.qtys, '', '']});      // الكمية تحت القيمة
+  });
   body.push({type:'tot', cells:['','الإجمالي', ...d.tot.map(v=>Math.round(v)), rnd2(d.qty), Math.round(d.val)]});
-  return {title:'مبيعات الأبواب بالكود — '+monthsLabel(salesMonths()),
+  body.push({type:'sub', cells:['', 'كمية', ...d.totQ, '', '']});
+  return {title:'مبيعات الأبواب بالكود — '+periodLabel(),
     header:['م','الكود', ...d.cols, 'الكمية','الإجمالي'], body, d};
 }
 function renderRepDoorsByCode(m){
@@ -1669,27 +1761,33 @@ function isDoorSub(name, sub){
   return !NOT_DOOR.test(String(name||''));               // بيانات قديمة من غير قطاع فرعي
 }
 function buildDistDoors(){
+  const cols=periodCols(); const moCol={}; cols.forEach((c,i)=> c.months.forEach(mo=> moCol[mo]=i));
   const clsOfName={}; customers.forEach(c=> clsOfName[c.name]=c.cls||'');
   const rows={};
   salesMonths().forEach(mo=>{
+    const k=moCol[mo];
     Object.entries(monthlyDoors[mo]||{}).forEach(([cname, byItem])=>{
       if(clsOfName[cname]==='مستبعد') return;
       Object.entries(byItem).forEach(([nm,d])=>{
         if(!isDoorSub(nm, d.sub)) return;
-        const r = rows[cname] = rows[cname] || {qty:0, val:0};
+        const r = rows[cname] = rows[cname] || {qty:0, val:0, by:{}};
         r.qty += (d.qty||0); r.val += (d.val||0);
+        r.by[k]=(r.by[k]||0)+(d.val||0);
       });
     });
   });
-  const list = Object.keys(rows).map(n=> ({name:n, qty:rows[n].qty, val:rows[n].val})).sort((a,b)=> b.val-a.val);
-  return {list, qty: list.reduce((a,r)=>a+r.qty,0), val: list.reduce((a,r)=>a+r.val,0)};
+  const list = Object.keys(rows).map(n=> ({name:n, qty:rows[n].qty, val:rows[n].val,
+    cells: cols.map((c,i)=> Math.round(rows[n].by[i]||0))})).sort((a,b)=> b.val-a.val);
+  const tot = cols.map((c,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
+  return {cols, list, tot, qty: list.reduce((a,r)=>a+r.qty,0), val: list.reduce((a,r)=>a+r.val,0)};
 }
 function repDistDoorsModel(){
   const d = buildDistDoors(), body=[];
-  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, rnd2(r.qty), Math.round(r.val)]}));
-  body.push({type:'tot', cells:['','الإجمالي', rnd2(d.qty), Math.round(d.val)]});
-  return {title:'مبيعات الأبواب للعملاء — '+monthsLabel(salesMonths()),
-    header:['م','العميل','الكمية','القيمة'], body, d};
+  d.list.forEach((r,i)=> body.push({type:'row',
+    cells:[i+1, r.name, ...r.cells, rnd2(r.qty), Math.round(r.val)]}));
+  body.push({type:'tot', cells:['','الإجمالي', ...d.tot, rnd2(d.qty), Math.round(d.val)]});
+  return {title:'مبيعات الأبواب للعملاء — '+periodLabel(),
+    header:['م','العميل', ...d.cols.map(c=>c.label), 'الكمية','القيمة'], body, d};
 }
 function renderRepDistDoors(m){
   const d = buildDistDoors();
@@ -1702,25 +1800,25 @@ function renderRepDistDoors(m){
 
 /* ٥) مبيعات خاصة — كل عميل مصنّف «مبيعات خاصة» بسطر وعمود لكل شهر */
 function buildSpecial(){
-  const months=salesMonths();
+  const cols=periodCols(); const moCol={}; cols.forEach((c,i)=> c.months.forEach(mo=> moCol[mo]=i));
   const names=new Set(customers.filter(c=>(c.cls||'')==='مبيعات خاصة').map(c=>c.name));
   const rows={};
-  months.forEach(mo=> Object.entries(monthlySales[mo]||{}).forEach(([n,net])=>{
+  salesMonths().forEach(mo=> Object.entries(monthlySales[mo]||{}).forEach(([n,net])=>{
     if(!names.has(n)) return;
-    rows[n]=rows[n]||{}; rows[n][mo]=(rows[n][mo]||0)+net; }));
+    rows[n]=rows[n]||{}; rows[n][moCol[mo]]=(rows[n][moCol[mo]]||0)+net; }));
   const list=Object.keys(rows).map(n=>{
-    const cells=months.map(mo=> Math.round(rows[n][mo]||0));
+    const cells=cols.map((c,i)=> Math.round(rows[n][i]||0));
     return {name:n, cells, total:cells.reduce((a,b)=>a+b,0)};
   }).sort((a,b)=> b.total-a.total);
-  const tot=months.map((mo,i)=> list.reduce((a,r)=> a+r.cells[i],0));
-  return {months, list, tot, total: tot.reduce((a,b)=>a+b,0)};
+  const tot=cols.map((c,i)=> list.reduce((a,r)=> a+r.cells[i],0));
+  return {cols, list, tot, total: tot.reduce((a,b)=>a+b,0)};
 }
 function repSpecialModel(){
   const d=buildSpecial(), body=[];
   d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, ...r.cells, r.total]}));
   body.push({type:'tot', cells:['','الإجمالي', ...d.tot, d.total]});
-  return {title:'المبيعات الخاصة — '+monthsLabel(d.months),
-    header:['م','العميل', ...d.months.map(moName), 'الإجمالي'], body, d};
+  return {title:'المبيعات الخاصة — '+periodLabel(),
+    header:['م','العميل', ...d.cols.map(c=>c.label), 'الإجمالي'], body, d};
 }
 function renderRepSpecial(m){
   const d=buildSpecial();
@@ -1919,7 +2017,8 @@ function delSalesMonth(mo){
 }
 /* ١) موزعين إجمالي — التصنيفات مجمّعة وكل موزع بسطر، عمود لكل شهر */
 function buildDistTotal(){
-  const months=salesMonths();
+  const cols=periodCols(), months=salesMonths();
+  const moCol={}; cols.forEach((c,i)=> c.months.forEach(mo=> moCol[mo]=i));
   const custByName={}; customers.forEach(c=>custByName[c.name]=c);
   const rollup={}, distRows={}; const unclassified=new Set();
   months.forEach(mo=>{
@@ -1927,31 +2026,32 @@ function buildDistTotal(){
       const cls=(custByName[name]||{}).cls||'';
       if(cls==='مستبعد' || cls==='عميل ابواب' || cls==='مبيعات خاصة') return;   // ليهم تقاريرهم لوحدهم
       if(!cls){ unclassified.add(name); return; }
-      if(cls==='موزع'){ distRows[name]=distRows[name]||{}; distRows[name][mo]=(distRows[name][mo]||0)+net; }
-      else { rollup[cls]=rollup[cls]||{}; rollup[cls][mo]=(rollup[cls][mo]||0)+net; }
+      const k=moCol[mo];
+      if(cls==='موزع'){ distRows[name]=distRows[name]||{}; distRows[name][k]=(distRows[name][k]||0)+net; }
+      else { rollup[cls]=rollup[cls]||{}; rollup[cls][k]=(rollup[cls][k]||0)+net; }
     });
   });
-  const mk=(label,byMo)=>{
-    const cells=months.map(mo=> Math.round(byMo[mo]||0));
+  const mk=(label,byCol)=>{
+    const cells=cols.map((c,i)=> Math.round(byCol[i]||0));
     return {name:label, cells, total:cells.reduce((a,b)=>a+b,0)};
   };
   const list=[];
   ['مبيعات جملة'].forEach(cls=>{ if(rollup[cls]) list.push(mk(cls, rollup[cls])); });
   Object.keys(distRows).forEach(n=> list.push(mk(n, distRows[n])));
   list.sort((a,b)=> b.total-a.total);                       // من الأعلى للأقل
-  const tot=months.map((mo,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
-  return {months, list, tot, total: tot.reduce((a,b)=>a+b,0), unclassified:[...unclassified]};
+  const tot=cols.map((c,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
+  return {cols, months, list, tot, total: tot.reduce((a,b)=>a+b,0), unclassified:[...unclassified]};
 }
 function repDistTotalModel(){
   const d=buildDistTotal(), body=[];
   d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, ...r.cells, r.total]}));
   body.push({type:'tot', cells:['','الإجمالي', ...d.tot, d.total]});
-  return {title:'مبيعات الموزعين — إجمالي '+monthsLabel(d.months),
-    header:['م','بيان', ...d.months.map(moName), 'الإجمالي'], body, d};
+  return {title:'مبيعات الموزعين — إجمالي '+periodLabel(),
+    header:['م','بيان', ...d.cols.map(c=>c.label), 'الإجمالي'], body, d};
 }
 function renderSalesReport(m){
   const d=buildDistTotal();
-  if(!d.months.length){ m.innerHTML=`<div class="empty">لا توجد شهور مستوردة</div>`; return; }
+  if(!d.cols.length){ m.innerHTML=`<div class="empty">لا توجد شهور مستوردة</div>`; return; }
   if(!d.list.length){ m.innerHTML=`<div class="empty">مفيش عملاء مصنّفين — صنّفهم من شاشة العملاء</div>`; return; }
   const u=d.unclassified;
   renderRepTable(m, 'dist', repDistTotalModel(), {
@@ -2039,7 +2139,13 @@ function importSales(file){
       pendingImport={type:'sales', custMap, sectorMap, doorMap, itemMap, hasQty: qoi>=0,
         unmatchedCust:[...unmatchedCust], unmatchedItems:[...unmatchedItems], total};
       openSheet(`<h3>تأكيد المبيعات</h3>
-        <div class="f-row"><label>الشهر (YYYY-MM) *</label><input id="s_month" placeholder="2026-01"></div>
+        <div class="f-row"><label>الشهر *</label>
+          <div style="display:flex;gap:6px">
+            <select id="s_mo" style="flex:2">${AR_MONTHS.map((n,i)=>
+              `<option value="${String(i+1).padStart(2,'0')}" ${i===new Date().getMonth()?'selected':''}>${n}</option>`).join('')}</select>
+            <select id="s_yr" style="flex:1">${(()=>{const y=new Date().getFullYear(); let o='';
+              for(let v=y+1; v>=y-4; v--) o+=`<option ${v===y?'selected':''}>${v}</option>`; return o;})()}</select>
+          </div></div>
         <p style="font-size:13px">عملاء: ${Object.keys(custMap).length} — إجمالي: ${Math.round(total).toLocaleString('en-US')}
           ${Object.keys(doorMap).length? ` — أبواب: ${Object.keys(doorMap).length} عميل` : ''}</p>
         ${qoi<0? `<div class="warn">الملف مفيهوش عمود كمية، فتقارير الأبواب هتطلع بالقيمة بس.</div>`:''}
@@ -2052,8 +2158,8 @@ function importSales(file){
 }
 function commitSalesImport(){
   const p=pendingImport; if(!p) return;
-  const month=$('#s_month').value.trim();
-  if(!month){ toast('اكتب الشهر'); return; }
+  const month=$('#s_yr').value+'-'+$('#s_mo').value;
+  if(!/^\d{4}-\d{2}$/.test(month)){ toast('اختار الشهر'); return; }
   p.unmatchedCust.forEach(name=>{ customers.push({id:uid(),name,cls:''}); });
   save('customers_v1',customers);
   monthlySales[month]=p.custMap; monthlySector[month]=p.sectorMap;
@@ -2185,15 +2291,44 @@ async function exportDocPdf(bodyHtml, filename, landscape){
     const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), mg=18;
     const sc=(pw-2*mg)/canvas.width, pageH=(ph-2*mg)/sc;
     const er=el.getBoundingClientRect(), k=canvas.width/er.width;
-    const bounds=[...el.querySelectorAll('tr')].map(r=>Math.round((r.getBoundingClientRect().bottom-er.top)*k));
-    let y=0, first=true;
-    while(y<canvas.height-2){
-      let end=Math.min(y+pageH,canvas.height);
-      if(end<canvas.height){ const cand=bounds.filter(b=>b>y+pageH*0.4 && b<=end); if(cand.length) end=cand[cand.length-1]; }
-      const h=end-y, sl=document.createElement('canvas'); sl.width=canvas.width; sl.height=h;
-      sl.getContext('2d').drawImage(canvas,0,y,canvas.width,h,0,0,canvas.width,h);
+    const trs=[...el.querySelectorAll('tr')];
+    const bounds=trs.map(r=>Math.round((r.getBoundingClientRect().bottom-er.top)*k));
+    /* الرأس = من فوق لحد آخر صف عناوين، والذيل = صفوف الإجمالي في الآخر.
+       الاتنين بيتطبعوا في كل ورقة. */
+    let headH=0, footTop=canvas.height, footH=0;
+    const hdrRows=trs.filter(r=> r.querySelector('th'));
+    if(hdrRows.length){
+      const last=hdrRows[hdrRows.length-1];
+      headH=Math.round((last.getBoundingClientRect().bottom-er.top)*k);
+    }
+    const isFoot=r=> /(^|\s)(m|s)(\s|$)/.test(r.className);
+    let fi=trs.length;
+    while(fi>0 && isFoot(trs[fi-1])) fi--;
+    if(fi<trs.length && fi>hdrRows.length){
+      footTop=Math.round((trs[fi].getBoundingClientRect().top-er.top)*k);
+      footH=canvas.height-footTop;
+    }
+    const band=(top,h)=>{ const sl=document.createElement('canvas');
+      sl.width=canvas.width; sl.height=h;
+      sl.getContext('2d').drawImage(canvas,0,top,canvas.width,h,0,0,canvas.width,h);
+      return sl.toDataURL('image/jpeg',0.92); };
+    const headImg = headH>0 ? band(0,headH) : null;
+    const footImg = footH>0 ? band(footTop,footH) : null;
+    const availH = pageH - headH - footH;
+    let y=headH, first=true;
+    if(availH < pageH*0.25){ y=0; }        // الرأس أكبر من اللازم — نرجع للطريقة العادية
+    const simple = y===0;
+    while(y < (simple? canvas.height : footTop) - 2){
+      const lim = simple? canvas.height : footTop;
+      const cap = simple? pageH : availH;
+      let end=Math.min(y+cap, lim);
+      if(end<lim){ const cand=bounds.filter(b=>b>y+cap*0.4 && b<=end); if(cand.length) end=cand[cand.length-1]; }
+      if(end<=y) end=Math.min(y+cap, lim);
       if(!first) pdf.addPage(); first=false;
-      pdf.addImage(sl.toDataURL('image/jpeg',0.92),'JPEG',mg,mg,canvas.width*sc,h*sc);
+      let cur=mg;
+      if(!simple && headImg){ pdf.addImage(headImg,'JPEG',mg,cur,canvas.width*sc,headH*sc); cur+=headH*sc; }
+      pdf.addImage(band(y,end-y),'JPEG',mg,cur,canvas.width*sc,(end-y)*sc); cur+=(end-y)*sc;
+      if(!simple && footImg) pdf.addImage(footImg,'JPEG',mg,cur,canvas.width*sc,footH*sc);
       y=end;
     }
     pdf.save(filename+'.pdf'); toast('تم تنزيل ملف PDF');

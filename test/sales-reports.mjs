@@ -77,17 +77,25 @@ check('A05 اتجمّع من الشهرين ومن العميلين: ٩٠ قطع
 check('وقيمته ١٠٠ ألف', a05 && a05.cells[9]===100000, String(a05&&a05.cells[9]));
 check('A05 (٨٠ سم) وقع في عمود ٨٠ مش ٩٠', a05 && a05.cells[3]===100000 && a05.cells[4]===0, JSON.stringify(a05&&a05.cells));
 check('A07 (٩٠ سم) وقع في عمود ٩٠', a07 && a07.cells[4]===40000, JSON.stringify(a07&&a07.cells));
-const t3 = d3.body[d3.body.length-1].cells;
+const t3 = d3.body.filter(r=>r.type==='tot')[0].cells;
+const q3 = d3.body[d3.body.length-1].cells;
+check('سطر الكمية تحت سطر القيمة', q3[1]==='كمية' && q3[3]===90 && q3[4]===40, q3.join('/'));
+const a05q = d3.body[d3.body.indexOf(a05)+1];
+check('كل كود تحته سطر كميته', a05q && a05q.type==='sub' && a05q.cells[3]===90,
+  JSON.stringify(a05q&&a05q.cells));
 check('إجمالي الأبواب ١٣٠ باب + ٥٠٠ كالون', t3[8]===630 && t3[9]===149000, t3.join('/'));
 
 // ٤) موزعين أبواب — كمية وقيمة
 const d4 = await pg.evaluate(()=>repModel('distdoor'));
-check('أعمدة العميل والكمية والقيمة', d4.header.join('|')==='م|العميل|الكمية|القيمة', d4.header.join('|'));
+check('موزعين أبواب: أعمدة شهور زي موزعين إجمالي',
+  d4.header.join('|')==='م|العميل|أغسطس 2026|سبتمبر 2026|الكمية|القيمة', d4.header.join('|'));
 const tanta = d4.body.find(r=> r.cells[1]==='موزع طنطا');
-check('طنطا ٥٥ قطعة و٦٠ ألف', tanta && tanta.cells[2]===55 && tanta.cells[3]===60000, JSON.stringify(tanta&&tanta.cells));
+check('طنطا ٥٥ قطعة و٦٠ ألف مقسومة على الشهرين',
+  tanta && tanta.cells[2]===30000 && tanta.cells[3]===30000 && tanta.cells[4]===55 && tanta.cells[5]===60000,
+  JSON.stringify(tanta&&tanta.cells));
 const t4 = d4.body[d4.body.length-1].cells;
 check('موزعين أبواب: الأبواب بس — الكالون (قطاع فرعي إكسسوارات) مش داخل',
-  t4[2]===130 && t4[3]===140000, t4.join('/'));
+  t4[4]===130 && t4[5]===140000, t4.join('/'));
 
 // ── التصدير في كل تقرير
 for(const [id,nm] of [['dist','إجمالي'],['distsec','قطاعات'],['doorcode','أبواب بالكود'],['distdoor','موزعين أبواب']]){
