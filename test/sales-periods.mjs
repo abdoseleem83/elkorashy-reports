@@ -51,5 +51,36 @@ ck('الأصناف غير المعروفة بتتحسب',
   u.length===1 && u[0].name==='صنف مش معروف' && u[0].val===7000, JSON.stringify(u));
 await pg.evaluate(()=> showUnknownItems()); await pg.waitForTimeout(250);
 ck('الشيت بيوري الصنف', /صنف مش معروف/.test(await pg.evaluate(()=>document.body.innerText)));
+// ── أعمدة القطاعات: ضغط · إعادة تسمية · إخفاء
+await pg.evaluate(()=>{
+  customers.push({id:'d1',name:'موزع س',cls:'موزع'}); save('customers_v1',customers);
+  monthlySales['2026-01']['موزع س']=50000; save('monthlySales_v1',monthlySales);
+  monthlySector['2026-01']={'موزع س':{'كومبن':30000,'نيو لاين':20000}};
+  save('monthlySector_v1',monthlySector);
+  save('_salesRep_','distsec'); render(true); });
+await pg.waitForTimeout(350);
+let sc=await pg.evaluate(()=> repModel('distsec'));
+ck('أعمدة القطاعات قابلة للضغط',
+  (sc.headTap||[]).indexOf("secSheet('كومبن')")>0, JSON.stringify(sc.headTap));
+ck('العناوين فيها ⚙️', (await pg.locator('table.rep th').allInnerTexts()).join('|').includes('⚙️'));
+await pg.evaluate(()=> secSheet('كومبن')); await pg.waitForTimeout(250);
+ck('الشيت بيوري المجموعة اللي تحت العمود',
+  /قطاعات PVC كومبن/.test(await pg.evaluate(()=>document.body.innerText)));
+await pg.fill('#sc_name','كومبن PVC');
+await pg.evaluate(()=> secSave('كومبن')); await pg.waitForTimeout(350);
+sc=await pg.evaluate(()=> repModel('distsec'));
+ck('الاسم الجديد ظهر', sc.header.indexOf('كومبن PVC')>0, sc.header.join('|'));
+ck('الأرقام زي ما هي', sc.body[0].cells[sc.header.indexOf('كومبن PVC')]===30000,
+  JSON.stringify(sc.body[0].cells));
+await pg.evaluate(()=> secHide('كومبن')); await pg.waitForTimeout(350);
+sc=await pg.evaluate(()=> repModel('distsec'));
+ck('العمود اتخفى', sc.header.join('|')==='م|الموزع|نيو لاين|الإجمالي', sc.header.join('|'));
+ck('زرار الرجوع ظاهر',
+  /كومبن PVC/.test(await pg.evaluate(()=>document.body.innerText)));
+await pg.evaluate(()=> secShow('كومبن')); await pg.waitForTimeout(350);
+sc=await pg.evaluate(()=> repModel('distsec'));
+ck('رجع تاني بالاسم الجديد',
+  sc.header.join('|')==='م|الموزع|نيو لاين|كومبن PVC|الإجمالي', sc.header.join('|'));
+
 console.log(bad?('❌ فشل '+bad):'✅ كله تمام');
 await b.close(); process.exit(bad?1:0);
