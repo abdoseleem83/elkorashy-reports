@@ -99,7 +99,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.4</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.5</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -318,10 +318,19 @@ async function syncNow(quiet){
     /* مقارنة ثلاثية: نسختي / نسخة السيرفر / آخر نسخة اتزامنت (base).
        المقارنة الثنائية (الأحدث يكسب) كانت هتضيّع تعديل جهاز لو ساعة الجهاز
        التاني مقدمة — دي كانت لخبطة المرة اللي فاتت. */
-    for(const k of SYNC_KEYS){
+    /* السيرفر (Apps Script) بطيء: كل طلب من ٤ لـ١٤ ثانية. يعني مزامنة ٨ حاجات
+       ممكن تاخد دقيقتين. والموبايل بيوقف الطلبات أول ما الشاشة تتقفل — فلو
+       الشغل كله متسجّل في الآخر بس، أي قطع في النص كان بيضيّع المجهود كله
+       وتفضل «مستني يترفع» للأبد. دلوقتي كل حاجة بتتسجّل أول ما تخلص. */
+    const saveProgress = ()=>{ save('_syncRevs_', syncRevs); save('_syncPulled_', syncPulled); };
+    const todo = SYNC_KEYS.filter(k=>{
+      const mine = syncRevs[k] || 0, theirs = idx[k] || 0, base = syncPulled[k] || 0;
+      return mine > base || theirs > base;
+    });
+    let doneN = 0;
+    for(const k of todo){
       const mine = syncRevs[k] || 0, theirs = idx[k] || 0, base = syncPulled[k] || 0;
       const iChanged = mine > base, theyChanged = theirs > base;
-      if(!iChanged && !theyChanged) continue;                 // مفيش جديد
       const pull = async (isClash)=>{
         const r = await syncApi({action:'get', key:SYNC_PREFIX + k}, true);
         if(!r || !r.ok) return false;
@@ -333,13 +342,20 @@ async function syncNow(quiet){
         try{ localStorage.setItem(k, JSON.stringify(val)); }catch(e){}
         if(SYNC_VARS[k]) SYNC_VARS[k](val);
         syncRevs[k] = theirs; syncPulled[k] = theirs; down.push(k);
+        saveProgress();                       // اتسجّل على طول
         return true;
       };
       const push = async ()=>{
         await syncApi({action:'set', key:SYNC_PREFIX + k, value: JSON.stringify(load(k, null))});
-        idx[k] = mine; syncPulled[k] = mine; up.push(k);
+        idx[k] = mine;
+        /* الفهرس بيتكتب بعد كل حاجة مش في الآخر. لو اتكتبت القيمة والفهرس لأ،
+           الأجهزة التانية عمرها ما هتعرف إنها موجودة، وإحنا هنعتبرها مرفوعة
+           وما نرفعهاش تاني — يعني تضيع على السيرفر من غير ما حد يشوفها. */
+        await syncApi({action:'set', key:SYNC_INDEX, value: JSON.stringify(idx)});
+        syncPulled[k] = mine; up.push(k);
+        saveProgress();
       };
-      syncStatus('☁️ ' + (down.length + up.length + 1) + '/' + SYNC_KEYS.length);
+      syncStatus('☁️ ' + (++doneN) + '/' + todo.length);
       if(iChanged && !theyChanged) await push();
       else if(!iChanged && theyChanged) await pull(false);
       else {
@@ -348,8 +364,7 @@ async function syncNow(quiet){
         else { save('_backup_' + k + '_srv_' + theirs, null); clash.push(k); await push(); }
       }
     }
-    if(up.length) await syncApi({action:'set', key:SYNC_INDEX, value: JSON.stringify(idx)});
-    save('_syncRevs_', syncRevs); save('_syncPulled_', syncPulled);
+    saveProgress();
     save('_syncAt_', Date.now()); save('_syncErr_', '');
     syncStatus('☁️ ' + new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}), 'ok');
     if(down.length) render(true);
