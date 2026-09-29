@@ -43,6 +43,20 @@ main{flex:1;overflow-y:auto;padding:10px}
 .panelbox{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;display:block}
 .card .name{font-weight:700;font-size:14px}
 .card .sub{font-size:12px;color:var(--muted);margin-top:2px}
+/* أول تلاتة فوق كل تقرير */
+.top3{display:flex;gap:6px;margin-bottom:8px}
+.t3{flex:1 1 0;min-width:0;background:var(--panel);border:1px solid var(--border);border-top:3px solid var(--border);
+  border-radius:11px;padding:7px 6px;text-align:center}
+.t3:nth-child(1){border-top-color:#d4af37}
+.t3:nth-child(2){border-top-color:#9aa3ad}
+.t3:nth-child(3){border-top-color:#b0703a}
+.t3m{font-size:17px;line-height:1}
+.t3n{font-size:11.5px;font-weight:700;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.t3v{font-size:13.5px;font-weight:800;margin-top:2px;color:var(--blue)}
+.t3lbl{font-size:12px;color:var(--muted);font-weight:700;margin:2px 0 4px}
+/* أعلى رقم في العمود أخضر وأقل رقم أحمر */
+table.rep td.hi{background:rgba(10,125,60,.18)}
+table.rep td.lo{background:rgba(192,32,47,.16)}
 .clsrow{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .clschip{border:1px solid var(--border);background:var(--panel2);color:var(--muted);border-radius:999px;
   padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.5}
@@ -111,7 +125,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.6</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.8</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -215,16 +229,40 @@ let monthlySales = load('monthlySales_v1', {});
 let monthlySector = load('monthlySector_v1', {});
 // تفصيل الأبواب لكل شهر: {شهر: {عميل: {صنف: {qty, val, code}}}}
 let monthlyDoors = load('monthlyDoors_v1', {});
+let monthlyItems = load('monthlyItems_v1', {});      // الشهر ← الصنف ← {qty,val}
+let salesArchive = load('salesArchive_v1', []);      // شهور مؤرشفة — برّه التقارير
+let custAlias = load('custAlias_v1', {});            // اسم قديم ← الاسم الجديد بعد الدمج
 
 const CLS_OPTS=['موزع','مبيعات جملة','مبيعات خاصة','عميل ابواب','مستبعد'];
 const CLS_SHORT={'موزع':'موزع','مبيعات جملة':'جملة','مبيعات خاصة':'خاصة','عميل ابواب':'أبواب','مستبعد':'مستبعد'};
 /* تصنيفات اتعلّمت من الشاشة ولسه ماتحفظتش — id العميل ← التصنيف */
 let custPend={};
 const SECTOR_MAP={
-  'قطاعات PVC كومبن':'قطاعات PVC كومبن','قطاعات كرافت لاين':'قطاعات كرافت لاين','نيو لاين':'نيو لاين',
-  'اكسسورات pvc اكسا':'اكسسوارات','اكسسوارات خارجيه':'اكسسوارات','جيفيز':'اكسسوارات',
-  'ابواب WPC':'ابواب WPC','شاتر':'أخرى','تصنيع':'أخرى','حشوات':'أخرى'
+  'قطاعات PVC كومبن':'كومبن','قطاعات كرافت لاين':'كرافت لاين','نيو لاين':'نيو لاين',
+  'اكسسورات pvc اكسا':'اكسسوارات','اكسسوارات خارجيه':'اكسسوارات','جيفيز':'جيفز',
+  'ابواب WPC':'ابواب','شاتر':'أخرى','تصنيع':'أخرى','حشوات':'أخرى'
 };
+/* ترتيب أعمدة القطاعات زي ما اتطلب، وأسماء قديمة اتخزنت في بيانات سابقة */
+const SECTOR_ORDER=['كرافت لاين','نيو لاين','كومبن','اكسسوارات','جيفز','ابواب','أخرى','غير معروف'];
+const SECTOR_ALIAS={'قطاعات كرافت لاين':'كرافت لاين','قطاعات PVC كومبن':'كومبن','ابواب WPC':'ابواب'};
+const secName = s2 => SECTOR_ALIAS[s2] || s2;
+const secSort = (a,b)=>{
+  const ia=SECTOR_ORDER.indexOf(a), ib=SECTOR_ORDER.indexOf(b);
+  return (ia<0?99:ia) - (ib<0?99:ib) || a.localeCompare(b,'ar');
+};
+/* أسماء الشهور بالعربي — المفتاح بيفضل YYYY-MM في التخزين */
+const AR_MONTHS=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+function moName(k){
+  const m2=String(k||'').match(/^(\d{4})-(\d{1,2})$/);
+  if(!m2) return String(k||'');
+  const i=parseInt(m2[2],10)-1;
+  return (AR_MONTHS[i]||m2[2]) + ' ' + m2[1];
+}
+const MEDALS=['🥇','🥈','🥉'];
+function monthsLabel(ms){
+  if(!ms || !ms.length) return '';
+  return ms.length===1 ? moName(ms[0]) : moName(ms[0])+' إلى '+moName(ms[ms.length-1]);
+}
 // تجميع مخصوص للتصدير: كرافت ونيو مع بعض، والاكسسوارات وكومبن مع بعض
 const EXPORT_GROUP_MAP={
   'قطاعات كرافت لاين':'كرافت ونيو لاين','نيو لاين':'كرافت ونيو لاين',
@@ -253,7 +291,7 @@ let shortMain=new Set(), shortSub=new Set();
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
-  'paySendCols_v1','invCounts_v1','gvOrders_v1'];
+  'paySendCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
 /* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
@@ -367,6 +405,8 @@ const SYNC_VARS = {
   warehouses_v1: v=>{ warehouses = v; }, whStock_v1: v=>{ whStock = v; },
   whShortage_v1: v=>{ whShortage = v; }, customers_v1: v=>{ customers = v; },
   monthlySales_v1: v=>{ monthlySales = v; }, monthlySector_v1: v=>{ monthlySector = v; }, monthlyDoors_v1: v=>{ monthlyDoors = v; },
+  monthlyItems_v1: v=>{ monthlyItems = v; }, salesArchive_v1: v=>{ salesArchive = v; },
+  custAlias_v1: v=>{ custAlias = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
   invCounts_v1: v=>{ invCounts = v; }, ordMap_v1: v=>{ ordMap = v; }, gvMap_v1: v=>{ gvMap = v; },
   // ⚠️ التلاتة دول كانوا في SYNC_KEYS بس مش في SYNC_VARS — يعني بيتنزّلوا
@@ -1364,6 +1404,52 @@ function saveCustomer(id){
   if(id){ const i=customers.findIndex(x=>x.id===id); customers[i]=obj; delete custPend[id]; } else customers.unshift(obj);
   save('customers_v1',customers); closeSheet(); render(); toast('تم الحفظ');
 }
+/* ═══ دمج عميل اتغيّر اسمه في المحاسبة ═══
+   كل مبيعاته وقطاعاته وأبوابه بتتنقل للاسم الجديد، والاسم القديم بيتسجّل
+   في جدول تحويل فأي شيت جاي بيتقرا بالاسم الجديد على طول. */
+function mergeCustomerSheet(id){
+  const c=customers.find(x=>x.id===id); if(!c) return;
+  openSheet(`<h3>🔗 دمج عميل</h3>
+    <p style="font-size:13px;color:var(--muted);line-height:1.7">هتدمج <b>${esc(c.name)}</b> في عميل تاني.
+      كل مبيعاته هتتنقل للاسم الجديد، والاسم القديم هيتحوّل لوحده في أي شيت هترفعه بعد كده.</p>
+    <div class="f-row"><label>الاسم الجديد *</label>
+      <input id="mg_to" list="mg_list" placeholder="اكتب جزء من الاسم واختار">
+      <datalist id="mg_list">${customers.filter(x=>x.id!==id).map(x=>`<option value="${esc(x.name)}"></option>`).join('')}</datalist></div>
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+      <button class="btn-save" onclick="doMergeCustomer('${id}')">🔗 دمج</button></div>`);
+}
+function doMergeCustomer(id){
+  const from=customers.find(x=>x.id===id); if(!from) return;
+  const to=($('#mg_to').value||'').trim();
+  if(!to){ toast('اختار الاسم الجديد'); return; }
+  if(to===from.name){ toast('دا نفس الاسم'); return; }
+  const target=customers.find(x=>x.name===to);
+  if(!target){ toast('مفيش عميل بالاسم ده — اختار من القايمة'); return; }
+  mergeCustomerNames(from.name, to);
+  if(!target.cls && from.cls) target.cls=from.cls;
+  customers=customers.filter(x=>x.id!==id);
+  save('customers_v1',customers); save('custAlias_v1',custAlias);
+  closeSheet(); render(true); toast('اتدمج في '+to);
+}
+function mergeCustomerNames(a, b){
+  Object.keys(monthlySales).forEach(mo=>{ const m2=monthlySales[mo];
+    if(m2[a]===undefined) return; m2[b]=(m2[b]||0)+m2[a]; delete m2[a]; });
+  Object.keys(monthlySector).forEach(mo=>{ const m2=monthlySector[mo];
+    if(!m2[a]) return; m2[b]=m2[b]||{};
+    Object.entries(m2[a]).forEach(([k,v])=> m2[b][k]=(m2[b][k]||0)+v); delete m2[a]; });
+  Object.keys(monthlyDoors).forEach(mo=>{ const m2=monthlyDoors[mo];
+    if(!m2[a]) return; m2[b]=m2[b]||{};
+    Object.entries(m2[a]).forEach(([k,v])=>{
+      const t=m2[b][k]=m2[b][k]||{qty:0,val:0,code:v.code||'',sub:v.sub||''};
+      t.qty+=(v.qty||0); t.val+=(v.val||0);
+      if(!t.code && v.code) t.code=v.code; if(!t.sub && v.sub) t.sub=v.sub; });
+    delete m2[a]; });
+  // أي اسم كان بيتحوّل للقديم يتحوّل للجديد على طول
+  Object.keys(custAlias).forEach(k=>{ if(custAlias[k]===a) custAlias[k]=b; });
+  custAlias[a]=b;
+  save('monthlySales_v1',monthlySales); save('monthlySector_v1',monthlySector);
+  save('monthlyDoors_v1',monthlyDoors); save('custAlias_v1',custAlias);
+}
 function delCustomer(id){ if(!confirm('حذف؟')) return; delete custPend[id]; customers=customers.filter(x=>x.id!==id); save('customers_v1',customers); render(); }
 
 function renderSales(m){
@@ -1389,6 +1475,7 @@ const SALES_REPORTS = [
   {id:'distsec',   name:'🧩 موزعين قطاعات'},
   {id:'doorcode',  name:'🚪 أبواب بالكود'},
   {id:'distdoor',  name:'🚪 موزعين أبواب'},
+  {id:'cmpmo',     name:'⚖️ مقارنة شهور'},
 ];
 function setSalesReport(id){ const cur=load('_salesRep_',null); save('_salesRep_', cur===id?null:id); render(true); }
 function renderSalesReportsHub(m){
@@ -1403,14 +1490,84 @@ function renderSalesReportsHub(m){
   else if(v==='distsec') renderRepDistSectors(c);
   else if(v==='doorcode') renderRepDoorsByCode(c);
   else if(v==='distdoor') renderRepDistDoors(c);
+  else if(v==='cmpmo') renderRepMonthCompare(c);
   else c.innerHTML = `<div class="empty">اختار التقرير من فوق</div>`;
 }
 // الموزعين بس (العملاء المصنّفين «موزع»)
 function distributorNames(){
   return customers.filter(c=> (c.cls||'')==='موزع').map(c=> c.name);
 }
-function salesMonths(){ return Object.keys(monthlySales).sort(); }
+function salesMonths(){ return Object.keys(monthlySales).sort().filter(mo=> !isArchived(mo)); }
 const repFmt = n=> n? Math.round(n).toLocaleString('en-US') : '—';
+
+/* ═══ أدوات مشتركة لكل تقارير المبيعات ═══ */
+/* الشهور الشغّالة = المرفوعة ناقص المؤرشفة */
+function salesMonthsAll(){ return Object.keys(monthlySales).sort(); }
+function isArchived(mo){ return salesArchive.indexOf(mo)>=0; }
+function toggleArchiveMonth(mo){
+  if(isArchived(mo)) salesArchive = salesArchive.filter(x=>x!==mo);
+  else salesArchive = salesArchive.concat([mo]);
+  save('salesArchive_v1', salesArchive);
+  toast(isArchived(mo)? 'اتأرشف '+moName(mo) : 'رجع '+moName(mo));
+  render(true);
+}
+/* مربعات أول تلاتة فوق التقرير */
+function topBoxes(list, label){
+  const t=(list||[]).filter(r=> r.val>0).slice(0,3);
+  if(!t.length) return '';
+  return (label? `<div class="t3lbl">${esc(label)}</div>`:'') +
+    `<div class="top3">${t.map((r,i)=>`<div class="t3"><div class="t3m">${MEDALS[i]}</div>
+      <div class="t3n" title="${esc(r.name)}">${esc(r.name)}</div>
+      <div class="t3v">${repFmt(r.val)}</div></div>`).join('')}</div>`;
+}
+/* أعلى/أقل قيمة في كل عمود رقمي — نفس التلوين على الشاشة وفي التصدير */
+function modelHiLo(md, noColor){
+  const rows = md.body.filter(r=> r.type==='row');
+  const hasIdx = md.header[0]==='م', out={};
+  md.header.forEach((h,c)=>{
+    if(hasIdx && c===0) return;
+    if((noColor||[]).indexOf(c)>=0) return;
+    const vals = rows.map(r=> r.cells[c]).filter(v=> typeof v==='number' && v!==0);
+    if(vals.length<2) return;
+    const mx=Math.max(...vals), mn=Math.min(...vals);
+    if(mx!==mn) out[c]={mx,mn};
+  });
+  return out;
+}
+const repCell = v => typeof v==='number'
+  ? (v===0 ? '—' : (Number.isInteger(v) ? v.toLocaleString('en-US') : fmt1(v)))
+  : esc(v);
+/* جدول واحد لكل التقارير: ميداليات لأول تلاتة، وفي كل عمود رقمي
+   أكبر قيمة خلفيتها خضرا وأصغر قيمة (غير الصفر) خلفيتها حمرا،
+   وشريط تصدير عائم تحت. */
+function renderRepTable(m, id, md, opt){
+  opt = opt || {};
+  const rows = md.body.filter(r=> r.type==='row');
+  const totR = md.body.filter(r=> r.type==='tot');
+  const hasIdx = md.header[0]==='م';
+  const hiLo = md.hiLo || (md.hiLo = modelHiLo(md, opt.noColor));
+  const td=(v,c)=>{
+    const e=hiLo[c]; let k='';
+    if(e && typeof v==='number' && v!==0) k = v===e.mx?'hi':(v===e.mn?'lo':'');
+    return `<td class="${k}">${repCell(v)}</td>`;
+  };
+  m.innerHTML = `${opt.warn? `<div class="warn">${opt.warn}</div>`:''}
+    ${opt.boxes||''}
+    <div style="overflow-x:auto"><table class="rep stk">
+      <tr>${md.header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr>
+      ${rows.map((r,i)=>`<tr>${r.cells.map((v,c)=>
+        (hasIdx && c===0) ? `<td>${i<3?MEDALS[i]:(i+1)}</td>` : td(v,c)).join('')}</tr>`).join('')}
+      ${totR.map(r=>`<tr class="m">${r.cells.map(v=>`<td><b>${repCell(v)}</b></td>`).join('')}</tr>`).join('')}
+    </table></div>
+    ${floatBar(`<button onclick="exportRep('${id}','x')">📊 إكسل</button><button onclick="exportRep('${id}','p')">📄 PDF</button><button onclick="exportRep('${id}','i')">🖼️ صورة</button>`)}`;
+}
+/* أول ٣ أصناف من كل الشهور الشغّالة */
+function topItems(){
+  const agg={};
+  salesMonths().forEach(mo=> Object.entries(monthlyItems[mo]||{}).forEach(([n,d])=>{
+    agg[n]=(agg[n]||0)+(d.val||0); }));
+  return Object.keys(agg).map(n=>({name:n, val:agg[n]})).sort((a,b)=> b.val-a.val);
+}
 
 /* ٢) موزعين × قطاعات */
 function buildDistSectors(){
@@ -1419,77 +1576,107 @@ function buildDistSectors(){
   months.forEach(mo=>{
     Object.entries(monthlySector[mo]||{}).forEach(([cname, bySec])=>{
       if(!dists.has(cname)) return;
-      Object.entries(bySec).forEach(([sec, v])=>{
+      Object.entries(bySec).forEach(([sec0, v])=>{
+        const sec = secName(sec0);
         secs.add(sec); rows[cname]=rows[cname]||{}; rows[cname][sec]=(rows[cname][sec]||0)+v;
       });
     });
   });
-  const cols = [...secs].sort();
-  const list = Object.keys(rows).map(n=>({name:n, cells: cols.map(s=> rows[n][s]||0),
-    total: cols.reduce((a,s)=> a+(rows[n][s]||0), 0)})).sort((a,b)=> b.total-a.total);
-  const tot = cols.map((s,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
+  const cols = [...secs].sort(secSort);          // كرافت · نيو · كومبن · اكسسوارات · جيفز · ابواب
+  const list = Object.keys(rows).map(n=>({name:n, cells: cols.map(s2=> rows[n][s2]||0),
+    total: cols.reduce((a,s2)=> a+(rows[n][s2]||0), 0)})).sort((a,b)=> b.total-a.total);
+  const tot = cols.map((s2,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
   return {cols, list, tot, total: tot.reduce((a,b)=>a+b,0), months};
 }
 function repDistSectorsModel(){
   const d = buildDistSectors(), body=[];
   d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, ...r.cells.map(v=> Math.round(v)), Math.round(r.total)]}));
   body.push({type:'tot', cells:['','الإجمالي', ...d.tot.map(v=>Math.round(v)), Math.round(d.total)]});
-  return {title:'مبيعات الموزعين حسب القطاع — '+(d.months[0]||'')+(d.months.length>1?' إلى '+d.months[d.months.length-1]:''),
+  return {title:'مبيعات الموزعين حسب القطاع — '+monthsLabel(d.months),
     header:['م','الموزع', ...d.cols, 'الإجمالي'], body, d};
 }
 function renderRepDistSectors(m){
   const d = buildDistSectors();
   if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات لموزعين — صنّف العملاء «موزع» من شاشة العملاء</div>`; return; }
-  m.innerHTML = `<div style="overflow-x:auto"><table class="rep stk">
-      <tr><th>الموزع</th>${d.cols.map(c=>`<th>${esc(c)}</th>`).join('')}<th>الإجمالي</th></tr>
-      ${d.list.map(r=>`<tr><td>${esc(r.name)}</td>${r.cells.map(v=>`<td>${repFmt(v)}</td>`).join('')}<td><b>${repFmt(r.total)}</b></td></tr>`).join('')}
-      <tr class="m"><td><b>الإجمالي</b></td>${d.tot.map(v=>`<td><b>${repFmt(v)}</b></td>`).join('')}<td><b>${repFmt(d.total)}</b></td></tr>
-    </table></div>
-    ${floatBar(`<button onclick="exportRep('distsec','x')">📊 إكسل</button><button onclick="exportRep('distsec','p')">📄 PDF</button><button onclick="exportRep('distsec','i')">🖼️ صورة</button>`)}`;
+  const topSecs = d.cols.map((c,i)=> ({name:c, val:d.tot[i]})).sort((a,b)=> b.val-a.val);
+  renderRepTable(m, 'distsec', repDistSectorsModel(), {
+    boxes: topBoxes(topSecs,'أعلى ٣ مجموعات') + topBoxes(topItems(),'أعلى ٣ أصناف')
+  });
 }
 
-/* ٣) الأبواب بالكود — قيمة وكمية */
+/* ٣) الأبواب بالكود — صف لكل كود، وأعمدة للمقاسات
+      70 · 80 · 90 · متر · برور وحلق · خدمات.
+      المقاس بيتقرا من اسم الصنف، والبرور والحلق مع بعض في عمود واحد. */
+const DOOR_COLS=['70','80','90','متر','برور وحلق','خدمات'];
+function doorCol(name){
+  const n=String(name||'');
+  if(/برور|حلق|حلوق/.test(n)) return 'برور وحلق';
+  if(/خدم/.test(n)) return 'خدمات';
+  const m2=n.match(/(^|[\s(])(\d{2,3})(\s*سم)?([\s)]|$)/);
+  if(m2){ const v=parseInt(m2[2],10);
+    if(v===70) return '70'; if(v===80) return '80'; if(v===90) return '90';
+    if(v>=100 && v<=130) return 'متر'; }
+  if(/متر/.test(n)) return 'متر';
+  return 'خدمات';                       // إكسسوارات وخدمات الأبواب
+}
 function buildDoorsByCode(){
-  const rows = {};
-  Object.keys(monthlyDoors).sort().forEach(mo=>{
+  const rows={};
+  salesMonths().forEach(mo=>{
     Object.values(monthlyDoors[mo]||{}).forEach(byItem=>{
       Object.entries(byItem).forEach(([name, d])=>{
-        const key = d.code || name;
-        const r = rows[key] = rows[key] || {code: d.code||'—', name, qty:0, val:0};
+        const code = d.code || 'بدون كود';
+        const r = rows[code] = rows[code] || {code, names:new Set(), cells:{}, qty:0, val:0};
+        r.names.add(name);
+        const c = doorCol(name);
+        r.cells[c]=(r.cells[c]||0)+(d.val||0);
         r.qty += (d.qty||0); r.val += (d.val||0);
-        if(!r.name) r.name = name;
       });
     });
   });
-  const list = Object.values(rows).sort((a,b)=> b.val-a.val);
-  return {list, qty: list.reduce((a,r)=>a+r.qty,0), val: list.reduce((a,r)=>a+r.val,0)};
+  const list=Object.values(rows).map(r=>({
+    code:r.code, name:[...r.names][0]||'', many:r.names.size>1,
+    cells:DOOR_COLS.map(c=> r.cells[c]||0), qty:r.qty, val:r.val
+  })).sort((a,b)=> b.val-a.val);
+  const tot=DOOR_COLS.map((c,i)=> list.reduce((a,r)=> a+r.cells[i],0));
+  return {cols:DOOR_COLS, list, tot,
+    qty:list.reduce((a,r)=>a+r.qty,0), val:list.reduce((a,r)=>a+r.val,0)};
 }
 function repDoorsByCodeModel(){
-  const d = buildDoorsByCode(), body=[];
-  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.code, r.name, rnd2(r.qty), Math.round(r.val)]}));
-  body.push({type:'tot', cells:['','','الإجمالي', rnd2(d.qty), Math.round(d.val)]});
-  return {title:'مبيعات الأبواب بالكود — كمية وقيمة', header:['م','الكود','الصنف','الكمية','القيمة'], body, d};
+  const d=buildDoorsByCode(), body=[];
+  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.code,
+    ...r.cells.map(v=>Math.round(v)), rnd2(r.qty), Math.round(r.val)]}));
+  body.push({type:'tot', cells:['','الإجمالي', ...d.tot.map(v=>Math.round(v)), rnd2(d.qty), Math.round(d.val)]});
+  return {title:'مبيعات الأبواب بالكود — '+monthsLabel(salesMonths()),
+    header:['م','الكود', ...d.cols, 'الكمية','الإجمالي'], body, d};
 }
 function renderRepDoorsByCode(m){
-  const d = buildDoorsByCode();
+  const d=buildDoorsByCode();
   if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات أبواب — ارفع شيت مبيعات فيه أصناف أبواب</div>`; return; }
-  m.innerHTML = `${!d.qty? `<div class="warn">الشيت المرفوع مكانش فيه عمود كمية، فالتقرير بالقيمة بس.</div>`:''}
-    <div style="overflow-x:auto"><table class="rep stk">
-      <tr><th>الصنف</th><th>الكود</th><th>الكمية</th><th>القيمة</th></tr>
-      ${d.list.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.code)}</td><td>${r.qty? fmt1(r.qty) : '—'}</td><td>${repFmt(r.val)}</td></tr>`).join('')}
-      <tr class="m"><td><b>الإجمالي</b></td><td></td><td><b>${d.qty? fmt1(d.qty):'—'}</b></td><td><b>${repFmt(d.val)}</b></td></tr>
-    </table></div>
-    ${floatBar(`<button onclick="exportRep('doorcode','x')">📊 إكسل</button><button onclick="exportRep('doorcode','p')">📄 PDF</button><button onclick="exportRep('doorcode','i')">🖼️ صورة</button>`)}`;
+  renderRepTable(m, 'doorcode', repDoorsByCodeModel(), {
+    warn: !d.qty? 'الشيت المرفوع مكانش فيه عمود كمية، فالتقرير بالقيمة بس.' : '',
+    boxes: topBoxes(d.list.map(r=>({name:r.code+' — '+r.name, val:r.val})), 'أعلى ٣ أكواد')
+  });
 }
 
-/* ٤) موزعين × أبواب — قيمة وكمية */
+/* ٤) الأبواب لكل عميل اشترى أبواب (مش الموزعين بس) — كمية وقيمة.
+      الأبواب نفسها بس: القطاع الفرعي «أبواب» — من غير كالون ولا مفصلة ولا خدمات. */
+const NOT_DOOR=/اكسسوار|إكسسوار|خدم|كالون|مفصل|جوان|سليكون|مسمار|عتب/;
+function isDoorSub(name, sub){
+  if(NOT_DOOR.test(String(sub||''))) return false;       // «اكسسوارات ابواب WPC» مش باب
+  if(sub) return /ابواب|أبواب/.test(sub);
+  return !NOT_DOOR.test(String(name||''));               // بيانات قديمة من غير قطاع فرعي
+}
 function buildDistDoors(){
-  const dists = new Set(distributorNames()), rows = {};
-  Object.keys(monthlyDoors).sort().forEach(mo=>{
+  const clsOfName={}; customers.forEach(c=> clsOfName[c.name]=c.cls||'');
+  const rows={};
+  salesMonths().forEach(mo=>{
     Object.entries(monthlyDoors[mo]||{}).forEach(([cname, byItem])=>{
-      if(!dists.has(cname)) return;
-      const r = rows[cname] = rows[cname] || {qty:0, val:0};
-      Object.values(byItem).forEach(d=>{ r.qty += (d.qty||0); r.val += (d.val||0); });
+      if(clsOfName[cname]==='مستبعد') return;
+      Object.entries(byItem).forEach(([nm,d])=>{
+        if(!isDoorSub(nm, d.sub)) return;
+        const r = rows[cname] = rows[cname] || {qty:0, val:0};
+        r.qty += (d.qty||0); r.val += (d.val||0);
+      });
     });
   });
   const list = Object.keys(rows).map(n=> ({name:n, qty:rows[n].qty, val:rows[n].val})).sort((a,b)=> b.val-a.val);
@@ -1499,18 +1686,92 @@ function repDistDoorsModel(){
   const d = buildDistDoors(), body=[];
   d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, rnd2(r.qty), Math.round(r.val)]}));
   body.push({type:'tot', cells:['','الإجمالي', rnd2(d.qty), Math.round(d.val)]});
-  return {title:'مبيعات الأبواب للموزعين — كمية وقيمة', header:['م','الموزع','الكمية','القيمة'], body, d};
+  return {title:'مبيعات الأبواب للعملاء — '+monthsLabel(salesMonths()),
+    header:['م','العميل','الكمية','القيمة'], body, d};
 }
 function renderRepDistDoors(m){
   const d = buildDistDoors();
-  if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات أبواب لموزعين</div>`; return; }
-  m.innerHTML = `${!d.qty? `<div class="warn">الشيت المرفوع مكانش فيه عمود كمية، فالتقرير بالقيمة بس.</div>`:''}
+  if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات أبواب</div>`; return; }
+  renderRepTable(m, 'distdoor', repDistDoorsModel(), {
+    warn: !d.qty? 'الشيت المرفوع مكانش فيه عمود كمية، فالتقرير بالقيمة بس.' : '',
+    boxes: topBoxes(d.list, 'أعلى ٣ عملاء')
+  });
+}
+
+/* ═══ ٥) مقارنة المبيعات بين شهرين ═══
+   نفس صفوف تقرير «موزعين إجمالي» (التصنيفات مجمّعة + كل موزع بسطر)،
+   بس عمودين لشهرين تختارهم، وعمود فرق وعمود نسبة. */
+function cmpMonths(){
+  const mos = salesMonths();
+  let a = load('_cmpMoA_', null), b = load('_cmpMoB_', null);
+  if(!mos.includes(a)) a = mos[mos.length-2] || mos[0] || null;
+  if(!mos.includes(b)) b = mos[mos.length-1] || null;
+  return {mos, a, b};
+}
+function setCmpMo(which, mo){ save(which==='a'?'_cmpMoA_':'_cmpMoB_', mo); render(true); }
+function buildMonthCompare(){
+  const {mos, a, b} = cmpMonths();
+  if(mos.length<2 || !a || !b) return {mos, a, b, list:[], ta:0, tb:0};
+  const custByName={}; customers.forEach(c=> custByName[c.name]=c);
+  const agg={};   // المفتاح: اسم الموزع، أو اسم التصنيف للباقي
+  const add=(mo, key)=>{
+    Object.entries(monthlySales[mo]||{}).forEach(([name,net])=>{
+      const cls=(custByName[name]||{}).cls||'';
+      if(!cls || cls==='مستبعد' || cls==='عميل ابواب') return;
+      const row = cls==='موزع' ? name : cls;
+      agg[row]=agg[row]||{a:0,b:0}; agg[row][key]+=net;
+    });
+  };
+  add(a,'a'); add(b,'b');
+  const list=Object.keys(agg).map(name=>{
+    const va=agg[name].a, vb=agg[name].b, diff=vb-va;
+    return {name, va, vb, diff, pct: va? Math.round(diff/va*100) : null};
+  }).sort((x,y)=> y.vb - x.vb);
+  const ta=list.reduce((s2,r)=>s2+r.va,0), tb=list.reduce((s2,r)=>s2+r.vb,0);
+  return {mos, a, b, list, ta, tb};
+}
+const pctTxt = p => p===null ? '—' : (p>0?'+':'')+p+'%';
+function repMonthCompareModel(){
+  const d=buildMonthCompare(); const body=[];
+  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, Math.round(r.va), Math.round(r.vb),
+    Math.round(r.diff), pctTxt(r.pct)]}));
+  const tdiff=d.tb-d.ta, tpct=d.ta? Math.round(tdiff/d.ta*100) : null;
+  body.push({type:'tot', cells:['','الإجمالي', Math.round(d.ta), Math.round(d.tb), Math.round(tdiff), pctTxt(tpct)]});
+  return {title:`مقارنة المبيعات — ${moName(d.a)} مقابل ${moName(d.b)}`,
+    header:['م','بيان', moName(d.a)||'—', moName(d.b)||'—', 'الفرق', 'النسبة'],
+    body, sign:['','','','','auto','auto'], d};
+}
+function renderRepMonthCompare(m){
+  const d=buildMonthCompare();
+  if(d.mos.length<2){
+    m.innerHTML=`<div class="empty">المقارنة محتاجة شهرين على الأقل —
+      لسه مرفوع ${d.mos.length} شهر.<br>ارفع شيت شهر تاني من «رفع شيت المبيعات».</div>`;
+    return;
+  }
+  const sel=(which,cur)=>`<select onchange="setCmpMo('${which}',this.value)"
+    style="padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:var(--panel);
+    color:var(--text);font-weight:700;font-size:13.5px">
+    ${d.mos.map(mo=>`<option value="${mo}" ${mo===cur?'selected':''}>${moName(mo)}</option>`).join('')}</select>`;
+  const tdiff=d.tb-d.ta, tpct=d.ta? Math.round(tdiff/d.ta*100) : null;
+  const col=v=> v>0?'var(--green,#0a7d3c)' : (v<0?'var(--red,#c0202f)':'inherit');
+  const cell=v=>{ const n=Math.round(v);
+    const t = n===0 ? '—' : (n>0?'+':'−')+Math.abs(n).toLocaleString('en-US');
+    return `<td style="color:${col(n)};font-weight:700">${t}</td>`; };
+  const pcell=p=>`<td style="color:${col(p===null?0:p)};font-weight:700">${pctTxt(p)}</td>`;
+  m.innerHTML=`
+    ${topBoxes(d.list.map(r=>({name:r.name, val:r.vb})), 'أعلى ٣ في '+moName(d.b))}
+    <div class="toolbar" style="align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:13px;color:var(--muted)">من</span>${sel('a',d.a)}
+      <span style="font-size:13px;color:var(--muted)">إلى</span>${sel('b',d.b)}
+    </div>
     <div style="overflow-x:auto"><table class="rep stk">
-      <tr><th>الموزع</th><th>الكمية</th><th>القيمة</th></tr>
-      ${d.list.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.qty? fmt1(r.qty):'—'}</td><td>${repFmt(r.val)}</td></tr>`).join('')}
-      <tr class="m"><td><b>الإجمالي</b></td><td><b>${d.qty? fmt1(d.qty):'—'}</b></td><td><b>${repFmt(d.val)}</b></td></tr>
+      <tr><th>م</th><th>بيان</th><th>${moName(d.a)}</th><th>${moName(d.b)}</th><th>الفرق</th><th>النسبة</th></tr>
+      ${d.list.map((r,i)=>`<tr><td>${i<3?MEDALS[i]:(i+1)}</td><td>${esc(r.name)}</td>
+        <td>${repFmt(r.va)}</td><td>${repFmt(r.vb)}</td>${cell(r.diff)}${pcell(r.pct)}</tr>`).join('')}
+      <tr class="m"><td></td><td><b>الإجمالي</b></td><td><b>${repFmt(d.ta)}</b></td>
+        <td><b>${repFmt(d.tb)}</b></td>${cell(tdiff)}${pcell(tpct)}</tr>
     </table></div>
-    ${floatBar(`<button onclick="exportRep('distdoor','x')">📊 إكسل</button><button onclick="exportRep('distdoor','p')">📄 PDF</button><button onclick="exportRep('distdoor','i')">🖼️ صورة</button>`)}`;
+    ${floatBar(`<button onclick="exportRep('cmpmo','x')">📊 إكسل</button><button onclick="exportRep('cmpmo','p')">📄 PDF</button><button onclick="exportRep('cmpmo','i')">🖼️ صورة</button>`)}`;
 }
 
 /* تصدير موحّد للتقارير التلاتة الجداد */
@@ -1519,16 +1780,19 @@ function repModel(id){
   if(id==='distsec')  return repDistSectorsModel();
   if(id==='doorcode') return repDoorsByCodeModel();
   if(id==='distdoor') return repDistDoorsModel();
+  if(id==='cmpmo')    return repMonthCompareModel();
   return null;
 }
 function exportRep(id, kind){
   const md = repModel(id);
   if(!md || !md.body.length){ toast('لا توجد بيانات'); return; }
   const file = md.title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_');
+  md.hiLo = md.hiLo || modelHiLo(md);
   if(kind==='x'){
-    const w = md.header[0]==='م' ? [5, 34, ...md.header.slice(2).map(()=>14)]
-                                  : [34, ...md.header.slice(1).map(()=>14)];
-    saveAoaXlsx(modelToAoa(md, true), 'تقرير', file+'.xlsx', w, {title: md.title});
+    const w = md.header.map(h=> h==='م' ? 5
+      : (/^(الصنف|الموزع|العميل|بيان)$/.test(h) ? 34 : (h==='الكود' ? 10 : 14)));
+    saveAoaXlsx(modelToAoa(md, true), 'تقرير', file+'.xlsx', w,
+      {title: md.title, sign: md.sign||[], hiLo: md.hiLo});
     return;
   }
   const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docTableHtml(md)}</div>`;
@@ -1587,7 +1851,7 @@ function renderSalesCustomers(m){
         <span>${g==='غير مصنف'?'⚠️ ':''}${g} <span class="cnt">(${rows.length})</span></span><span class="arrow">▾</span></div>
         <div class="grp-body">${rows.map(c=>`<div class="card"><div class="info"><div class="name">${esc(c.name)}</div>
           ${clsChips(c)}</div>
-          <div class="act"><button onclick="editCustomer('${c.id}')">✏️</button><button onclick="delCustomer('${c.id}')">🗑️</button></div></div>`).join('')}</div></div>`;
+          <div class="act"><button title="دمج في اسم تاني" onclick="mergeCustomerSheet('${c.id}')">🔗</button><button onclick="editCustomer('${c.id}')">✏️</button><button onclick="delCustomer('${c.id}')">🗑️</button></div></div>`).join('')}</div></div>`;
     }).join('') : `<div class="empty">لسه مفيش عملاء — استورد ملف العملاء من فوق،<br>أو ارفع شيت مبيعات والعملاء هيتضافوا لوحدهم</div>`}
     ${list.length? floatBar(`<button id="clsSaveBtn" onclick="saveClsBatch()">💾 مفيش تغييرات</button>`):''}
   `;
@@ -1596,73 +1860,71 @@ function renderSalesCustomers(m){
   $('#impCust').onchange=e=>{ if(e.target.files[0]) importCustomers(e.target.files[0]); };
 }
 function renderSalesImport(m){
-  const months=Object.keys(monthlySales).sort();
+  const all=Object.keys(monthlySales).sort();
+  const live=all.filter(mo=> !isArchived(mo)), arch=all.filter(isArchived);
+  const row=(mo,on)=>`<div class="card"><div class="info"><div class="name">${moName(mo)}</div>
+    <div class="sub">${Object.keys(monthlySales[mo]||{}).length} عميل · ${repFmt(Object.values(monthlySales[mo]||{}).reduce((a,b)=>a+b,0))}</div></div>
+    <div class="act"><button title="${on?'أرشفة':'رجوع'}" onclick="toggleArchiveMonth('${mo}')">${on?'🗄️':'↩️'}</button>
+      <button title="حذف" onclick="delSalesMonth('${mo}')">🗑️</button></div></div>`;
   m.innerHTML = `
     <div class="warn">رفع ملف مبيعات شهر واحد (كل المخازن مع بعض). الصيغة: vout-vin لكل عميل.</div>
     <div class="impbar"><label>📥 رفع مبيعات شهر<input type="file" id="impSales" accept=".xlsx,.xls" style="display:none"></label></div>
-    ${months.length? months.map(mo=>`<span class="pill">${mo}</span>`).join(''):`<div class="empty">لسه لا توجد بيانات</div>`}
+    ${live.length? `<div class="t3lbl">الشهور الشغّالة (داخلة في التقارير)</div>${live.map(mo=>row(mo,true)).join('')}`
+                 : `<div class="empty">لسه لا توجد بيانات</div>`}
+    ${arch.length? `<div class="t3lbl">🗄️ الأرشيف (برّه التقارير)</div>${arch.map(mo=>row(mo,false)).join('')}`:''}
   `;
   $('#impSales').onchange=e=>{ if(e.target.files[0]) importSales(e.target.files[0]); };
 }
-function renderSalesReport(m){
-  const months=Object.keys(monthlySales).sort();
-  if(!months.length){ m.innerHTML=`<div class="empty">لا توجد شهور مستوردة</div>`; return; }
-  const custByName={}; customers.forEach(c=>custByName[c.name]=c);
-  const rollup={}; const distRows={}; const unclassified=new Set();
-  months.forEach(mo=>{
-    Object.entries(monthlySales[mo]).forEach(([name,net])=>{
-      const cls=(custByName[name]||{}).cls||'';
-      if(cls==='مستبعد') return;
-      if(!cls){ unclassified.add(name); return; }
-      if(cls==='موزع'){ distRows[name]=distRows[name]||{}; distRows[name][mo]=(distRows[name][mo]||0)+net; }
-      else{ rollup[cls]=rollup[cls]||{}; rollup[cls][mo]=(rollup[cls][mo]||0)+net; }
-    });
-  });
-  const fmt=n=>n?Math.round(n).toLocaleString('en-US'):'—';
-  let rowsHtml='';
-  ['مبيعات جملة','مبيعات خاصة','عميل ابواب'].forEach(cls=>{
-    if(!rollup[cls]) return;
-    const tot=months.reduce((a,mo)=>a+(rollup[cls][mo]||0),0);
-    rowsHtml+=`<tr><td>${cls}</td>${months.map(mo=>`<td>${fmt(rollup[cls][mo])}</td>`).join('')}<td><b>${fmt(tot)}</b></td></tr>`;
-  });
-  Object.keys(distRows).sort((a,b)=>{
-    const ta=months.reduce((s,mo)=>s+(distRows[a][mo]||0),0), tb=months.reduce((s,mo)=>s+(distRows[b][mo]||0),0);
-    return tb-ta;
-  }).forEach(name=>{
-    const tot=months.reduce((a,mo)=>a+(distRows[name][mo]||0),0);
-    rowsHtml+=`<tr><td>${esc(name)}</td>${months.map(mo=>`<td>${fmt(distRows[name][mo])}</td>`).join('')}<td><b>${fmt(tot)}</b></td></tr>`;
-  });
-  m.innerHTML=`${unclassified.size? `<div class="warn">⚠️ عندك ${unclassified.size} عميل لسه غير مصنّف ومش داخل في الجدول ده — صنّفهم من تاب العملاء: ${[...unclassified].slice(0,6).join('، ')}${unclassified.size>6?' ...':''}</div>`:''}
-    <div style="overflow-x:auto"><table class="rep stk">
-    <tr><th>بيان</th>${months.map(mo=>`<th>${mo}</th>`).join('')}<th>الإجمالي</th></tr>${rowsHtml}</table></div>
-    ${floatBar(`<button onclick="exportRep('dist','x')">📊 إكسل</button><button onclick="exportRep('dist','p')">📄 PDF</button><button onclick="exportRep('dist','i')">🖼️ صورة</button>`)}`;
+function delSalesMonth(mo){
+  if(!confirm('حذف بيانات '+moName(mo)+' نهائياً؟')) return;
+  delete monthlySales[mo]; delete monthlySector[mo]; delete monthlyDoors[mo]; delete monthlyItems[mo];
+  salesArchive=salesArchive.filter(x=>x!==mo);
+  save('monthlySales_v1',monthlySales); save('monthlySector_v1',monthlySector);
+  save('monthlyDoors_v1',monthlyDoors); save('monthlyItems_v1',monthlyItems);
+  save('salesArchive_v1',salesArchive);
+  toast('اتحذف '+moName(mo)); render(true);
 }
-// نفس أرقام الجدول اللي فوق، بس في شكل نموذج عشان يتصدّر
-function repDistTotalModel(){
+/* ١) موزعين إجمالي — التصنيفات مجمّعة وكل موزع بسطر، عمود لكل شهر */
+function buildDistTotal(){
   const months=salesMonths();
   const custByName={}; customers.forEach(c=>custByName[c.name]=c);
-  const rollup={}, distRows={};
+  const rollup={}, distRows={}; const unclassified=new Set();
   months.forEach(mo=>{
     Object.entries(monthlySales[mo]||{}).forEach(([name,net])=>{
       const cls=(custByName[name]||{}).cls||'';
-      if(cls==='مستبعد' || !cls) return;
+      if(cls==='مستبعد' || cls==='عميل ابواب') return;     // عميل الأبواب ليه تقاريره لوحده
+      if(!cls){ unclassified.add(name); return; }
       if(cls==='موزع'){ distRows[name]=distRows[name]||{}; distRows[name][mo]=(distRows[name][mo]||0)+net; }
       else { rollup[cls]=rollup[cls]||{}; rollup[cls][mo]=(rollup[cls][mo]||0)+net; }
     });
   });
-  const body=[]; const colTot=months.map(()=>0); let grand=0;
-  const push=(label, byMo)=>{
+  const mk=(label,byMo)=>{
     const cells=months.map(mo=> Math.round(byMo[mo]||0));
-    const tot=cells.reduce((a,b)=>a+b,0);
-    cells.forEach((v,i)=> colTot[i]+=v); grand+=tot;
-    body.push({type:'row', cells:[label, ...cells, tot]});
+    return {name:label, cells, total:cells.reduce((a,b)=>a+b,0)};
   };
-  ['مبيعات جملة','مبيعات خاصة','عميل ابواب'].forEach(cls=>{ if(rollup[cls]) push(cls, rollup[cls]); });
-  Object.keys(distRows).sort((a,b)=>{
-    const ta=months.reduce((s,mo)=>s+(distRows[a][mo]||0),0), tb=months.reduce((s,mo)=>s+(distRows[b][mo]||0),0);
-    return tb-ta; }).forEach(n=> push(n, distRows[n]));
-  body.push({type:'tot', cells:['الإجمالي', ...colTot, grand]});
-  return {title:'مبيعات الموزعين — إجمالي', header:['بيان', ...months, 'الإجمالي'], body};
+  const list=[];
+  ['مبيعات جملة','مبيعات خاصة'].forEach(cls=>{ if(rollup[cls]) list.push(mk(cls, rollup[cls])); });
+  Object.keys(distRows).forEach(n=> list.push(mk(n, distRows[n])));
+  list.sort((a,b)=> b.total-a.total);                       // من الأعلى للأقل
+  const tot=months.map((mo,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
+  return {months, list, tot, total: tot.reduce((a,b)=>a+b,0), unclassified:[...unclassified]};
+}
+function repDistTotalModel(){
+  const d=buildDistTotal(), body=[];
+  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, ...r.cells, r.total]}));
+  body.push({type:'tot', cells:['','الإجمالي', ...d.tot, d.total]});
+  return {title:'مبيعات الموزعين — إجمالي '+monthsLabel(d.months),
+    header:['م','بيان', ...d.months.map(moName), 'الإجمالي'], body, d};
+}
+function renderSalesReport(m){
+  const d=buildDistTotal();
+  if(!d.months.length){ m.innerHTML=`<div class="empty">لا توجد شهور مستوردة</div>`; return; }
+  if(!d.list.length){ m.innerHTML=`<div class="empty">مفيش عملاء مصنّفين — صنّفهم من شاشة العملاء</div>`; return; }
+  const u=d.unclassified;
+  renderRepTable(m, 'dist', repDistTotalModel(), {
+    warn: u.length? `⚠️ عندك ${u.length} عميل لسه غير مصنّف ومش داخل في الجدول ده — صنّفهم من تاب العملاء: ${esc(u.slice(0,6).join('، '))}${u.length>6?' ...':''}` : '',
+    boxes: topBoxes(d.list.map(r=>({name:r.name, val:r.total})), 'أعلى ٣')
+  });
 }
 function importCustomers(file){
   const r=new FileReader();
@@ -1714,11 +1976,12 @@ function importSales(file){
       const isDoor = (it, nm)=> it ? /ابواب|أبواب/.test(it.mainGroup||'')
                                    : /(^|\s)(باب|ابواب|أبواب)/.test(nm||'');
       const dataRows = rows.slice(hdrRow+1).filter(r=>r[ci]);
-      const custMap={}, sectorMap={}, doorMap={};
+      const custMap={}, sectorMap={}, doorMap={}, itemMap={};
       const unmatchedCust=new Set(), unmatchedItems=new Set();
       const custByName={}; customers.forEach(c=>custByName[c.name]=c);
       for(const row of dataRows){
-        const cname=String(row[ci]).trim(); if(!cname) continue;
+        let cname=String(row[ci]).trim(); if(!cname) continue;
+        cname = custAlias[cname] || cname;          // اسم اتدمج قبل كده
         const vout=parseFloat(row[voi])||0, vin=parseFloat(row[vii])||0, net=vout-vin;
         custMap[cname]=(custMap[cname]||0)+net;
         if(!custByName[cname]) unmatchedCust.add(cname);
@@ -1727,17 +1990,20 @@ function importSales(file){
         const sector = it? (SECTOR_MAP[it.mainGroup]||'أخرى') : 'غير معروف';
         if(!it && iname) unmatchedItems.add(iname);
         sectorMap[cname]=sectorMap[cname]||{}; sectorMap[cname][sector]=(sectorMap[cname][sector]||0)+net;
+        if(iname){ const im=itemMap[iname]=itemMap[iname]||{qty:0,val:0};
+          im.val+=net; im.qty+=(qoi>=0?(parseFloat(row[qoi])||0):0)-(qii>=0?(parseFloat(row[qii])||0):0); }
         // تفصيل الأبواب: لازم الكمية والكود عشان تقارير الأبواب
         if(isDoor(it, iname)){
           const qty=(qoi>=0? (parseFloat(row[qoi])||0) : 0) - (qii>=0? (parseFloat(row[qii])||0) : 0);
           const code=(coi>=0? String(row[coi]||'').trim() : '') || codeFromName(iname);
           doorMap[cname]=doorMap[cname]||{};
-          const d=doorMap[cname][iname]=doorMap[cname][iname]||{qty:0, val:0, code};
+          const d=doorMap[cname][iname]=doorMap[cname][iname]||{qty:0, val:0, code, sub:(it&&it.subGroup)||''};
           d.qty+=qty; d.val+=net; if(!d.code && code) d.code=code;
+          if(!d.sub && it && it.subGroup) d.sub=it.subGroup;
         }
       }
       const total=Object.values(custMap).reduce((a,b)=>a+b,0);
-      pendingImport={type:'sales', custMap, sectorMap, doorMap, hasQty: qoi>=0,
+      pendingImport={type:'sales', custMap, sectorMap, doorMap, itemMap, hasQty: qoi>=0,
         unmatchedCust:[...unmatchedCust], unmatchedItems:[...unmatchedItems], total};
       openSheet(`<h3>تأكيد المبيعات</h3>
         <div class="f-row"><label>الشهر (YYYY-MM) *</label><input id="s_month" placeholder="2026-01"></div>
@@ -1758,10 +2024,12 @@ function commitSalesImport(){
   p.unmatchedCust.forEach(name=>{ customers.push({id:uid(),name,cls:''}); });
   save('customers_v1',customers);
   monthlySales[month]=p.custMap; monthlySector[month]=p.sectorMap;
-  monthlyDoors[month]=p.doorMap||{};
+  monthlyDoors[month]=p.doorMap||{}; monthlyItems[month]=p.itemMap||{};
+  salesArchive = salesArchive.filter(x=> x!==month);   // شهر مرفوع من جديد يرجع شغّال
   save('monthlySales_v1',monthlySales); save('monthlySector_v1',monthlySector);
-  save('monthlyDoors_v1',monthlyDoors);
-  pendingImport=null; closeSheet(); render(); toast('تم حفظ '+month);
+  save('monthlyDoors_v1',monthlyDoors); save('monthlyItems_v1',monthlyItems);
+  save('salesArchive_v1',salesArchive);
+  pendingImport=null; closeSheet(); render(); toast('تم حفظ '+moName(month));
 }
 
 // ========== GV & PAYROLL (placeholders) ==========
@@ -1808,6 +2076,10 @@ const DOC_CSS=`<style>
 .dx table.pay th{background:#4472c4;border-color:#2f5597;font-weight:700}
 .dx table.pay td{border-color:#9db2dd;background:#fff}
 .dx table.pay tr.z td{background:#fff}
+.dx table td.hi{background:#d6f5df}
+.dx table td.lo{background:#fde0e3}
+.dx table td.minus{color:#c0202f;font-weight:700}
+.dx table td.plus{color:#0a7d3c;font-weight:700}
 .dx table.pay td.minus{color:#c0202f;font-weight:700}
 .dx table.pay td.plus{color:#0a7d3c;font-weight:700}
 .dx table.pay td.money{font-weight:700}
@@ -2658,13 +2930,26 @@ const rnd0=x=>Math.round(x+1e-9);
 const mr5=x=>Math.round(x/5+1e-9)*5;
 const fmt1=n=>Number(n).toLocaleString('en-US',{maximumFractionDigits:1});
 const fmt2=n=>Number(n).toLocaleString('en-US',{maximumFractionDigits:2});
+/* إشارة الخانة: رقم بالسالب/الموجب، أو نص زي «+12%» و«عجز» */
+function signOf(c){
+  if(typeof c === 'number') return c<0 ? 'minus' : (c>0 ? 'plus' : '');
+  const t = String(c||'');
+  if(/^-/.test(t) || /عجز/.test(t)) return 'minus';
+  if(/^\+/.test(t) || /زياد/.test(t)) return 'plus';
+  return '';
+}
 function docTableHtml(model, extraCss){
   const n=model.header.length;
   const cls={branch:'m',sub:'s',tot:'m',row:'z'};
   return `<table><tr>${model.header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr>`+
     model.body.map(r=> r.type==='branch'
       ? `<tr class="m"><td colspan="${n}">◆ ${esc(r.label)}</td></tr>`
-      : `<tr class="${cls[r.type]}">${r.cells.map(c=>`<td>${typeof c==='number'?fmt2(c):esc(c)}</td>`).join('')}</tr>`).join('')+`</table>`;
+      : `<tr class="${cls[r.type]}">${r.cells.map((c,i)=>{
+          const sg = (model.sign||[])[i]==='auto' ? signOf(c) : '';
+          const e = r.type==='row' ? (model.hiLo||{})[i] : null;
+          const hl = (e && typeof c==='number' && c!==0) ? (c===e.mx?'hi':(c===e.mn?'lo':'')) : '';
+          return `<td class="${[sg,hl].filter(Boolean).join(' ')}">${typeof c==='number'?fmt2(c):esc(c)}</td>`;
+        }).join('')}</tr>`).join('')+`</table>`;
 }
 /* الكشف اللي بيتبعت: كل عمود ليه دوره — الراتب والصافي بخلفية خضرا،
    والخانات اللي بتتكتب (غياب/تأخير/إضافي/سلف/تأمينات/حوافز) بخلفية كريمي،
@@ -2741,8 +3026,9 @@ function styleSheet(ws, o){
         let sg = sign[c - R.s.c];
         if(sg === 'auto'){
           if(numeric) sg = cell.v < 0 ? 'minus' : (cell.v > 0 ? 'plus' : '');
-          else sg = /عجز/.test(String(cell.v || '')) ? 'minus'
-                  : (/زياد/.test(String(cell.v || '')) ? 'plus' : '');
+          else { const t=String(cell.v || '');
+                 sg = (/^-/.test(t) || /عجز/.test(t)) ? 'minus'
+                    : ((/^\+/.test(t) || /زياد/.test(t)) ? 'plus' : ''); }
         }
         // صف الإجمالي في الإكسل خلفيته فاتحة (D9E1F5) فالأحمر والأخضر
         // الغامقين بيتقروا عليه عادي
@@ -2750,9 +3036,14 @@ function styleSheet(ws, o){
         /* colFill[] بتدي لكل عمود لونه الخاص (زي كشف الإرسال: الراتب
            والصافي أخضر فاتح، وخانات الإدخال كريمي) بدل التخطيط العادي */
         const cf = (o.colFill || [])[c - R.s.c];
+        /* أعلى رقم في العمود خلفية خضرا وأقل رقم خلفية حمرا — زي الشاشة */
+        const hl = (o.hiLo || {})[c - R.s.c];
+        let hlFill = '';
+        if(hl && numeric && cell.v !== 0 && !isTot)
+          hlFill = cell.v === hl.mx ? 'D6F5DF' : (cell.v === hl.mn ? 'FDE0E3' : '');
         cell.s = {font:{bold: isTot || !!paint, sz:10.5,
                         color: paint ? {rgb: sg === 'minus' ? XS_RED : XS_GREEN} : undefined},
-                  fill:{fgColor:{rgb: isTot ? XS_TOT : (cf || (o.plain ? 'FFFFFF' : ((r - headRow) % 2 === 0 ? XS_BAND : 'FFFFFF')))}},
+                  fill:{fgColor:{rgb: isTot ? XS_TOT : (hlFill || cf || (o.plain ? 'FFFFFF' : ((r - headRow) % 2 === 0 ? XS_BAND : 'FFFFFF')))}},
                   alignment:{horizontal: numeric ? 'center' : 'right', vertical:'center'},
                   border: xsAll()};
       }
@@ -2783,7 +3074,8 @@ function saveAoaXlsx(aoa, sheetName, fileName, widths, opt){
   if(widths) ws['!cols'] = widths.map(w=>({wch:w}));
   // دمج سطري الرأس على عرض الجدول كله
   ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:ncol-1}}, {s:{r:1,c:0}, e:{r:1,c:ncol-1}}];
-  styleSheet(ws, {titleRows: 2, headRow: 2, sign: opt.sign || [], colFill: opt.colFill || [], plain: !!opt.plain});
+  styleSheet(ws, {titleRows: 2, headRow: 2, sign: opt.sign || [], colFill: opt.colFill || [],
+                  plain: !!opt.plain, hiLo: opt.hiLo || {}});
   const wbk = XLSX.utils.book_new();
   wbk.Workbook = {Views:[{RTL:true}]};   // الشيت يفتح من اليمين لليسار
   XLSX.utils.book_append_sheet(wbk, ws, sheetName);
@@ -3333,7 +3625,7 @@ function renderGvReceive(m){
       <div class="sub" style="flex:1;min-width:110px;font-weight:700;color:${r.diff<0?'var(--danger)':(r.diff>0?'var(--ok)':'var(--muted)')}">
         ${r.recv? (r.diff===0?'مطابق':(r.diff<0?'ناقص '+fmt1(-r.diff):'زيادة '+fmt1(r.diff))) : 'لسه ما وصلش'}</div>
     </div>`).join('')}
-    <div class="impbar" style="margin-top:10px"><button onclick="exportGvRecvExcel()">📊 إكسل</button><button onclick="exportGvRecvPdf()">📄 PDF</button><button onclick="exportGvRecvImage()">🖼️ صورة</button></div>`;
+    ${floatBar(`<button onclick="exportGvRecvExcel()">📊 إكسل</button><button onclick="exportGvRecvPdf()">📄 PDF</button><button onclick="exportGvRecvImage()">🖼️ صورة</button>`)}`;
 }
 // ── ٣) التسعير
 function renderGvPricing(m){
@@ -3367,7 +3659,7 @@ function renderGvPricing(m){
       <tr class="m" style="background:var(--panel2);font-weight:700"><td>الإجمالي</td><td>${fmtN(P.t.recv)}</td><td>${fmt1(P.t.cartons)}</td>
         <td>${fmt2(P.t.value)}</td><td></td><td></td><td>${fmtN(Math.round(P.totalEgp))}</td></tr>
     </table></div>
-    <div class="impbar" style="margin-top:10px"><button onclick="exportGvPriceExcel()">📊 إكسل</button><button onclick="exportGvPricePdf()">📄 PDF</button><button onclick="exportGvPriceImage()">🖼️ صورة</button></div>`;
+    ${floatBar(`<button onclick="exportGvPriceExcel()">📊 إكسل</button><button onclick="exportGvPricePdf()">📄 PDF</button><button onclick="exportGvPriceImage()">🖼️ صورة</button>`)}`;
 }
 function gvOrderEditor(m){
   const o=gvGet();
@@ -3401,7 +3693,7 @@ function gvOrderEditor(m){
       <div class="sub" style="flex:1;min-width:120px">${fmt1(r.weight)} كجم · ${fmt2(r.value)} $${r.pc && r.qty && Math.abs(r.cartons-Math.round(r.cartons))>0.0001?' <span style="color:var(--danger)">⚠️ كرتونة مش كاملة</span>':''}</div>
       <button onclick="gvDelRow(${r.i})" style="border:none;background:none;color:var(--danger);font-size:16px">✕</button></div>`).join('')
       : `<div class="empty">الطلبية فاضية — دوس ➕ إضافة أصناف</div>`}
-    <div class="impbar" style="margin-top:10px"><button onclick="exportGvExcel()">📊 إكسل</button><button onclick="exportGvPdf()">📄 PDF</button><button onclick="exportGvImage()">🖼️ صورة</button></div>`;
+    ${floatBar(`<button onclick="exportGvExcel()">📊 إكسل</button><button onclick="exportGvPdf()">📄 PDF</button><button onclick="exportGvImage()">🖼️ صورة</button>`)}`;
   const fi=document.getElementById('impGvOrder'); if(fi) fi.onchange=e=>{ if(e.target.files[0]) gvImportExcel(e.target.files[0]); };
 }
 function gvModel(){
