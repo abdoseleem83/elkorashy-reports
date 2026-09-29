@@ -43,17 +43,20 @@ const rowsZero = await pg.evaluate(()=>buildColorTable().rows.filter(r=>r.type==
 await pg.evaluate(()=>{ colZero=false; });
 const rowsNoZero = await pg.evaluate(()=>buildColorTable().rows.filter(r=>r.type==='item').length);
 check('الخانة لسه بتشتغل على الأصناف', rowsZero>=rowsNoZero, rowsZero+' مقابل '+rowsNoZero);
-await pg.evaluate(()=>{ module='warehouses'; save('_whTab_','colors'); render(true); });
+await pg.evaluate(()=>{ module='warehouses'; save('_whTab_','cmpx'); save('_cmpView_','colors'); render(true); });
 await pg.waitForTimeout(400);
-const heads = await pg.evaluate(()=>[...document.querySelectorAll('#wh_content table tr:first-child th')].map(x=>x.textContent.trim()));
+const heads = await pg.evaluate(()=>[...document.querySelectorAll('#cmp_c table tr:first-child th')].map(x=>x.textContent.trim()));
 check('رؤوس جدول الألوان من غير خشبي', !heads.includes('خشبي') && heads.includes('ابيض'), heads.join('|'));
 check('الخانة اتسمّت للأصناف', (await pg.evaluate(()=>document.body.innerText)).includes('إظهار الأصناف الصفرية'));
 
 // ════ مقارنة جيفز بالكراتين ════
-await pg.evaluate(()=>{ save('_whTab_','gvbox'); render(true); });
+await pg.evaluate(()=>{ save('_whTab_','cmpx'); save('_cmpView_','gvbox'); render(true); });
 await pg.waitForTimeout(400);
 const txt = await pg.evaluate(()=>document.body.innerText);
-check('التبويب موجود جنب الألوان', txt.includes('جيفز بالكراتين'));
+check('تبويب جيفز جوه مقارنات', txt.includes('جيفز بالكراتين'));
+check('المقارنات مجمّعة تحت تبويب واحد',
+  (await pg.evaluate(()=>[...document.querySelectorAll('#main .tabs button')].map(x=>x.textContent.trim()))).filter(t=>/مقارنة|مقارنات/.test(t)).length===1,
+  (await pg.evaluate(()=>[...document.querySelectorAll('#main .tabs button')].map(x=>x.textContent.trim()))).join('|'));
 const gc = await pg.evaluate(()=>buildGvCompare());
 const a1 = gc.rows.find(r=>r.code==='A1');
 check('مقص A1: ١٠٠ قطعة ÷ ٢٠ = ٥ كراتين في طنطا', a1 && a1.cartons[0]===5, JSON.stringify(a1&&a1.cartons));
@@ -86,6 +89,37 @@ check('عدد أعمدة العرض مطابق', aoa.w.length===aoa.d[0].length,
 const rA1 = aoa.d.find(r=> r[1]==='A1');
 check('سطر A1 في الإكسل: ٥ و٢ كراتين و١٠٠ و٤٠ قطعة',
   rA1 && rA1[3]===5 && rA1[4]===2 && rA1[6]===100 && rA1[7]===40, JSON.stringify(rA1));
+
+// ── مطابقة جيفز مع أسماء الأرصدة المختلفة (ده اللي كان بيخلي المقارنة فاضية)
+await pg.evaluate(()=>{
+  gvcodes=[{id:'a',name:'سبلونة مفصلى 30 سم GEVIS',code:'ISP-M300',perCarton:'20'},
+           {id:'b',name:'سبلونة جرار 160 سم GEVIS',code:'ISP M1600 - SUR / 15',perCarton:'20'},
+           {id:'c',name:'زاما 2 ضلفه CKK GEVIS',code:'01',perCarton:'500'},
+           {id:'d',name:'حاجة مش موجودة خالص',code:'ZZZ9',perCarton:'10'}];
+  save('gvcodes_v1',gvcodes);
+  whStock={w1:{'سبلونه مفصلي 30 GEVIS ISP-M300':{balance:400},
+               'سبلونة جرار 160 سم GEVIS':{balance:100},
+               'زاما ٢ ضلفه ckk gevis':{balance:1000}},
+           w2:{'سبلونه مفصلي 30 GEVIS ISP-M300':{balance:200}}};
+  save('whStock_v1',whStock); gvMap={}; save('gvMap_v1',gvMap); gvcZero=false; render(true);
+});
+await pg.waitForTimeout(300);
+const G = await pg.evaluate(()=>buildGvCompare().rows);
+check('الكود جوه اسم الرصيد بيتلاقى (٤٠٠+٢٠٠)', (G.find(r=>r.code==='ISP-M300')||{}).total===600,
+  JSON.stringify(G.map(r=>({c:r.code,t:r.total}))));
+check('الاسم بالظبط بيتلاقى', (G.find(r=>r.code.indexOf('M1600')>=0)||{}).total===100);
+check('اختلاف ة/ه والأرقام الهندية بيتلاقى', (G.find(r=>r.code==='01')||{}).total===1000);
+check('اللي مالوش مقابل مش بيتحسب', !G.some(r=>r.code==='ZZZ9'), G.map(r=>r.code).join('،'));
+check('بيقول اسمه في الأرصدة لما يختلف',
+  /سبلونه مفصلي 30 GEVIS ISP-M300/.test((G.find(r=>r.code==='ISP-M300')||{}).stockName||''),
+  (G.find(r=>r.code==='ISP-M300')||{}).stockName);
+check('الكراتين اتحسبت ٦٠٠÷٢٠=٣٠', (G.find(r=>r.code==='ISP-M300')||{}).totalCartons===30);
+// الربط اليدوي
+const linkTxt = await pg.evaluate(()=>document.body.innerText);
+check('لوحة الربط اليدوي ظاهرة للي مش لاقي', linkTxt.includes('ربط أصناف جيفز بالأرصدة'));
+await pg.evaluate(()=>gvMapSet('d','زاما ٢ ضلفه ckk gevis')); await pg.waitForTimeout(300);
+check('الربط اليدوي بيشتغل', (await pg.evaluate(()=>buildGvCompare().rows.find(r=>r.code==='ZZZ9')||null))?.total===1000);
+check('الربط بيتزامن', (await pg.evaluate(()=>SYNC_KEYS.includes('gvMap_v1')))===true);
 
 check('مفيش أخطاء جافاسكريبت', errs.length===0, errs.join(' | '));
 console.log(`\n${pass} نجح · ${fail} فشل`);

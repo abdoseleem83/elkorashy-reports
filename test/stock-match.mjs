@@ -60,7 +60,7 @@ check('كراتين جيفز = ١٦٠ ÷ ٢٠ = ٨', gv.rows[0].totalCartons===8
 // ── الأصناف اللي في الأرصدة ومش في قايمة الأصناف بتتقال
 const orph = await pg.evaluate(()=>stockOrphans());
 check('الصنف الغريب اتحدّد', orph.length===1 && orph[0]==='صنف مش في الأصناف', JSON.stringify(orph));
-await pg.evaluate(()=>{ module='warehouses'; save('_whTab_','compare'); render(true); });
+await pg.evaluate(()=>{ module='warehouses'; save('_whTab_','cmpx'); save('_cmpView_','compare'); render(true); });
 await pg.waitForTimeout(400);
 const txt = await pg.evaluate(()=>document.body.innerText);
 check('التنبيه ظاهر في مقارنة الفروع', txt.includes('مالوش مقابل في قايمة الأصناف'));
