@@ -102,6 +102,24 @@ const x = await pg.evaluate(()=>{
 check('إكسل الأبواب بالكود', x && x.d[0].join('|')==='م|الكود|الصنف|الكمية|القيمة', x? x.d[0].join('|'):'مفيش');
 check('عرض الأعمدة مطابق', x.w.length===x.d[0].length, x.w.length+' vs '+x.d[0].length);
 
+// ── جهاز فاضي خالص: لازم يوصل لزرار الرفع، مايبقاش طريق مسدود
+const pg2 = await (await b.newContext()).newPage();
+pg2.on('pageerror', e=>errs.push('فاضي: '+e.message));
+await pg2.addInitScript(()=>{ localStorage.setItem('_sync_', JSON.stringify({off:true})); });
+await pg2.goto(APP); await pg2.waitForTimeout(1000);
+await pg2.evaluate(()=>{ module='sales'; render(true); }); await pg2.waitForTimeout(350);
+const emptyTabs = await pg2.evaluate(()=>[...document.querySelectorAll('#main .tabs button')].map(x=>x.textContent.trim()));
+check('الأيقونات ظاهرة حتى لو مفيش بيانات', emptyTabs.length===3, emptyTabs.join('|'));
+check('الرسالة بتوجّهك للرفع',
+  /ابدأ من/.test(await pg2.evaluate(()=>document.querySelector('#st_content').innerText)), '');
+await pg2.evaluate(()=>{ save('_salesTab_',0); render(true); }); await pg2.waitForTimeout(300);
+check('زرار رفع المبيعات موجود على جهاز فاضي', await pg2.evaluate(()=>!!document.querySelector('#impSales')));
+await pg2.evaluate(()=>{ save('_salesTab_',1); render(true); }); await pg2.waitForTimeout(300);
+check('زرار استيراد العملاء موجود على جهاز فاضي', await pg2.evaluate(()=>!!document.querySelector('#impCust')));
+await pg2.evaluate(()=>{ save('_salesTab_',2); render(true); }); await pg2.waitForTimeout(300);
+check('التقارير الأربعة ظاهرة حتى لو فاضية',
+  (await pg2.evaluate(()=>[...document.querySelectorAll('#st_content > div:first-child button')].length))===4);
+
 check('مفيش أخطاء جافاسكريبت', errs.length===0, errs.join(' | '));
 console.log(`\n${pass} نجح · ${fail} فشل`);
 await b.close();

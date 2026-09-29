@@ -106,7 +106,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v4.4</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -1359,15 +1359,18 @@ function saveCustomer(id){
 function delCustomer(id){ if(!confirm('حذف؟')) return; customers=customers.filter(x=>x.id!==id); save('customers_v1',customers); render(); }
 
 function renderSales(m){
-  if(!customers.length && !Object.keys(monthlySales).length){ 
-    m.innerHTML=`<div class="empty">ابدأ باستيراد عملاء ومبيعات</div>`; return; 
-  }
+  /* مكانش فيه بيانات = الشاشة كانت بتقف عند «ابدأ باستيراد عملاء ومبيعات»
+     وتخفي الأيقونات — يعني طريق مسدود: مفيش طريقة توصل لزرار الرفع أصلاً.
+     دلوقتي الأيقونات بتظهر دايمًا وكل واحدة بتتعامل مع الفاضي عندها. */
   const tabs=['📥 رفع شيت المبيعات','👥 العملاء','📊 التقارير'];
+  const empty = !customers.length && !Object.keys(monthlySales).length;
   const st = load('_salesTab_',null);
   m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
     ${tabs.map((t,i)=>`<button class="tab ${st===i?'active':''}" onclick="setSalesTab(${i})" style="flex:1 0 auto;padding:10px 12px;border-radius:9px;background:${st===i?'var(--blue)':'var(--panel2)'};color:${st===i?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13.5px;white-space:nowrap">${t}</button>`).join('')}
   </div><div id="st_content"></div>`;
-  if(st===null) $('#st_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
+  if(st===null) $('#st_content').innerHTML = empty
+    ? `<div class="empty">لسه مفيش بيانات — ابدأ من <b>📥 رفع شيت المبيعات</b> فوق</div>`
+    : `<div class="empty">اضغط على قسم فوق</div>`;
   else if(st===0) renderSalesImport($('#st_content'));
   else if(st===1) renderSalesCustomers($('#st_content'));
   else renderSalesReportsHub($('#st_content'));
@@ -1537,7 +1540,7 @@ function renderSalesCustomers(m){
         <span>${g==='غير مصنف'?'⚠️ ':''}${g} <span class="cnt">(${rows.length})</span></span><span class="arrow">▾</span></div>
         <div class="grp-body">${rows.map(c=>`<div class="card"><div class="info"><div class="name">${esc(c.name)}</div></div>
           <div class="act"><button onclick="editCustomer('${c.id}')">✏️</button><button onclick="delCustomer('${c.id}')">🗑️</button></div></div>`).join('')}</div></div>`;
-    }).join('') : `<div class="empty">لا توجد عملاء</div>`}
+    }).join('') : `<div class="empty">لسه مفيش عملاء — استورد ملف العملاء من فوق،<br>أو ارفع شيت مبيعات والعملاء هيتضافوا لوحدهم</div>`}
   `;
   $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderSalesCustomers(m)); };
   $('#impCust').onchange=e=>{ if(e.target.files[0]) importCustomers(e.target.files[0]); };
