@@ -1802,7 +1802,7 @@ function repDoorsByCodeModel(){
   body.push({type:'sub', cells:['', 'كمية', ...d.totQ, '', '']});
   return {title:'مبيعات الأبواب بالكود — '+periodLabel(),
     header:['م','الكود', ...d.cols, 'الكمية','الإجمالي'],
-    tapCol:1, rowTap:d.list.map(r=>`doorCodeSheet(${JSON.stringify(r.code)})`), body, d};
+    tapCol:1, rowTap:d.list.map(r=>`doorCodeSheet(&quot;${esc(r.code)}&quot;)`), body, d};
 }
 function renderRepDoorsByCode(m){
   const d=buildDoorsByCode();
