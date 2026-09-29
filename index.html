@@ -99,7 +99,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -201,6 +201,24 @@ let syncRevs = load('_syncRevs_', {});      // ختم كل مفتاح عندنا
 let syncPulled = load('_syncPulled_', {});  // آخر ختم نزّلناه من السيرفر
 let syncBusy = false, syncTimer = null, syncAgain = false;
 
+/* أهم إصلاح: أي بيانات كانت موجودة على الجهاز **قبل** ما نظام الأختام يشتغل
+   كانت ختمها صفر، والمقارنة بتقول «مفيش جديد عندي ولا عندهم» — فبيانات موجودة
+   قدام عينك ما كانتش بترفع أبدًا والجهاز التاني يفضل فاضي. هنا بنختم أي مفتاح
+   فيه بيانات فعلية مرة واحدة عشان يترفع. */
+(function stampExistingData(){
+  if(load('_syncStamped_', 0)) return;
+  const now = Date.now();
+  let n = 0;
+  for(const k of SYNC_KEYS){
+    if(syncRevs[k]) continue;
+    const v = load(k, null);
+    const has = Array.isArray(v) ? v.length : (v && typeof v === 'object' ? Object.keys(v).length : (v != null && v !== ''));
+    if(has){ syncRevs[k] = now + (n++); }
+  }
+  save('_syncRevs_', syncRevs);
+  save('_syncStamped_', now);
+})();
+
 // الختم بيكبر دايمًا حتى لو ساعة الجهاز غلط (نفس فكرة ساعة لامبورت)
 function bumpRev(key){
   const now = Date.now();
@@ -214,20 +232,33 @@ function syncSoon(){
   clearTimeout(syncTimer);
   syncTimer = setTimeout(()=> syncNow(true), 4000);   // بعد ما تبطّل تعديل بـ٤ ثواني
 }
+/* مهم: من غير مهلة زمنية، أي طلب بيعلّق بيخلّي المزامنة واقفة على «بيزامن...»
+   للأبد ومش بتشتغل تاني أبدًا. المهلة بتكبر مع حجم اللي بنبعته. */
 async function syncApi(payload, isGet){
   const c = syncCfg();
   const url = c.url + (isGet ? ('?' + new URLSearchParams(Object.assign({token:c.token}, payload))) : '');
-  const opt = isGet ? {} : {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-                            body: JSON.stringify(Object.assign({token:c.token}, payload))};
+  const body = isGet ? '' : JSON.stringify(Object.assign({token:c.token}, payload));
+  const opt = isGet ? {} : {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body};
+  const timeoutMs = Math.min(240000, 45000 + Math.round(body.length / 1024) * 60);
   let last;
   for(let a = 0; a < 3; a++){                 // الشبكة بتقطع — بنعيد المحاولة
+    if(navigator.onLine === false) throw new Error('مفيش نت');
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=> ctrl.abort(), timeoutMs);
     try{
-      const r = await fetch(url, opt);
+      const r = await fetch(url, Object.assign({signal: ctrl.signal}, opt));
+      if(r.status === 404) throw new Error('HTTP 404 — رابط السكربت مش شغال أو النشر اتغيّر');
       if(!r.ok) throw new Error('HTTP ' + r.status);
       const d = await r.json();
+      // «unknown action» = الـPOST اتحوّل GET وضاع جسمه · «busy» = كتابة شغّالة
       if(d && d.ok === false && /unknown action|busy/i.test(d.error || '')) throw new Error(d.error);
       return d;
-    }catch(e){ last = e; await new Promise(z=> setTimeout(z, 800 * (a + 1))); }
+    }catch(e){
+      last = (e && e.name === 'AbortError')
+        ? new Error('الطلب عدّى ' + Math.round(timeoutMs/1000) + ' ثانية من غير رد')
+        : e;
+      if(a < 2) await new Promise(z=> setTimeout(z, 800 * (a + 1)));
+    }finally{ clearTimeout(timer); }
   }
   throw last;
 }
@@ -252,6 +283,9 @@ async function syncNow(quiet){
   if(syncBusy){ syncAgain = true; return; }
   syncBusy = true; syncAgain = false; syncStatus('☁️ بيزامن...');
   const down = [], up = [], clash = [];
+  const t0 = Date.now();
+  // حارس: لو حصل أي شيء غير متوقع، المزامنة ما تفضلش «مقفولة» على نفسها للأبد
+  const guard = setTimeout(()=>{ syncBusy = false; syncStatus('☁️ مش متزامن', 'err'); }, 300000);
   try{
     // ١) فهرس السيرفر: {مفتاح: ختم}
     let idx = {};
@@ -284,6 +318,7 @@ async function syncNow(quiet){
         await syncApi({action:'set', key:SYNC_PREFIX + k, value: JSON.stringify(load(k, null))});
         idx[k] = mine; syncPulled[k] = mine; up.push(k);
       };
+      syncStatus('☁️ ' + (down.length + up.length + 1) + '/' + SYNC_KEYS.length);
       if(iChanged && !theyChanged) await push();
       else if(!iChanged && theyChanged) await pull(false);
       else {
@@ -294,7 +329,7 @@ async function syncNow(quiet){
     }
     if(up.length) await syncApi({action:'set', key:SYNC_INDEX, value: JSON.stringify(idx)});
     save('_syncRevs_', syncRevs); save('_syncPulled_', syncPulled);
-    save('_syncAt_', Date.now());
+    save('_syncAt_', Date.now()); save('_syncErr_', '');
     syncStatus('☁️ ' + new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}), 'ok');
     if(down.length) render(true);
     if(!quiet || down.length || up.length || clash.length){
@@ -304,8 +339,10 @@ async function syncNow(quiet){
       + clash.join('، ') + '\nخدنا الأحدث، والنسخة القديمة محفوظة على الجهاز ده (نسخة احتياطية).'), 300);
   }catch(e){
     syncStatus('☁️ مش متزامن', 'err');
-    if(!quiet) toast('المزامنة فشلت: ' + (e.message || ''));
+    save('_syncErr_', (e && e.message) || String(e));
+    if(!quiet) toast('المزامنة فشلت: ' + ((e && e.message) || ''));
   }finally{
+    clearTimeout(guard);
     syncBusy = false;
     if(syncAgain){ syncAgain = false; setTimeout(()=> syncNow(true), 300); }
   }
@@ -315,6 +352,7 @@ function openSyncSheet(){
   const c = syncCfg();
   const at = load('_syncAt_', 0);
   const pend = SYNC_KEYS.filter(k=> (syncRevs[k]||0) > (syncPulled[k]||0));
+  const err = load('_syncErr_', '');
   openSheet(`<h3>⚙️ المزامنة بين الأجهزة</h3>
     <div style="font-size:12.5px;line-height:1.85;background:var(--card2,rgba(22,49,122,.06));border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px">
       المزامنة <b>${c.url ? 'شغّالة تلقائي' : 'مقفولة'}</b> — مش محتاج تظبط أي حاجة على أي جهاز.
@@ -331,13 +369,16 @@ function openSyncSheet(){
     <div style="font-size:12.5px;color:var(--muted);line-height:1.8;margin:6px 0 10px">
       آخر مزامنة: <b>${at? new Date(at).toLocaleString('ar-EG') : 'لسه'}</b><br>
       مستني يترفع: <b>${pend.length}</b> ${pend.length? '('+esc(pend.join('، '))+')' : ''}<br>
+      ${err? '<span style="color:var(--danger)">آخر خطأ: <b>'+esc(err)+'</b></span><br>' : ''}
       البيانات بتتحفظ على جهازك أول بأول، والمزامنة بتلحقها بعدها بثواني.
     </div>
     <div class="f-actions" style="flex-wrap:wrap;gap:6px">
       <button class="btn-cancel" onclick="closeSheet()">إغلاق</button>
       <button class="btn-save" onclick="saveSyncCfg()">حفظ</button>
       <button class="btn-save" style="background:#0ea5e9" onclick="closeSheet();syncNow(false)">🔄 زامن دلوقتي</button>
+      <button class="btn-save" style="background:#7c3aed" onclick="testSyncConn()">🔌 اختبر الاتصال</button>
     </div>
+    <div id="connMsg" style="margin-top:8px;font-size:12.5px;line-height:1.9;white-space:pre-wrap"></div>
     <hr style="border-color:var(--border);margin:14px 0">
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">
       <b>تنضيف بيانات التطبيق القديم</b> — بيمسح من السيرفر كل المفاتيح اللي
@@ -356,6 +397,32 @@ function toggleSync(){
   cur.off = !cur.off; syncCfgSave(cur); closeSheet();
   if(cur.off){ syncStatus('☁️ مقفولة'); toast('المزامنة اتقفلت'); }
   else { toast('المزامنة اشتغلت'); syncNow(false); }
+}
+/* اختبار اتصال خطوة بخطوة — بيقول بالظبط فين الوقفة بدل «بيزامن...» على طول */
+async function testSyncConn(){
+  const box = $('#connMsg'); const c = syncCfg();
+  if(!c.url){ box.innerHTML = '<b style="color:var(--danger)">المزامنة مقفولة.</b>'; return; }
+  const lines = []; const show = ()=> box.textContent = lines.join('\n');
+  const step = async (name, fn)=>{
+    lines.push('⏳ ' + name + '...'); show();
+    const t = Date.now();
+    try{ const r = await fn(); lines[lines.length-1] = '✅ ' + name + ' — ' + ((Date.now()-t)/1000).toFixed(1) + 'ث' + (r? ' · ' + r : ''); show(); return true; }
+    catch(e){ lines[lines.length-1] = '❌ ' + name + ' — ' + ((e && e.message) || e); show(); return false; }
+  };
+  const tk = '__conntest__' + Date.now();
+  if(!await step('قراءة من السيرفر (GET)', async ()=>{
+      const r = await syncApi({action:'list', prefix:SYNC_PREFIX}, true);
+      const ks = (r && r.keys) || []; return 'عدد مفاتيح النسخة الجديدة: ' + ks.length; })) return;
+  if(!await step('كتابة على السيرفر (POST)', async ()=>{
+      const r = await syncApi({action:'set', key:tk, value:'1'});
+      if(!r || r.ok !== true) throw new Error((r && r.error) || 'رد غير متوقع'); return 'اتكتب'; })) return;
+  await step('قراءة اللي اتكتب', async ()=>{
+      const r = await syncApi({action:'get', key:tk}, true);
+      if(!r || r.value !== '1') throw new Error((r && r.error) || 'القيمة رجعت غلط'); return 'رجعت صح'; });
+  await step('تنضيف', async ()=>{ await syncApi({action:'delete', key:tk}); return 'اتمسح'; });
+  const pend = SYNC_KEYS.filter(k=> (syncRevs[k]||0) > (syncPulled[k]||0));
+  lines.push('', 'مستني يترفع من الجهاز ده: ' + pend.length + (pend.length? ' (' + pend.join('، ') + ')' : ''));
+  show();
 }
 async function wipeOldServerData(){
   const box = $('#wipeMsg'); if(!syncCfg().url){ toast('اظبط الرابط الأول'); return; }
