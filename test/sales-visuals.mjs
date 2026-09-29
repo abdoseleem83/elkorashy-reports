@@ -7,10 +7,13 @@ await pg.addInitScript(()=>{
   localStorage.setItem('customers_v1', JSON.stringify([
     {id:'a',name:'موزع أ',cls:'موزع'},{id:'b',name:'موزع ب',cls:'موزع'},
     {id:'c',name:'موزع ج',cls:'موزع'},{id:'d',name:'موزع د',cls:'موزع'},
-    {id:'w',name:'محل جملة',cls:'مبيعات جملة'},{id:'dr',name:'عميل ابواب واحد',cls:'عميل ابواب'}]));
+    {id:'w',name:'محل جملة',cls:'مبيعات جملة'},{id:'dr',name:'عميل ابواب واحد',cls:'عميل ابواب'},
+    {id:'s1',name:'خاص أول',cls:'مبيعات خاصة'},{id:'s2',name:'خاص تاني',cls:'مبيعات خاصة'}]));
   localStorage.setItem('monthlySales_v1', JSON.stringify({
-    '2026-01':{'موزع أ':400000,'موزع ب':300000,'موزع ج':200000,'موزع د':50000,'محل جملة':100000,'عميل ابواب واحد':70000},
-    '2026-02':{'موزع أ':350000,'موزع ب':320000,'موزع ج':210000,'موزع د':60000,'محل جملة':90000,'عميل ابواب واحد':80000}}));
+    '2026-01':{'موزع أ':400000,'موزع ب':300000,'موزع ج':200000,'موزع د':50000,'محل جملة':100000,
+               'عميل ابواب واحد':70000,'خاص أول':30000,'خاص تاني':20000},
+    '2026-02':{'موزع أ':350000,'موزع ب':320000,'موزع ج':210000,'موزع د':60000,'محل جملة':90000,
+               'عميل ابواب واحد':80000,'خاص أول':25000,'خاص تاني':15000}}));
 });
 await pg.goto(process.env.APP_URL); await pg.waitForTimeout(800);
 await pg.evaluate(()=>{ module='sales'; save('_salesTab_',2); save('_salesRep_','dist'); render(true); });
@@ -20,6 +23,16 @@ ck('ميداليات لأول تلاتة', /🥇/.test(txt) && /🥈/.test(txt) 
 ck('٣ مربعات فوق التقرير', (await pg.locator('.t3').count())===3);
 ck('اسم الشهر بالعربي', /يناير 2026/.test(txt) && /فبراير 2026/.test(txt), txt.slice(0,80));
 ck('عميل ابواب مش في التقرير', !/عميل ابواب واحد/.test(txt));
+const tbl=await pg.evaluate(()=> document.querySelector('table.rep').innerText);
+ck('مبيعات خاصة مش في جدول موزعين إجمالي', !/مبيعات خاصة/.test(tbl));
+// تقرير المبيعات الخاصة لوحده
+const sp=await pg.evaluate(()=> repModel('special'));
+ck('المبيعات الخاصة: العملاء صفوف والشهور أعمدة',
+  sp.header.join('|')==='م|العميل|يناير 2026|فبراير 2026|الإجمالي', sp.header.join('|'));
+const spTot=sp.body[sp.body.length-1].cells;
+ck('إجمالي الخاصة ٩٠ ألف', spTot[4]===90000, spTot.join('/'));
+ck('خاص أول الأول بـ٥٥ ألف',
+  sp.body[0].cells[1]==='خاص أول' && sp.body[0].cells[4]===55000, JSON.stringify(sp.body[0].cells));
 const hi=await pg.locator('table.rep td.hi').count(), lo=await pg.locator('table.rep td.lo').count();
 ck('أعلى رقم أخضر وأقل رقم أحمر في كل عمود', hi===3 && lo===3, 'hi='+hi+' lo='+lo);
 // الأرشفة
