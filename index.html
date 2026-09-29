@@ -99,7 +99,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v2.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -201,6 +201,39 @@ let syncRevs = load('_syncRevs_', {});      // ختم كل مفتاح عندنا
 let syncPulled = load('_syncPulled_', {});  // آخر ختم نزّلناه من السيرفر
 let syncBusy = false, syncTimer = null, syncAgain = false;
 
+// المفتاح ده فيه بيانات فعلًا؟ (مش فاضي ومش null)
+function syncHasData(k){
+  let v; try{ v = JSON.parse(localStorage.getItem(k)); }catch(e){ return false; }
+  if(v === null || v === undefined) return false;
+  if(Array.isArray(v)) return v.length > 0;
+  if(typeof v === 'object') return Object.keys(v).length > 0;
+  return true;
+}
+
+/* ⚠️ الباج اللي كان بيخلّي جهاز مليان بيانات يفضل «بيزامن» وميرفعش ولا صنف:
+   المزامنة بتقارن ختم الجهاز بختم السيرفر، والبيانات اللي اتحطت على الجهاز
+   **قبل ما المزامنة نفسها تتضاف** مالهاش ختم خالص (syncRevs فاضي). يعني
+   mine = 0 و base = 0، فـ iChanged = false — والمزامنة بتعدّي المفتاح على إنه
+   «مفيش جديد» وعمرها ما ترفعه. والجهاز التاني يفضل فاضي مهما زامنت.
+   (الموبايل كان فيه ١٦٩ صنف والكمبيوتر فاضي — ودي كانت الحكاية.)
+
+   الحل: أول مرة بس، بنختم كل مفتاح **فيه بيانات فعلًا** بختم صغير (١).
+   ليه ١ مش الوقت الحالي؟ عشان لو السيرفر أصلاً فيه نسخة متزامنة (ختمها وقت
+   حقيقي كبير)، تكسب هي والجهاز ينزّلها — يعني جهاز لسه داخل على المزامنة
+   عمره ما يمسح شغل جاهز على السيرفر. ولو السيرفر فاضي (ختمه 0)، الجهاز
+   بتاعنا يكسب ويرفع. ده بالظبط اللي إحنا عايزينه في الحالتين. */
+(function seedSyncRevs(){
+  if(load('_syncSeeded_', false)) return;
+  let n = 0;
+  for(const k of SYNC_KEYS){
+    if(syncRevs[k] || syncPulled[k]) continue;   // متختوم خلاص
+    if(!syncHasData(k)) continue;                // فاضي — مفيش حاجة ترفع
+    syncRevs[k] = 1; n++;
+  }
+  if(n){ try{ localStorage.setItem('_syncRevs_', JSON.stringify(syncRevs)); }catch(e){} }
+  try{ localStorage.setItem('_syncSeeded_', 'true'); }catch(e){}
+})();
+
 // الختم بيكبر دايمًا حتى لو ساعة الجهاز غلط (نفس فكرة ساعة لامبورت)
 function bumpRev(key){
   const now = Date.now();
@@ -244,6 +277,12 @@ const SYNC_VARS = {
   monthlySales_v1: v=>{ monthlySales = v; }, monthlySector_v1: v=>{ monthlySector = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
   invCounts_v1: v=>{ invCounts = v; },
+  // ⚠️ التلاتة دول كانوا في SYNC_KEYS بس مش في SYNC_VARS — يعني بيتنزّلوا
+  // في التخزين المحلي والمتغيّر اللي الشاشة بتقرا منه يفضل القديم، فالبيانات
+  // ما تبانش غير لما التطبيق يتقفل ويتفتح تاني.
+  gvOrders_v1: v=>{ gvOrders = v; },
+  paySendCols_v1: v=>{ paySendVisible = new Set(v || []); },
+  whOrderDate_v1: ()=>{},   // بتتقرا من التخزين مباشرة وقت العرض
 };
 async function syncNow(quiet){
   const c = syncCfg();
@@ -310,6 +349,28 @@ async function syncNow(quiet){
     if(syncAgain){ syncAgain = false; setTimeout(()=> syncNow(true), 300); }
   }
 }
+/* لو جهاز فيه الشغل الصح والباقي فاضي (أو العكس)، ده بيحسمها بضغطة:
+   بنختم كل مفتاح فيه بيانات بالوقت الحالي، فيكسب أي مقارنة ويترفع كله. */
+async function syncPushAll(){
+  const keys = SYNC_KEYS.filter(syncHasData);
+  if(!keys.length){ toast('مفيش بيانات على الجهاز ده ترفعها'); return; }
+  if(!confirm('هيترفع كل اللي على الجهاز ده (' + keys.length + ' نوع بيانات) '
+    + 'ويتحط مكان اللي على السيرفر.\nاستعمله لو الجهاز ده هو اللي عليه الشغل الصح. متأكد؟')) return;
+  const now = Date.now();
+  keys.forEach((k, i)=>{ syncRevs[k] = now + i; });
+  save('_syncRevs_', syncRevs);
+  closeSheet();
+  await syncNow(false);
+}
+// وعكسه: الجهاز ده ياخد نسخة السيرفر كاملة
+async function syncPullAll(){
+  if(!confirm('هينزّل كل اللي على السيرفر ويحط مكان اللي على الجهاز ده.\n'
+    + 'استعمله لو الجهاز ده هو الفاضي/الغلط. متأكد؟')) return;
+  syncPulled = {}; syncRevs = {};
+  save('_syncPulled_', syncPulled); save('_syncRevs_', syncRevs);
+  closeSheet();
+  await syncNow(false);
+}
 // ---- شاشة الإعدادات ----
 function openSyncSheet(){
   const c = syncCfg();
@@ -337,6 +398,15 @@ function openSyncSheet(){
       <button class="btn-cancel" onclick="closeSheet()">إغلاق</button>
       <button class="btn-save" onclick="saveSyncCfg()">حفظ</button>
       <button class="btn-save" style="background:#0ea5e9" onclick="closeSheet();syncNow(false)">🔄 زامن دلوقتي</button>
+    </div>
+    <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">
+      <div style="font-size:12.5px;color:var(--muted);line-height:1.8;margin-bottom:8px">
+        <b>جهاز فيه الشغل والتاني فاضي؟</b> مش محتاج تمسح وتعيد الإدخال — احسمها من هنا:
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button onclick="syncPushAll()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--fg);cursor:pointer;font-weight:700">⬆️ ارفع كل اللي على الجهاز ده</button>
+        <button onclick="syncPullAll()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--fg);cursor:pointer;font-weight:700">⬇️ نزّل كل اللي على السيرفر</button>
+      </div>
     </div>
     <hr style="border-color:var(--border);margin:14px 0">
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">
