@@ -65,6 +65,14 @@ await pg.waitForTimeout(400);
 const txt = await pg.evaluate(()=>document.body.innerText);
 check('التنبيه ظاهر في مقارنة الفروع', txt.includes('مالوش مقابل في قايمة الأصناف'));
 check('التنبيه بيسمّي الصنف', txt.includes('صنف مش في الأصناف'));
+// التنبيه لازم يدّيك طريقة تصلّحه مش بس يقولك فيه مشكلة
+check('فيه زرار «ضيفه» جنب كل صنف',
+  (await pg.evaluate(()=>[...document.querySelectorAll('button')].filter(b=>/ضيفه/.test(b.textContent)).length))>0);
+await pg.evaluate(()=>addOrphanItem('صنف مش في الأصناف')); await pg.waitForTimeout(300);
+check('الزرار بيفتح شاشة الإضافة والاسم متعبّي',
+  (await pg.evaluate(()=>document.querySelector('#f_name')?.value))==='صنف مش في الأصناف',
+  await pg.evaluate(()=>document.querySelector('#f_name')?.value));
+await pg.evaluate(()=>closeSheet());
 
 // ── شاشة الأرصدة والنواقص كمان بتوري الرصيد الصح
 await pg.evaluate(()=>{ save('_whTab_','w1'); save('_whSub_',1);

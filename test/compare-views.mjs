@@ -68,6 +68,14 @@ check('الصنف اللي مالوش رصيد مش ظاهر', !gc.rows.some(r=>
 const d4 = gc.rows.find(r=>r.code==='D4');
 check('اللي مالوش ق/كرتونة ظاهر بس من غير كراتين', d4 && d4.pc===0 && d4.total===9, JSON.stringify(d4&&{pc:d4.pc,t:d4.total}));
 check('وفيه تنبيه بيه', txt.includes('مالوش «عدد القطع بالكرتونة»'));
+check('التنبيه بيسمّي الصنف مش بس بيعدّه', txt.includes('صنف من غير كرتونة'), '');
+const before = await pg.evaluate(()=>gvcodes.find(g=>g.code==='D4').perCarton);
+await pg.evaluate(()=>{ const g=gvcodes.find(x=>x.code==='D4'); gvSetPerCarton(g.id,'25'); });
+await pg.waitForTimeout(300);
+check('تقدر تكتب ق/كرتونة من التنبيه نفسه',
+  (await pg.evaluate(()=>gvcodes.find(g=>g.code==='D4').perCarton))==='25', before+' → 25');
+check('والكراتين اتحسبت بعدها',
+  (await pg.evaluate(()=>{const r=buildGvCompare().rows.find(x=>x.code==='D4'); return r? r.totalCartons : null;}))>0);
 check('إجمالي الكراتين صح ٧+٢٫٥=٩٫٥', gc.tot.totalCartons===9.5, String(gc.tot.totalCartons));
 // الصفرية
 const withZero = await pg.evaluate(()=>{ gvcZero=true; const n=buildGvCompare().rows.length; gvcZero=false; return n; });

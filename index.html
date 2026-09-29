@@ -103,7 +103,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.8</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v3.9</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -1247,13 +1247,23 @@ function qCells(cells){
   const tot=cells.reduce((a,b)=>a+b,0);
   return warehouses.map((w,i)=>`<span><small>${esc(w.name)}</small> <b>${fmtN(cells[i])}</b></span>`).join('')+(warehouses.length>1?`<span><small>الكل</small> <b>${fmtN(tot)}</b></span>`:'');
 }
+/* التنبيه كان بيقول «فيه كذا صنف» وخلاص — من غير طريقة تصلّحه. دلوقتي كل
+   صنف مكتوب في سطره ومعاه زرار بيفتح شاشة الإضافة والاسم متعبّي فيها. */
+function addOrphanItem(name){
+  editItem('');
+  setTimeout(()=>{ const el = $('#f_name'); if(el){ el.value = name; const b=$('#f_base'); if(b) b.value = name; } }, 60);
+}
 function stockWarnHtml(){
   const o = stockOrphans();
   if(!o.length) return '';
-  return `<div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--danger);font-size:12.5px;line-height:1.8">
-    <b style="color:var(--danger)">${o.length} صنف</b> في شيت الأرصدة مالوش مقابل في قايمة الأصناف، فمش بيظهر في المقارنات:<br>
-    <span style="color:var(--muted)">${esc(o.slice(0,6).join('، '))}${o.length>6?' …':''}</span><br>
-    ضيفهم في الأصناف أو ظبّط اسمهم عشان يتحسبوا.</div>`;
+  return `<div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--danger);font-size:13.5px;line-height:1.7">
+    <b style="color:var(--danger)">${o.length} صنف</b> في شيت الأرصدة مالوش مقابل في قايمة الأصناف، فمش بيظهر في المقارنات:
+    ${o.slice(0,40).map(n=>`<div style="display:flex;gap:8px;align-items:center;border-top:1px solid var(--border);padding:7px 0;margin-top:6px">
+      <span style="flex:1;font-size:13px">${esc(n)}</span>
+      <button onclick="addOrphanItem(${JSON.stringify(n).replace(/"/g,'&quot;')})"
+        style="padding:7px 11px;border-radius:8px;border:1px solid var(--blue);background:var(--blue);color:#fff;font-weight:700;font-size:12.5px;white-space:nowrap;cursor:pointer">➕ ضيفه</button>
+    </div>`).join('')}
+    ${o.length>40? `<div style="margin-top:6px;color:var(--muted)">…و${o.length-40} غيرهم</div>`:''}</div>`;
 }
 function renderWhCompare(m){
   if(noStockMsg()){ m.innerHTML=`<div class="empty">لا توجد بيانات أرصدة كافية للمقارنة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
@@ -1520,16 +1530,14 @@ const DOC_CSS=`<style>
 .dx tr.s td{background:#e8eefc;font-weight:700}
 .dx tr.z:nth-child(even) td{background:#f6f8fd}
 .dx .neg{color:#b91c1c;font-weight:700}.dx .pos{color:#15803d;font-weight:700}
-/* كشف الإرسال: نفس شكل الورقة اللي بتتبعت للحسابات */
+/* كشف الإرسال: الجدول أبيض من غير خلفيات — الأرقام نفسها هي اللي
+   بتتلوّن: الخصومات والغياب أحمر، والإضافي والحوافز أخضر، وكلها بولد. */
 .dx table.pay th{background:#4472c4;border-color:#2f5597;font-weight:700}
-.dx table.pay td{border-color:#9db2dd}
-.dx table.pay td.money{background:#e2efda}        /* راتب النصف والصافي */
-.dx table.pay td.inp{background:#fff2cc}          /* الخانات اللي بتتكتب */
-.dx table.pay td.br{color:#1f7a44;font-weight:700}
-.dx table.pay td.v{color:#1230a8;font-weight:700}
-.dx table.pay tr.z:nth-child(even) td{background:#f2f6fc}
-.dx table.pay tr.z:nth-child(even) td.money{background:#d8ead0}
-.dx table.pay tr.z:nth-child(even) td.inp{background:#fbecc2}
+.dx table.pay td{border-color:#9db2dd;background:#fff}
+.dx table.pay tr.z td{background:#fff}
+.dx table.pay td.minus{color:#c0202f;font-weight:700}
+.dx table.pay td.plus{color:#0a7d3c;font-weight:700}
+.dx table.pay td.money{font-weight:700}
 .dx table.pay tr.m td{background:#4472c4;color:#fff;font-weight:700;text-align:center}
 .dx table.pay tr.m td:nth-child(2){text-align:right}
 .dx .payttl{background:#dce6f5;color:#1230a8;font-weight:700;text-align:center;
@@ -1841,18 +1849,32 @@ function renderGvCompare(m){
   if(!gvcodes.length){ m.innerHTML = `<div class="empty">مفيش أكواد جيفز — ضيفها من شاشة جيفز أولاً</div>`; return; }
   if(noStockMsg()){ m.innerHTML = `<div class="empty">لا توجد بيانات أرصدة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
   const {rows} = buildGvCompare();
-  const noPc = rows.filter(r=> !r.pc).length;
+  const noPc = rows.filter(r=> !r.pc);
   m.innerHTML = stockWarnHtml() + `
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:2px 0 10px">
       <input type="checkbox" ${gvcZero?'checked':''} onchange="gvcZero=this.checked;render()"> إظهار الأصناف الصفرية</label>
-    ${noPc? `<div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--border);font-size:12.5px">
-      <b>${noPc}</b> صنف مالوش «عدد القطع بالكرتونة» فالكراتين مش محسوبة ليه — اظبطه من شاشة جيفز.</div>`:''}
+    ${noPc.length? `<div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--border);font-size:13.5px;line-height:1.7">
+      <b>${noPc.length}</b> صنف مالوش «عدد القطع بالكرتونة» فالكراتين مش محسوبة ليه — اكتب الرقم هنا على طول:
+      ${noPc.map(r=>`<div style="display:flex;gap:8px;align-items:center;border-top:1px solid var(--border);padding:7px 0;margin-top:6px">
+        <span style="flex:1;font-size:13px">${esc(r.name)}${r.code?` <span style="color:var(--muted);font-size:11.5px">${esc(r.code)}</span>`:''}</span>
+        <input type="number" inputmode="numeric" placeholder="ق/كرتونة" value=""
+          onchange="gvSetPerCarton('${r.id}', this.value)"
+          style="width:96px;padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:13.5px;text-align:center">
+      </div>`).join('')}</div>`:''}
     ${rows.length? `<div style="overflow-x:auto">${gvCompareTableHtml('rep stk')}</div>` : `<div class="empty">لا توجد بيانات</div>`}
     ${gvLinkHtml()}
     ${floatBar(`<button onclick="exportGvCompareExcel()">📊 إكسل</button><button onclick="exportGvComparePdf()">📄 PDF</button><button onclick="exportGvCompareImage()">🖼️ صورة</button>`)}`;
 }
 /* الأصناف اللي التطبيق ما عرفش يلاقيها في الأرصدة — تربطها بإيدك مرة
    واحدة من قايمة أسماء الأرصدة، والربط بيتزامن على كل أجهزتك. */
+// تعديل «عدد القطع بالكرتونة» من مكان التنبيه من غير ما تروح لشاشة جيفز
+function gvSetPerCarton(id, v){
+  const g = gvcodes.find(x=>x.id===id); if(!g) return;
+  g.perCarton = String(v||'').trim();
+  save('gvcodes_v1', gvcodes);
+  toast(g.perCarton? ('اتظبط: '+g.name) : 'اتمسح');
+  render();
+}
 function gvLinkHtml(){
   const miss = gvcodes.filter(g=> !gvStockName(g.name, g.id, g.code));
   const linked = gvcodes.filter(g=> gvMap[g.id]);
@@ -2351,17 +2373,18 @@ function docTableHtml(model, extraCss){
    والرقم اللي مش فاضي بيتكتب أزرق غامق عشان يبان وسط الخانات الفاضية. */
 const PAY_MONEY_COL = /راتب النصف|صافي/;
 const PAY_INPUT_COL = /غياب|تأخير|إضافي|اضافي|جزاء|سلف|تأمين|حواف/;
+const PAY_MINUS_COL = /غياب|تأخير|جزاء|سلف|تأمين|خصم/;      // أحمر
+const PAY_PLUS_COL  = /إضافي|اضافي|حواف|بونص|مكاف/;          // أخضر
 function payTableHtml(model){
   const H = model.header;
-  const kind = H.map(h=> PAY_MONEY_COL.test(h) ? 'money' : (PAY_INPUT_COL.test(h) ? 'inp' : ''));
+  const kind = H.map(h=> PAY_MONEY_COL.test(h) ? 'money'
+    : (PAY_MINUS_COL.test(h) ? 'minus' : (PAY_PLUS_COL.test(h) ? 'plus' : '')));
   // الساعات والأيام بخانتين عشريتين زي الورقة، والفلوس بفواصل الآلاف
   const isTime = H.map(h=> /\(ساعات\)|\(أيام\)/.test(h));
   const num = (v, i)=> isTime[i] ? Number(v).toFixed(2) : fmtN(Math.round(Number(v)));
   const cell = (c, i)=>{
     const empty = c === '' || c === 0 || c === null || c === undefined;
-    const cls = [kind[i]];
-    if(i === 2) cls.push('br');
-    if(!empty && kind[i] === 'inp') cls.push('v');
+    const cls = [empty ? '' : kind[i]];
     const txt = typeof c === 'number' ? (empty ? '' : num(c, i)) : esc(c);
     return `<td class="${cls.filter(Boolean).join(' ')}">${txt}</td>`;
   };
@@ -2431,7 +2454,7 @@ function styleSheet(ws, o){
         const cf = (o.colFill || [])[c - R.s.c];
         cell.s = {font:{bold: isTot || !!paint, sz:10.5,
                         color: paint ? {rgb: sg === 'minus' ? XS_RED : XS_GREEN} : undefined},
-                  fill:{fgColor:{rgb: isTot ? XS_TOT : (cf || ((r - headRow) % 2 === 0 ? XS_BAND : 'FFFFFF'))}},
+                  fill:{fgColor:{rgb: isTot ? XS_TOT : (cf || (o.plain ? 'FFFFFF' : ((r - headRow) % 2 === 0 ? XS_BAND : 'FFFFFF')))}},
                   alignment:{horizontal: numeric ? 'center' : 'right', vertical:'center'},
                   border: xsAll()};
       }
@@ -2462,7 +2485,7 @@ function saveAoaXlsx(aoa, sheetName, fileName, widths, opt){
   if(widths) ws['!cols'] = widths.map(w=>({wch:w}));
   // دمج سطري الرأس على عرض الجدول كله
   ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:ncol-1}}, {s:{r:1,c:0}, e:{r:1,c:ncol-1}}];
-  styleSheet(ws, {titleRows: 2, headRow: 2, sign: opt.sign || [], colFill: opt.colFill || []});
+  styleSheet(ws, {titleRows: 2, headRow: 2, sign: opt.sign || [], colFill: opt.colFill || [], plain: !!opt.plain});
   const wbk = XLSX.utils.book_new();
   wbk.Workbook = {Views:[{RTL:true}]};   // الشيت يفتح من اليمين لليسار
   XLSX.utils.book_append_sheet(wbk, ws, sheetName);
@@ -2711,10 +2734,8 @@ function exportPayExcel(){
   const MINUS=/غياب|تأخير|جزاء|سلف|تأمين|خصم/, PLUS=/إضافي|اضافي|حواف|بونص|مكاف/;
   const sign = md.header.map(h=> MINUS.test(h) ? 'minus' : (PLUS.test(h) ? 'plus' : ''));
   const opt = {title: md.send ? md.title : payLabel(payMonth,payHalf), sign};
-  if(md.send){
-    // نفس ألوان الورقة المطبوعة: أخضر فاتح للراتب والصافي، وكريمي للإدخال
-    opt.colFill = md.header.map(h=> PAY_MONEY_COL.test(h) ? 'E2EFDA' : (PAY_INPUT_COL.test(h) ? 'FFF2CC' : ''));
-  }
+  // الكشف أبيض من غير خلفيات — الأحمر والأخضر على الأرقام بس
+  if(md.send) opt.plain = true;
   const w = md.send ? [5,26,12,...md.header.slice(3,-1).map(()=>13),22]
                     : [5,26,12,...md.header.slice(3).map(()=>13)];
   saveAoaXlsx(modelToAoa(md, md.send),'المرتبات',payFile()+'.xlsx', w, opt);
