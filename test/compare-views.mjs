@@ -129,6 +129,31 @@ await pg.evaluate(()=>gvMapSet('d','زاما ٢ ضلفه ckk gevis')); await pg.
 check('الربط اليدوي بيشتغل', (await pg.evaluate(()=>buildGvCompare().rows.find(r=>r.code==='ZZZ9')||null))?.total===1000);
 check('الربط بيتزامن', (await pg.evaluate(()=>SYNC_KEYS.includes('gvMap_v1')))===true);
 
+// ── الاسم المختصر لأصناف جيفز
+const sn = await pg.evaluate(()=>[
+  gvShortName('سبلونة مفصلى 40 سم GEVIS','ISP - M400'),
+  gvShortName('سبلونة جرار 40 سم GEVIS','ISP M400 - SUR / 15'),
+  gvShortName('زاما 2 ضلفه CKK GEVIS','01'),
+  gvShortName('حلق باب 10 سم','A01'),
+  gvShortName('GEVIS','ISP')]);
+check('بيشيل GEVIS والكود من الاسم', sn[0]==='سبلونة مفصلى 40 سم', sn[0]);
+check('بيشيل SUR وأجزاء الكود كمان', sn[1]==='سبلونة جرار 40 سم', sn[1]);
+check('كود قصير (٠١) مابيتشالش من جوه الاسم', sn[2]==='زاما 2 ضلفه CKK', sn[2]);
+check('الاسم اللي مفيهوش تكرار مابيتغيرش', sn[3]==='حلق باب 10 سم', sn[3]);
+check('مابيرجعش اسم فاضي أبدًا', sn[4]==='GEVIS', sn[4]);
+const cellTxt = await pg.evaluate(()=>{
+  const td=[...document.querySelectorAll('#cmp_c table td')].find(x=>/سبلونة|زاما/.test(x.textContent));
+  return td? {t:td.textContent.trim(), title:td.getAttribute('title')||''} : null; });
+check('الجدول بيعرض الاسم المختصر', cellTxt && !/GEVIS/.test(cellTxt.t), JSON.stringify(cellTxt&&cellTxt.t));
+check('والاسم الكامل في tooltip', cellTxt && /GEVIS/.test(cellTxt.title), JSON.stringify(cellTxt&&cellTxt.title));
+const xg = await pg.evaluate(()=>{
+  let got=null; const real=window.saveAoaXlsx;
+  window.saveAoaXlsx=(d)=>{ got=d; };
+  try{ exportGvCompareExcel(); } finally { window.saveAoaXlsx=real; }
+  return got; });
+check('الإكسل كمان بالاسم المختصر', xg && !xg.slice(1).some(r=> /GEVIS/.test(String(r[0]||''))),
+  JSON.stringify((xg||[]).slice(1,3).map(r=>r[0])));
+
 check('مفيش أخطاء جافاسكريبت', errs.length===0, errs.join(' | '));
 console.log(`\n${pass} نجح · ${fail} فشل`);
 await b.close();
