@@ -132,7 +132,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.0</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.1</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -239,6 +239,8 @@ let monthlyDoors = load('monthlyDoors_v1', {});
 let monthlyItems = load('monthlyItems_v1', {});      // الشهر ← الصنف ← {qty,val}
 let salesArchive = load('salesArchive_v1', []);      // شهور مؤرشفة — برّه التقارير
 let custAlias = load('custAlias_v1', {});            // اسم قديم ← الاسم الجديد بعد الدمج
+let secCfg = load('secCfg_v1', {});                  // القطاع ← {name: اسم بديل, hide: مخفي}
+let doorCodeMap = load('doorCodeMap_v1', {});        // اسم صنف الباب ← كود بالإيد
 
 const CLS_OPTS=['موزع','مبيعات جملة','مبيعات خاصة','عميل ابواب','مستبعد'];
 const CLS_SHORT={'موزع':'موزع','مبيعات جملة':'جملة','مبيعات خاصة':'خاصة','عميل ابواب':'أبواب','مستبعد':'مستبعد'};
@@ -253,6 +255,53 @@ const SECTOR_MAP={
 const SECTOR_ORDER=['كرافت لاين','نيو لاين','كومبن','اكسسوارات','جيفز','ابواب','أخرى','غير معروف'];
 const SECTOR_ALIAS={'قطاعات كرافت لاين':'كرافت لاين','قطاعات PVC كومبن':'كومبن','ابواب WPC':'ابواب'};
 const secName = s2 => SECTOR_ALIAS[s2] || s2;
+const secLabel  = k => (secCfg[k]||{}).name || k;
+const secHidden = k => !!(secCfg[k]||{}).hide;
+/* المجموعات الرئيسية اللي بتتجمّع تحت القطاع ده */
+function secGroups(k){
+  return Object.keys(SECTOR_MAP).filter(g=> secName(SECTOR_MAP[g])===k);
+}
+function secSheet(k){
+  const gs=secGroups(k), unk = k==='غير معروف' ? unknownItems() : [];
+  const cfg=secCfg[k]||{};
+  openSheet(`<h3>عمود «${esc(secLabel(k))}»</h3>
+    <div class="f-row"><label>اسم العمود</label>
+      <input id="sc_name" value="${esc(cfg.name||k)}" placeholder="${esc(k)}"></div>
+    ${gs.length? `<div class="t3lbl">المجموعات اللي تحته</div>
+      ${gs.map(g=>`<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(g)}</div></div></div>`).join('')}`:''}
+    ${k==='غير معروف'? `<div class="t3lbl">أصناف مش موجودة في «الأصناف» (${unk.length})</div>
+      ${unk.length? `<div style="max-height:32vh;overflow:auto">${unk.slice(0,60).map(r=>
+        `<div class="card"><div class="info"><div class="name" style="font-size:12.5px">${esc(r.name)}</div></div>
+         <div style="font-weight:800;color:var(--blue)">${repFmt(r.val)}</div></div>`).join('')}</div>`
+      : `<div class="empty">مفيش — أو الشيت المرفوع قديم ومفيهوش تفصيل الأصناف</div>`}`:''}
+    <div class="f-actions" style="flex-wrap:wrap;gap:6px">
+      <button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+      <button onclick="secHide('${esc(k)}')" style="padding:10px 12px;border-radius:9px;border:1px solid var(--danger);
+        background:transparent;color:var(--danger);font-weight:700">🙈 إخفاء العمود</button>
+      <button class="btn-save" onclick="secSave('${esc(k)}')">حفظ</button></div>`);
+}
+function secSave(k){
+  const v=($('#sc_name').value||'').trim();
+  secCfg[k]=Object.assign({}, secCfg[k], {name: (v && v!==k)? v : ''});
+  if(!secCfg[k].name) delete secCfg[k].name;
+  if(!Object.keys(secCfg[k]).length) delete secCfg[k];
+  save('secCfg_v1',secCfg); closeSheet(); render(true); toast('اتحفظ');
+}
+function secHide(k){
+  secCfg[k]=Object.assign({}, secCfg[k], {hide:true});
+  save('secCfg_v1',secCfg); closeSheet(); render(true);
+  toast('اتخفى «'+secLabel(k)+'» — ترجّعه من زرار الأعمدة المخفية');
+}
+function secShow(k){
+  if(secCfg[k]){ delete secCfg[k].hide; if(!Object.keys(secCfg[k]).length) delete secCfg[k]; }
+  save('secCfg_v1',secCfg); render(true);
+}
+function hiddenSecBar(){
+  const h=Object.keys(secCfg).filter(secHidden);
+  if(!h.length) return '';
+  return `<div class="morow"><span class="mosep">أعمدة مخفية</span>${h.map(k=>
+    `<button class="mochip" onclick="secShow('${esc(k)}')">${esc(secLabel(k))} ✕</button>`).join('')}</div>`;
+}
 const secSort = (a,b)=>{
   const ia=SECTOR_ORDER.indexOf(a), ib=SECTOR_ORDER.indexOf(b);
   return (ia<0?99:ia) - (ib<0?99:ib) || a.localeCompare(b,'ar');
@@ -298,7 +347,7 @@ let shortMain=new Set(), shortSub=new Set();
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
-  'paySendCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1'];
+  'paySendCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','doorCodeMap_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
 /* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
@@ -413,7 +462,8 @@ const SYNC_VARS = {
   whShortage_v1: v=>{ whShortage = v; }, customers_v1: v=>{ customers = v; },
   monthlySales_v1: v=>{ monthlySales = v; }, monthlySector_v1: v=>{ monthlySector = v; }, monthlyDoors_v1: v=>{ monthlyDoors = v; },
   monthlyItems_v1: v=>{ monthlyItems = v; }, salesArchive_v1: v=>{ salesArchive = v; },
-  custAlias_v1: v=>{ custAlias = v; },
+  custAlias_v1: v=>{ custAlias = v; }, secCfg_v1: v=>{ secCfg = v; },
+  doorCodeMap_v1: v=>{ doorCodeMap = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
   invCounts_v1: v=>{ invCounts = v; }, ordMap_v1: v=>{ ordMap = v; }, gvMap_v1: v=>{ gvMap = v; },
   // ⚠️ التلاتة دول كانوا في SYNC_KEYS بس مش في SYNC_VARS — يعني بيتنزّلوا
@@ -1616,15 +1666,19 @@ function renderRepTable(m, id, md, opt){
     if(r.type==='tot')
       return `<tr class="m">${r.cells.map(v=>`<td><b>${repCell(v)}</b></td>`).join('')}</tr>`;
     const i=n++;
-    return `<tr>${r.cells.map((v,c)=>
-      (hasIdx && c===0) ? `<td>${i<3?MEDALS[i]:(i+1)}</td>` : td(v,c)).join('')}</tr>`;
+    const tap=(md.rowTap||[])[i];
+    return `<tr>${r.cells.map((v,c)=>{
+      if(hasIdx && c===0) return `<td>${i<3?MEDALS[i]:(i+1)}</td>`;
+      if(tap && c===md.tapCol)
+        return `<td style="cursor:pointer;text-decoration:underline" onclick="${tap}">${repCell(v)} ⚙️</td>`;
+      return td(v,c); }).join('')}</tr>`;
   }).join('');
   m.innerHTML = `${opt.warn? `<div class="warn">${opt.warn}</div>`:''}
     ${opt.boxes||''}
     <div style="overflow-x:auto"><table class="rep stk">
-      <tr>${md.header.map(h=> h==='غير معروف'
-        ? `<th style="cursor:pointer;text-decoration:underline" onclick="showUnknownItems()">${esc(h)} ℹ️</th>`
-        : `<th>${esc(h)}</th>`).join('')}</tr>
+      <tr>${md.header.map((h,i)=>{ const tap=(md.headTap||[])[i];
+        return tap ? `<th style="cursor:pointer;text-decoration:underline" onclick="${tap}">${esc(h)} ⚙️</th>`
+                   : `<th>${esc(h)}</th>`; }).join('')}</tr>
       ${bodyHtml}
     </table></div>
     ${floatBar(`<button onclick="exportRep('${id}','x')">📊 إكسل</button><button onclick="exportRep('${id}','p')">📄 PDF</button><button onclick="exportRep('${id}','i')">🖼️ صورة</button>`)}`;
@@ -1669,8 +1723,8 @@ function buildDistSectors(){
       });
     });
   });
-  // العمود اللي كله أصفار ما يظهرش
-  const cols = [...secs].filter(sec=> Object.keys(rows).some(n=> rows[n][sec])).sort(secSort);
+  // العمود اللي كله أصفار أو اللي أخفيته ما يظهرش
+  const cols = [...secs].filter(sec=> !secHidden(sec) && Object.keys(rows).some(n=> rows[n][sec])).sort(secSort);
   const list = Object.keys(rows).map(n=>({name:n, cells: cols.map(s2=> rows[n][s2]||0),
     total: cols.reduce((a,s2)=> a+(rows[n][s2]||0), 0)})).sort((a,b)=> b.total-a.total);
   const tot = cols.map((s2,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
@@ -1681,14 +1735,15 @@ function repDistSectorsModel(){
   d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, ...r.cells.map(v=> Math.round(v)), Math.round(r.total)]}));
   body.push({type:'tot', cells:['','الإجمالي', ...d.tot.map(v=>Math.round(v)), Math.round(d.total)]});
   return {title:'مبيعات الموزعين حسب القطاع — '+periodLabel(),
-    header:['م','الموزع', ...d.cols, 'الإجمالي'], body, d};
+    header:['م','الموزع', ...d.cols.map(secLabel), 'الإجمالي'],
+    headTap:['','', ...d.cols.map(k=>`secSheet('${esc(k)}')`), ''], body, d};
 }
 function renderRepDistSectors(m){
   const d = buildDistSectors();
   if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات لموزعين — صنّف العملاء «موزع» من شاشة العملاء</div>`; return; }
-  const topSecs = d.cols.map((c,i)=> ({name:c, val:d.tot[i]})).sort((a,b)=> b.val-a.val);
+  const topSecs = d.cols.map((c,i)=> ({name:secLabel(c), val:d.tot[i]})).sort((a,b)=> b.val-a.val);
   renderRepTable(m, 'distsec', repDistSectorsModel(), {
-    boxes: topBoxes(topSecs,'أعلى ٣ مجموعات') + topBoxes(topItems(),'أعلى ٣ أصناف')
+    boxes: hiddenSecBar() + topBoxes(topSecs,'أعلى ٣ مجموعات') + topBoxes(topItems(),'أعلى ٣ أصناف')
   });
 }
 
@@ -1712,7 +1767,7 @@ function buildDoorsByCode(){
   salesMonths().forEach(mo=>{
     Object.values(monthlyDoors[mo]||{}).forEach(byItem=>{
       Object.entries(byItem).forEach(([name, d])=>{
-        const code = d.code || 'بدون كود';
+        const code = doorCodeMap[name] || d.code || 'بدون كود';
         const r = rows[code] = rows[code] || {code, names:new Set(), cells:{}, qtys:{}, qty:0, val:0};
         r.names.add(name);
         const c = doorCol(name);
@@ -1723,7 +1778,7 @@ function buildDoorsByCode(){
     });
   });
   const list=Object.values(rows).map(r=>({
-    code:r.code, name:[...r.names][0]||'', many:r.names.size>1,
+    code:r.code, name:[...r.names][0]||'', names:[...r.names], many:r.names.size>1,
     cells:DOOR_COLS.map(c=> r.cells[c]||0), qtys:DOOR_COLS.map(c=> rnd2(r.qtys[c]||0)),
     qty:r.qty, val:r.val
   })).sort((a,b)=> b.val-a.val);
@@ -1741,7 +1796,8 @@ function repDoorsByCodeModel(){
   body.push({type:'tot', cells:['','الإجمالي', ...d.tot.map(v=>Math.round(v)), rnd2(d.qty), Math.round(d.val)]});
   body.push({type:'sub', cells:['', 'كمية', ...d.totQ, '', '']});
   return {title:'مبيعات الأبواب بالكود — '+periodLabel(),
-    header:['م','الكود', ...d.cols, 'الكمية','الإجمالي'], body, d};
+    header:['م','الكود', ...d.cols, 'الكمية','الإجمالي'],
+    tapCol:1, rowTap:d.list.map(r=>`doorCodeSheet(${JSON.stringify(r.code)})`), body, d};
 }
 function renderRepDoorsByCode(m){
   const d=buildDoorsByCode();
@@ -1750,6 +1806,31 @@ function renderRepDoorsByCode(m){
     warn: !d.qty? 'الشيت المرفوع مكانش فيه عمود كمية، فالتقرير بالقيمة بس.' : '',
     boxes: topBoxes(d.list.map(r=>({name:r.code+' — '+r.name, val:r.val})), 'أعلى ٣ أكواد')
   });
+}
+
+/* الضغط على الكود: يوري الأصناف اللي تحته وتقدر تغيّر كود أي صنف */
+function doorCodeSheet(code){
+  const d=buildDoorsByCode(), row=d.list.find(r=>r.code===code);
+  const names=row? row.names : [];
+  openSheet(`<h3>الكود «${esc(code)}»</h3>
+    <p style="font-size:13px;color:var(--muted);line-height:1.7">${names.length} صنف تحت الكود ده.
+      غيّر الكود قدام أي صنف واحفظ — التغيير بيفضل محفوظ ومش بيتشال مع رفع شيت جديد.</p>
+    <div style="max-height:52vh;overflow:auto">${names.map((n,i)=>
+      `<div class="card" style="flex-wrap:wrap"><div class="info" style="flex-basis:100%">
+        <div class="name" style="font-size:12.5px">${esc(n)}</div></div>
+        <input id="dc_${i}" value="${esc(doorCodeMap[n] || (code==='بدون كود' ? '' : code))}" placeholder="بدون كود"
+          style="flex:1;padding:7px 9px;border-radius:8px;border:1px solid var(--border);
+          background:var(--panel2);color:var(--text);font-weight:700;font-size:13px"></div>`).join('')}</div>
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+      <button class="btn-save" onclick='doorCodeSave(${JSON.stringify(names)})'>حفظ</button></div>`);
+}
+function doorCodeSave(names){
+  names.forEach((n,i)=>{
+    const el=document.getElementById('dc_'+i); if(!el) return;
+    const v=(el.value||'').trim().toUpperCase();
+    if(v) doorCodeMap[n]=v; else delete doorCodeMap[n];
+  });
+  save('doorCodeMap_v1',doorCodeMap); closeSheet(); render(true); toast('اتحفظ');
 }
 
 /* ٤) الأبواب لكل عميل اشترى أبواب (مش الموزعين بس) — كمية وقيمة.
