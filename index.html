@@ -206,7 +206,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.5</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.6</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -2594,6 +2594,9 @@ const DOC_CSS=`<style>
 .dx td{padding:8px 6px;border:1px solid #cfd6e6;text-align:center;font-weight:700;white-space:nowrap}
 .dx th{white-space:nowrap}
 .dx td:first-child{text-align:right;white-space:normal;min-width:150px}
+.dx table td.ix,.dx table th.ix{min-width:0;width:1%;text-align:center;white-space:nowrap}
+.dx table td.nm{min-width:230px;text-align:right;white-space:normal}
+.dx table th.nm{min-width:230px}
 .dx tr.m td{background:#cfdcff;font-weight:700;text-align:right}
 .dx tr.s td{background:#e8eefc;font-weight:700}
 .dx tr.z:nth-child(even) td{background:#f6f8fd}
@@ -2716,46 +2719,59 @@ async function doExportDocPdf(bodyHtml, filename, landscape){
     const er=el.getBoundingClientRect(), k=canvas.width/er.width;
     const trs=[...el.querySelectorAll('tr')];
     const bounds=trs.map(r=>Math.round((r.getBoundingClientRect().bottom-er.top)*k));
-    /* الرأس = من فوق لحد آخر صف عناوين، والذيل = صفوف الإجمالي في الآخر.
-       الاتنين بيتطبعوا في كل ورقة. */
-    let headH=0, footTop=canvas.height, footH=0;
-    const hdrRows=trs.filter(r=> r.querySelector('th'));
-    if(hdrRows.length){
-      const last=hdrRows[hdrRows.length-1];
-      headH=Math.round((last.getBoundingClientRect().bottom-er.top)*k);
+    const Y=(r,edge)=> Math.round((r.getBoundingClientRect()[edge]-er.top)*k);
+    /* الرأس = من فوق لحد صف عناوين الجدول الرئيسي، والذيل = صفوف إجماليه.
+       بنبص على أول جدول بس — لو في جدول تاني تحته (زي الحاويات في طلبية
+       جيفز) كان بيلخبط الحسبة فالعناوين ما كانتش بتتكرر. اللي بعد الجدول
+       الرئيسي بيتطبع بعد الإجمالي في الآخر. */
+    const T=el.querySelector('table');
+    const ttrs=T? [...T.querySelectorAll('tr')] : [];
+    let headH=0, footTop=0, footBot=0, footH=0;
+    let hi=0; while(hi<ttrs.length && ttrs[hi].querySelector('th')) hi++;
+    if(hi>0) headH=Y(ttrs[hi-1],'bottom');
+    let fi=ttrs.length;
+    for(let i=ttrs.length-1; i>=hi; i--){
+      if(/(^|\s)m(\s|$)/.test(ttrs[i].className)){ fi=i; break; }
+      if(!/(^|\s)s(\s|$)/.test(ttrs[i].className)) break;
     }
-    let fi=trs.length;                       // أول صف إجمالي من الآخر
-    for(let i=trs.length-1; i>=0; i--){
-      if(/(^|\s)m(\s|$)/.test(trs[i].className)){ fi=i; break; }
-      if(!/(^|\s)s(\s|$)/.test(trs[i].className)) break;
-    }
-    if(fi<trs.length && fi>hdrRows.length-1){
-      footTop=Math.round((trs[fi].getBoundingClientRect().top-er.top)*k);
-      footH=canvas.height-footTop;
-    }
+    if(fi<ttrs.length){ footTop=Y(ttrs[fi],'top'); footBot=Y(ttrs[ttrs.length-1],'bottom'); footH=footBot-footTop; }
     const band=(top,h)=>{ const sl=document.createElement('canvas');
       sl.width=canvas.width; sl.height=h;
       sl.getContext('2d').drawImage(canvas,0,top,canvas.width,h,0,0,canvas.width,h);
       return sl.toDataURL('image/jpeg',0.92); };
-    const headImg = headH>0 ? band(0,headH) : null;
-    const footImg = footH>0 ? band(footTop,footH) : null;
-    const availH = pageH - headH - footH;
-    let y=headH, first=true;
-    if(availH < pageH*0.25){ y=0; }        // الرأس أكبر من اللازم — نرجع للطريقة العادية
-    const simple = y===0;
-    while(y < (simple? canvas.height : footTop) - 2){
-      const lim = simple? canvas.height : footTop;
-      const cap = simple? pageH : availH;
-      let end=Math.min(y+cap, lim);
+    const cut=(y,cap,lim)=>{ let end=Math.min(y+cap, lim);
       if(end<lim){ const cand=bounds.filter(b=>b>y+cap*0.4 && b<=end); if(cand.length) end=cand[cand.length-1]; }
-      if(end<=y) end=Math.min(y+cap, lim);
-      if(!first) pdf.addPage(); first=false;
-      let cur=mg;
-      if(!simple && headImg){ pdf.addImage(headImg,'JPEG',mg,cur,canvas.width*sc,headH*sc); cur+=headH*sc; }
-      pdf.addImage(band(y,end-y),'JPEG',mg,cur,canvas.width*sc,(end-y)*sc);
-      // الإجمالي دايمًا تحت خالص في كل ورقة
-      if(!simple && footImg) pdf.addImage(footImg,'JPEG',mg,ph-mg-footH*sc,canvas.width*sc,footH*sc);
-      y=end;
+      if(end<=y) end=Math.min(y+cap, lim); return end; };
+    let first=true;
+    const newPage=()=>{ if(!first) pdf.addPage(); first=false; };
+    const availH = pageH - headH - footH;
+    if(!T || !footH || !headH || availH < pageH*0.25){
+      // مستند من غير جدول واضح — تقطيع عادي على حدود الصفوف
+      let y=0;
+      while(y < canvas.height-2){ const end=cut(y,pageH,canvas.height); newPage();
+        pdf.addImage(band(y,end-y),'JPEG',mg,mg,canvas.width*sc,(end-y)*sc); y=end; }
+    } else {
+      const headImg=band(0,headH), footImg=band(footTop,footH);
+      let y=headH, cur=mg;
+      while(y < footTop-2){
+        const end=cut(y,availH,footTop), last = end>=footTop-2;
+        newPage(); cur=mg;
+        pdf.addImage(headImg,'JPEG',mg,cur,canvas.width*sc,headH*sc); cur+=headH*sc;
+        pdf.addImage(band(y,end-y),'JPEG',mg,cur,canvas.width*sc,(end-y)*sc); cur+=(end-y)*sc;
+        if(last){ pdf.addImage(footImg,'JPEG',mg,cur,canvas.width*sc,footH*sc); cur+=footH*sc; }
+        else pdf.addImage(footImg,'JPEG',mg,ph-mg-footH*sc,canvas.width*sc,footH*sc);   // الإجمالي تحت في كل ورقة
+        y=end;
+      }
+      // اللي بعد الجدول الرئيسي (جدول الحاويات مثلاً)
+      let t=footBot;
+      const room=()=> (ph-mg-cur)/sc;
+      while(t < canvas.height-2){
+        if(room() < 40){ newPage(); cur=mg; }
+        const end=cut(t, room(), canvas.height);
+        pdf.addImage(band(t,end-t),'JPEG',mg,cur,canvas.width*sc,(end-t)*sc);
+        cur+=(end-t)*sc; t=end;
+        if(t < canvas.height-2){ newPage(); cur=mg; }
+      }
     }
     pdf.save(filename+'.pdf'); toast('تم تنزيل ملف PDF');
   }catch(e){ console.error(e); toast('تعذر إنشاء PDF — تأكد من الاتصال بالإنترنت'); }
@@ -3573,17 +3589,22 @@ function signOf(c){
   if(/^\+/.test(t) || /زياد/.test(t)) return 'plus';
   return '';
 }
+/* عمود الاسم كان بيتعصر على ٣ سطور والأرقام واخدة المساحة كلها.
+   دلوقتي عمود الاسم ليه عرض أدنى مريح، وعمود «م» على قده. */
+const DOC_NAME_COL=/^(اسم الصنف|الصنف|الموظف|العميل|الموزع|بيان|البيان|الحساب|المجموعة)$/;
+function docColClass(h){ return h==='م' ? 'ix' : (DOC_NAME_COL.test(String(h||'').trim()) ? 'nm' : ''); }
 function docTableHtml(model, extraCss){
   const n=model.header.length;
   const cls={branch:'m',sub:'s',tot:'m',row:'z'};
-  return `<table><tr>${model.header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr>`+
+  const cc=model.header.map(docColClass);
+  return `<table><tr>${model.header.map((h,i)=>`<th class="${cc[i]}">${esc(h)}</th>`).join('')}</tr>`+
     model.body.map(r=> r.type==='branch'
       ? `<tr class="m"><td colspan="${n}">◆ ${esc(r.label)}</td></tr>`
       : `<tr class="${cls[r.type]}">${r.cells.map((c,i)=>{
           const sg = (model.sign||[])[i]==='auto' ? signOf(c) : '';
           const e = r.type==='row' ? (model.hiLo||{})[i] : null;
           const hl = (e && typeof c==='number' && c!==0) ? (c===e.mx?'hi':(c===e.mn?'lo':'')) : '';
-          return `<td class="${[sg,hl].filter(Boolean).join(' ')}">${typeof c==='number'?fmt2(c):esc(c)}</td>`;
+          return `<td class="${[cc[i],sg,hl].filter(Boolean).join(' ')}">${typeof c==='number'?fmt2(c):esc(c)}</td>`;
         }).join('')}</tr>`).join('')+`</table>`;
 }
 /* الكشف اللي بيتبعت: كل عمود ليه دوره — الراتب والصافي بخلفية خضرا،
@@ -4749,15 +4770,21 @@ function gvOrderEditor(m){
     ${floatBar(`<button onclick="exportGvExcel()">📊 إكسل</button><button onclick="exportGvPdf()">📄 PDF</button><button onclick="exportGvImage()">🖼️ صورة</button>`)}`;
   const fi=document.getElementById('impGvOrder'); if(fi) fi.onchange=e=>{ if(e.target.files[0]) gvImportExcel(e.target.files[0]); };
 }
+/* «طلبية جيفز 30/08/2026 — 30-08-2026»: التاريخ كان بيتكتب مرتين */
+function gvTitle(o){
+  const nm=String((o&&o.name)||'').trim(), d=String((o&&o.date)||'');
+  const p=d.split('-'), dmy = p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : d;
+  return (nm.indexOf(d)>=0 || nm.indexOf(dmy)>=0 || !d) ? nm : (nm? nm+' — '+dmy : dmy);
+}
 function gvModel(){
   const o=gvGet(), c=gvCalc(o), body=[];
-  c.rows.forEach((r,i)=>body.push({type:'row',cells:[i+1,r.name,r.code,r.qty,r.pc,rnd2(r.cartons),r.w,rnd2(r.weight),r.p,rnd2(r.value)]}));
+  c.rows.forEach((r,i)=>body.push({type:'row',cells:[i+1,gvShortName(r.name,r.code),r.code,r.qty,r.pc,rnd2(r.cartons),r.w,rnd2(r.weight),r.p,rnd2(r.value)]}));
   body.push({type:'tot',cells:['','الإجمالي','','','',rnd2(c.tot.cartons),'',rnd2(c.tot.weight),'',rnd2(c.tot.value)]});
-  return {title:o.name+' — '+o.date, header:['م','اسم الصنف','الكود','الكمية','قطع/كرتونة','الكراتين','وزن القطعة','إجمالي الوزن','سعر القطعة $','إجمالي القيمة $'], body, c, o};
+  return {title:gvTitle(o), header:['م','اسم الصنف','الكود','الكمية','قطع/كرتونة','الكراتين','وزن القطعة','إجمالي الوزن','سعر القطعة $','إجمالي القيمة $'], body, c, o};
 }
 function gvDocBody(){
   const md=gvModel(), c=md.c, o=md.o;
-  return `<div class="dx" style="font-size:12px"><h2>طلبية جيفيز</h2><div class="sub">${esc(md.title)}</div>${docTableHtml(md)}
+  return `<div class="dx" style="font-size:12px"><h2>طلبية جيفز</h2><div class="sub">${esc(md.title)}</div>${docTableHtml(md)}
     <h3>الحاويات</h3><table><tr><th>حمولة الحاوية (كجم)</th><th>عدد الحاويات</th><th>إجمالي السعة</th><th>الوزن المطلوب</th><th>الحالة</th></tr>
     <tr class="z"><td>${fmtN(nz(o.cap))}</td><td>${fmtN(nz(o.containers))}</td><td>${fmtN(c.cap)}</td><td>${fmt1(c.tot.weight)}</td><td><b>${esc(c.status)}</b></td></tr></table></div>`;
 }
@@ -4770,7 +4797,7 @@ function exportGvImage(){ if(gvHasRows()) exportDocImage(gvDocBody(),gvFile(),tr
    مفيهمش أسعار تكلفة عشان تتبعت للمورّد أو للمخزن من غير ما تكشف تكلفتك. */
 function gvRecvModel(){
   const o=gvGet(), {rows,t}=gvRecvTot(o), body=[];
-  rows.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, r.code, r.qty,
+  rows.forEach((r,i)=> body.push({type:'row', cells:[i+1, gvShortName(r.name, r.code), r.code, r.qty,
     r.pc? rnd2(r.qty/r.pc):'', r.recv||'', r.pc&&r.recv? rnd2(r.recvCartons):'',
     r.recv? rnd2(r.diff):'', r.recv? (r.diff===0?'مطابق':(r.diff<0?'ناقص':'زيادة')) : 'لم يصل']}));
   body.push({type:'tot', cells:['','الإجمالي','', t.qty, '', t.recv, rnd2(t.cartons), rnd2(t.diff), '']});
@@ -4790,7 +4817,7 @@ function exportGvRecvExcel(){
 }
 function gvPriceModel(){
   const o=gvGet(), P=gvPricing(o), body=[];
-  P.rows.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, r.code, r.recv, rnd2(r.recvCartons),
+  P.rows.forEach((r,i)=> body.push({type:'row', cells:[i+1, gvShortName(r.name, r.code), r.code, r.recv, rnd2(r.recvCartons),
     rnd2(r.recvValue), rnd2(r.unitEgp), rnd2(r.cartonEgp), Math.round(r.costEgp)]}));
   body.push({type:'tot', cells:['','الإجمالي','', P.t.recv, rnd2(P.t.cartons), rnd2(P.t.value), '', '', Math.round(P.totalEgp)]});
   return {title:o.name+' — تسعير المستلم', header:['م','اسم الصنف','الكود','المستلم','الكراتين','قيمة $','تكلفة القطعة ج','تكلفة الكرتونة ج','الإجمالي ج'], body, P, o};
