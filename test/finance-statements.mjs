@@ -43,21 +43,46 @@ ck('المركز متوازن بالظبط', r(B.assets)===r(B.total), r(B.asset
 await pg.evaluate(()=>{ setFinView('bs'); }); await pg.waitForTimeout(400);
 ck('الشاشة بتقول متوازن', /متوازن/.test(await pg.evaluate(()=>document.body.innerText)));
 
-// قطاع PVC اتخمّن لوحده من أسماء الحسابات
-const pvc=await pg.evaluate(()=> Object.values(finSeg).filter(v=>v==='pvc').length);
-ck('حسابات PVC اتخمّنت من الاسم', pvc>0, 'عدد='+pvc);
-const P=await pg.evaluate(()=> finStatement('2026-01','ispvc').V);
-ck('قائمة PVC بتحسب مبيعاتها بس', r(P.sales)>0 && r(P.sales)<r(V.sales),
-  r(P.sales)+' من '+r(V.sales));
-await pg.evaluate(()=>{ setFinView('ispvc'); }); await pg.waitForTimeout(400);
-ck('تحذير الحسابات غير المخصّصة',
-  /مش متخصّص لقطاع/.test(await pg.evaluate(()=>document.body.innerText)));
+// ── توزيع القطاعات: فروع PVC اتخصّصت لوحدها وقت الرفع
+const par=await pg.evaluate(()=> finParents('2026-01').length);
+ck('٢٥ حساب أب في الأرباح والخسائر', par===25, 'عدد='+par);
+const seg=await pg.evaluate(()=> finParents('2026-01').map(a=>({c:a.code, s:finSegOf(a.code)})));
+const pvcN=seg.filter(x=>x.s==='pvc').length, noN=seg.filter(x=>!x.s).length;
+ck('٢١ حساب راحوا PVC و٤ لسه من غير قطاع', pvcN===21 && noN===4, 'PVC='+pvcN+' بلا='+noN);
+ck('فروع PVC كلها اتخصّصت',
+  ['4102','4103','4104','4107','3211','3214','3216','3224','3169','3177','3165','3166']
+    .every(c=> seg.find(x=>x.c===c && x.s==='pvc')),
+  seg.filter(x=>!x.s).map(x=>x.c).join(','));
+ck('عمولات البنك وفودافون وانستاباي والنقل مش PVC',
+  ['3164','4317','4318','4501'].every(c=> seg.find(x=>x.c===c && !x.s)),
+  seg.filter(x=>!x.s).map(x=>x.c).join(','));
 
-// تخصيص حساب للمصنع بيغيّر قائمة المصنع
-await pg.evaluate(()=>{ setFinSeg('4103','fac','isfac','sales'); closeSheet(); });
-await pg.waitForTimeout(400);
+// قائمة PVC = كل المبيعات لأن كل الفروع PVC
+const P=await pg.evaluate(()=> finStatement('2026-01','ispvc').V);
+ck('مبيعات PVC = كل المبيعات ٤٣,٤٥٥,٠٣٦', r(P.sales)===43455036, String(r(P.sales)));
+ck('تكلفة PVC = كل التكلفة', r(P.cogs)===41884439, String(r(P.cogs)));
+ck('مصروفات PVC ٣١٠,٣٢١ (من غير عمولات البنك ٣٥٠)',
+  r(P.exp)===310321, String(r(P.exp)));
+ck('مجمل ربح PVC زي الشركة', r(P.gross)===r(V.gross), r(P.gross)+' / '+r(V.gross));
+
+await pg.evaluate(()=>{ setFinView('ispvc'); }); await pg.waitForTimeout(400);
+ck('تحذير بالحسابات اللي من غير قطاع',
+  /من غير قطاع/.test(await pg.evaluate(()=>document.body.innerText)));
+
+// شاشة توزيع القطاعات
+await pg.evaluate(()=>{ setFinView('seg'); }); await pg.waitForTimeout(400);
+ck('شاشة التوزيع بتوري كل الحسابات الأب',
+  (await pg.locator('#fin_c > .card').count())===25);
+// نحوّل اكسا للمصنع بضغطة
+await pg.evaluate(()=> segPick('4103','fac')); await pg.waitForTimeout(400);
 const F=await pg.evaluate(()=> finStatement('2026-01','isfac').V);
 ck('مبيعات المصنع بقت ١٩,٤٩٨,٢٦٠', r(F.sales)===19498260, String(r(F.sales)));
+const P2=await pg.evaluate(()=> finStatement('2026-01','ispvc').V);
+ck('ومبيعات PVC نقصت بنفس الرقم', r(P2.sales)===43455036-19498260, String(r(P2.sales)));
+// الحساب الطرفي بيرث من الأب
+ck('الحساب الطرفي بيرث قطاع الأب',
+  (await pg.evaluate(()=> finSegOf('31770001')))==='pvc');
+await pg.evaluate(()=> segPick('4103','pvc')); await pg.waitForTimeout(300);
 
 // مفيش ميداليات في القوائم المالية
 await pg.evaluate(()=>{ setFinView('isco'); }); await pg.waitForTimeout(400);
