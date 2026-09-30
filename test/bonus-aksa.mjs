@@ -70,5 +70,41 @@ if(REAL && existsSync(REAL)){
   ck('الأرقام زي كشف الربع التاني 2026 بالظبط', !bad.length, JSON.stringify(md.body.map(r=>r.cells)));
   ck('إجمالي البونص 2,219,332', md.body[md.body.length-1].cells[3]===2219332, JSON.stringify(md.body[md.body.length-1].cells));
 }
+
+// ── شكل تقرير حركة الأصناف من البرنامج: Customer/Category سطور لوحدها، والصافي = tvin − tvout
+await pg.evaluate(()=>{ bonusData={period:'',files:{},rates:{},itemLine:{}}; bonusSave(); setBonusTab('files'); });
+await mk('acc', [[''],['end_date','start_date','Customer_Name','Category_Name','Item_Code','Item_Name','Unit_Name','tvout','','pout','tqout','','tvin','','pin','tqin',''],
+  ['','','اكسا ايجيبت','','','','','','','','','','','','','',''],
+  ['','','','اكسسوارات pvc اكسا','','','','','','','','','','','','',''],
+  ['','','','',40259,'تجميع سقاس سلك aksa','عدد',0,'',0,0,'',880,'',3.52,250,''],
+  ['','','','',40350,'خيط بليسيه aksa','عدد',0,'',0,0,'',45122,'',470,96,''],
+  ['','','','',40400,'مفصله 10 سم بيج معدن aksa','عدد',8245,'',0,0,'',72745,'',10,7000,''],
+  ['','','','','','','','stvout:',8245,'','stqout:',0,'stvin:',118747,'','stqin:',0],
+  ['','','','','','','','total_tvout:',8245,'','total_tqout:',0,'total_tvin:',118747,'','total_tqin:',0]]);
+await pg.waitForTimeout(500);
+st=await pg.evaluate(()=> bonusFile('acc'));
+ck('تقرير الحركة: 3 أصناف والصافي = الوارد − المرتجع', st && st.rows.length===3 && st.rows.find(r=>r.name.startsWith('مفصله')).val===64500
+  && st.rows.reduce((a,r)=>a+r.val,0)===110502, JSON.stringify(st&&st.rows));
+md=await pg.evaluate(()=> bonusModel());
+ck('البليسيه راح لسطر بلسيه والباقي عام', row('اكسسوارات ( بلسيه )')[1]===45122 && row('اكسسوارات عام')[1]===65380, JSON.stringify(md.body.map(r=>r.cells)));
+
+// ── ✏️ جنب صنف الاكسسوار: من عام لبلسيه
+await pg.evaluate(()=>{ setBonusTab('rep'); bonusLineSheet('اكسسوارات عام'); }); await pg.waitForTimeout(150);
+await pg.locator('#sheet .card', {hasText:'تجميع سقاس سلك'}).locator('button[title="تعديل السطر"]').click(); await pg.waitForTimeout(150);
+ck('شيت ✏️ اتفتح بالسطور الأربعة', /سطر الصنف/.test(await pg.locator('#sheet').innerText()) && (await pg.locator('#sheet .stab').count())===4);
+await pg.locator('#sheet .stab', {hasText:'بلسيه'}).click(); await pg.waitForTimeout(150);
+md=await pg.evaluate(()=> bonusModel());
+ck('الصنف اتنقل لبلسيه ورجع لشيت عام', row('اكسسوارات ( بلسيه )')[1]===45122+880 && /اكسسوارات عام/.test(await pg.locator('#sheet h3').innerText()), JSON.stringify(md.body.map(r=>r.cells)));
+const REAL2=process.env.BONUS_FILE2;
+if(REAL2 && existsSync(REAL2)){
+  const b64=readFileSync(REAL2).toString('base64');
+  await pg.evaluate(({b64})=>{ const bin=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+    const dt=new DataTransfer(); dt.items.add(new File([bin],'acc.xls'));
+    const inp=document.querySelector(`input[onchange*="'acc'"]`); inp.files=dt.files; inp.dispatchEvent(new Event('change')); }, {b64});
+  await pg.waitForTimeout(1200);
+  st=await pg.evaluate(()=> bonusFile('acc'));
+  ck('الملف الحقيقي: 178 صنف وصافي 10,316,941', st && st.rows.length===178 && Math.round(st.rows.reduce((a,r)=>a+r.val,0))===10316941,
+    st? st.rows.length+' / '+Math.round(st.rows.reduce((a,r)=>a+r.val,0)) : 'null');
+}
 ck('مفيش أخطاء', !errs.length, errs.join('|'));
 await b.close(); process.exit(fail?1:0);
