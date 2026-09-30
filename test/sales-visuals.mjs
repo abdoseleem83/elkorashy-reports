@@ -28,11 +28,11 @@ ck('مبيعات خاصة مش في جدول موزعين إجمالي', !/مب�
 // تقرير المبيعات الخاصة لوحده
 const sp=await pg.evaluate(()=> repModel('special'));
 ck('المبيعات الخاصة: العملاء صفوف والشهور أعمدة',
-  sp.header.join('|')==='م|العميل|يناير 2026|فبراير 2026|الإجمالي', sp.header.join('|'));
+  sp.header.join('|')==='العميل|يناير 2026|فبراير 2026|الإجمالي', sp.header.join('|'));
 const spTot=sp.body[sp.body.length-1].cells;
-ck('إجمالي الخاصة ٩٠ ألف', spTot[4]===90000, spTot.join('/'));
+ck('إجمالي الخاصة ٩٠ ألف', spTot[3]===90000, spTot.join('/'));
 ck('خاص أول الأول بـ٥٥ ألف',
-  sp.body[0].cells[1]==='خاص أول' && sp.body[0].cells[4]===55000, JSON.stringify(sp.body[0].cells));
+  sp.body[0].cells[0]==='خاص أول' && sp.body[0].cells[3]===55000, JSON.stringify(sp.body[0].cells));
 const hi=await pg.locator('table.rep td.hi').count(), lo=await pg.locator('table.rep td.lo').count();
 ck('أعلى رقم أخضر وأقل رقم أحمر في كل عمود', hi===3 && lo===3, 'hi='+hi+' lo='+lo);
 // الأرشفة

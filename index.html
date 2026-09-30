@@ -72,6 +72,8 @@ table.rep td.lo{background:rgba(192,32,47,.16) !important}
 .act{display:flex;gap:6px}
 .act button{border:none;background:var(--panel2);width:32px;height:32px;border-radius:8px;font-size:14px;cursor:pointer}
 .empty{text-align:center;color:var(--muted);padding:40px 10px;font-size:13.5px}
+.fbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--bg);
+  border-top:1px solid var(--border);padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px))}
 .fab{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:52px;height:52px;border-radius:50%;
   background:var(--blue);color:#fff;font-size:24px;border:none;box-shadow:0 4px 14px rgba(0,0,0,.25);z-index:25;cursor:pointer}
 .impbar{display:flex;gap:8px;margin-bottom:10px}
@@ -132,7 +134,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.4</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -992,6 +994,44 @@ function delWarehouse(id){
   render(); toast('تم حذف المخزن');
 }
 
+/* مخازن متكررة بنفس الاسم: بندمجها في واحد — الأرصدة والنواقص
+   والجرد بيتنقلوا، والباقي بيتشال. */
+function dupWarehouses(){
+  const by={}; warehouses.forEach(w=>{ const k=String(w.name||'').trim(); (by[k]=by[k]||[]).push(w); });
+  return Object.keys(by).filter(k=> by[k].length>1).map(k=>({name:k, list:by[k]}));
+}
+function mergeDupWarehouse(name){
+  const g=dupWarehouses().find(x=>x.name===name); if(!g) return;
+  const keep=g.list[0], rest=g.list.slice(1);
+  if(!confirm('دمج '+g.list.length+' مخازن باسم «'+name+'» في واحد؟')) return;
+  rest.forEach(w=>{
+    Object.entries(whStock[w.id]||{}).forEach(([n,v])=>{
+      whStock[keep.id]=whStock[keep.id]||{};
+      if(whStock[keep.id][n]===undefined) whStock[keep.id][n]=v;   // الأقدم يكسب مش يتجمع
+    });
+    Object.entries(whShortage[w.id]||{}).forEach(([n,v])=>{
+      whShortage[keep.id]=whShortage[keep.id]||{};
+      if(whShortage[keep.id][n]===undefined) whShortage[keep.id][n]=v;
+    });
+    Object.entries(invCounts[w.id]||{}).forEach(([n,v])=>{
+      invCounts[keep.id]=invCounts[keep.id]||{};
+      if(invCounts[keep.id][n]===undefined) invCounts[keep.id][n]=v;
+    });
+    delete whStock[w.id]; delete whShortage[w.id]; delete invCounts[w.id];
+  });
+  const ids=new Set(rest.map(w=>w.id));
+  warehouses=warehouses.filter(w=> !ids.has(w.id));
+  save('warehouses_v1',warehouses); save('whStock_v1',whStock);
+  save('whShortage_v1',whShortage); save('invCounts_v1',invCounts);
+  if(ids.has(load('_whTab_',null))) save('_whTab_', keep.id);
+  render(true); toast('اتدمجوا في مخزن واحد');
+}
+function dupWhBar(){
+  const d=dupWarehouses(); if(!d.length) return '';
+  return `<div class="warn">⚠️ في مخازن متكررة بنفس الاسم — ادمجها عشان الأرصدة والمقارنات تبقى صح:
+    <div class="morow" style="margin-top:6px">${d.map(g=>
+      `<button class="mochip on" onclick="mergeDupWarehouse('${esc(g.name)}')">🔗 دمج ${esc(g.name)} (${g.list.length})</button>`).join('')}</div></div>`;
+}
 function renderWarehouses(m){
   const whTab = load('_whTab_', null);
   /* المقارنات كانت مفروشة جنب المخازن في نفس الصف. دلوقتي تبويب واحد
@@ -999,7 +1039,7 @@ function renderWarehouses(m){
   const tabs = [{id:'cmpx',name:'📊 مقارنات'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
   m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
     ${tabs.map(t=>`<button class="tab ${whTab===t.id?'active':''}" onclick="setWhTab('${t.id}')" style="flex:0 0 auto;padding:9px 12px;border-radius:9px;background:${whTab===t.id?'var(--blue)':'var(--panel2)'};color:${whTab===t.id?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:12.5px;white-space:nowrap">${t.name}</button>`).join('')}
-  </div><div id="wh_content"></div>`;
+  </div>${dupWhBar()}<div id="wh_content"></div>`;
   if(whTab===null) $('#wh_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
   else if(whTab==='cmpx') renderCompareHub($('#wh_content'));
   else renderWhDetail($('#wh_content'), whTab);
@@ -1330,11 +1370,11 @@ function stockOrphans(){
   }
   return [...new Set(out)];
 }
+/* شريط التصدير مثبّت في آخر الشاشة نفسها (fixed مش sticky) عشان
+   ما يختفيش لما الجدول يتسحب يمين وشمال أو لما الصفحة تطول. */
 function floatBar(inner){
-  return `<div style="height:76px"></div>
-    <div style="position:sticky;bottom:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);
-      padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px))">
-      <div class="impbar" style="margin:0">${inner}</div></div>`;
+  return `<div style="height:82px"></div>
+    <div class="fbar"><div class="impbar" style="margin:0">${inner}</div></div>`;
 }
 function noStockMsg(){ return !warehouses.some(w=>Object.keys(whStock[w.id]||{}).length); }
 
@@ -1632,9 +1672,9 @@ function topBoxes(list, label){
 /* أعلى/أقل قيمة في كل عمود رقمي — نفس التلوين على الشاشة وفي التصدير */
 function modelHiLo(md, noColor){
   const rows = md.body.filter(r=> r.type==='row');
-  const hasIdx = md.header[0]==='م', out={};
+  const out={};
   md.header.forEach((h,c)=>{
-    if(hasIdx && c===0) return;
+    if(c===0) return;                      // عمود الاسم/الكود
     if((noColor||[]).indexOf(c)>=0) return;
     const vals = rows.map(r=> r.cells[c]).filter(v=> typeof v==='number' && v!==0);
     if(vals.length<2) return;
@@ -1652,7 +1692,6 @@ const repCell = v => typeof v==='number'
 function renderRepTable(m, id, md, opt){
   opt = opt || {};
   const rows = md.body.filter(r=> r.type==='row');
-  const hasIdx = md.header[0]==='م';
   const hiLo = md.hiLo || (md.hiLo = modelHiLo(md, opt.noColor));
   const td=(v,c)=>{
     const e=hiLo[c]; let k='';
@@ -1667,10 +1706,11 @@ function renderRepTable(m, id, md, opt){
       return `<tr class="m">${r.cells.map(v=>`<td><b>${repCell(v)}</b></td>`).join('')}</tr>`;
     const i=n++;
     const tap=(md.rowTap||[])[i];
+    const mdl = i<3 ? MEDALS[i]+' ' : '';      // الميدالية جنب الاسم/الكود
     return `<tr>${r.cells.map((v,c)=>{
-      if(hasIdx && c===0) return `<td>${i<3?MEDALS[i]:(i+1)}</td>`;
       if(tap && c===md.tapCol)
-        return `<td style="cursor:pointer;text-decoration:underline" onclick="${tap}">${repCell(v)} ⚙️</td>`;
+        return `<td style="cursor:pointer;text-decoration:underline" onclick="${tap}">${mdl}${repCell(v)} ⚙️</td>`;
+      if(c===0) return `<td>${mdl}${repCell(v)}</td>`;
       return td(v,c); }).join('')}</tr>`;
   }).join('');
   m.innerHTML = `${opt.warn? `<div class="warn">${opt.warn}</div>`:''}
@@ -1737,11 +1777,11 @@ function buildDistSectors(){
 }
 function repDistSectorsModel(){
   const d = buildDistSectors(), body=[];
-  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, ...r.cells.map(v=> Math.round(v)), Math.round(r.total)]}));
-  body.push({type:'tot', cells:['','الإجمالي', ...d.tot.map(v=>Math.round(v)), Math.round(d.total)]});
+  d.list.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells.map(v=> Math.round(v)), Math.round(r.total)]}));
+  body.push({type:'tot', cells:['الإجمالي', ...d.tot.map(v=>Math.round(v)), Math.round(d.total)]});
   return {title:'مبيعات الموزعين حسب القطاع — '+periodLabel(),
-    header:['م','الموزع', ...d.cols.map(secLabel), 'الإجمالي'],
-    headTap:['','', ...d.cols.map(k=>`secSheet('${esc(k)}')`), ''], body, d};
+    header:['الموزع', ...d.cols.map(secLabel), 'الإجمالي'],
+    headTap:['', ...d.cols.map(k=>`secSheet('${esc(k)}')`), ''], body, d};
 }
 function renderRepDistSectors(m){
   const d = buildDistSectors();
@@ -1804,14 +1844,14 @@ function buildDoorsByCode(){
 function repDoorsByCodeModel(){
   const d=buildDoorsByCode(), body=[];
   d.list.forEach((r,i)=>{
-    body.push({type:'row', cells:[i+1, r.code, ...r.cells.map(v=>Math.round(v)), rnd2(r.qty), Math.round(r.val)]});
-    body.push({type:'sub', cells:['', 'كمية', ...r.qtys, '', '']});      // الكمية تحت القيمة
+    body.push({type:'row', cells:[r.code, ...r.cells.map(v=>Math.round(v)), Math.round(r.val)]});
+    body.push({type:'sub', cells:['كمية', ...r.qtys, rnd2(r.qty)]});     // الكمية تحت القيمة
   });
-  body.push({type:'tot', cells:['','الإجمالي', ...d.tot.map(v=>Math.round(v)), rnd2(d.qty), Math.round(d.val)]});
-  body.push({type:'sub', cells:['', 'كمية', ...d.totQ, '', '']});
+  body.push({type:'tot', cells:['الإجمالي', ...d.tot.map(v=>Math.round(v)), Math.round(d.val)]});
+  body.push({type:'sub', cells:['كمية', ...d.totQ, rnd2(d.qty)]});
   return {title:'مبيعات الأبواب بالكود — '+periodLabel(),
-    header:['م','الكود', ...d.cols, 'الكمية','الإجمالي'],
-    tapCol:1, rowTap:d.list.map(r=>`doorCodeSheet(&quot;${esc(r.code)}&quot;)`), body, d};
+    header:['الكود', ...d.cols, 'الإجمالي'],
+    tapCol:0, rowTap:d.list.map(r=>`doorCodeSheet(&quot;${esc(r.code)}&quot;)`), body, d};
 }
 function renderRepDoorsByCode(m){
   const d=buildDoorsByCode();
@@ -1881,10 +1921,10 @@ function buildDistDoors(){
 function repDistDoorsModel(){
   const d = buildDistDoors(), body=[];
   d.list.forEach((r,i)=> body.push({type:'row',
-    cells:[i+1, r.name, ...r.cells, rnd2(r.qty), Math.round(r.val)]}));
-  body.push({type:'tot', cells:['','الإجمالي', ...d.tot, rnd2(d.qty), Math.round(d.val)]});
+    cells:[r.name, ...r.cells, rnd2(r.qty), Math.round(r.val)]}));
+  body.push({type:'tot', cells:['الإجمالي', ...d.tot, rnd2(d.qty), Math.round(d.val)]});
   return {title:'مبيعات الأبواب للعملاء — '+periodLabel(),
-    header:['م','العميل', ...d.cols.map(c=>c.label), 'الكمية','القيمة'], body, d};
+    header:['العميل', ...d.cols.map(c=>c.label), 'الكمية','القيمة'], body, d};
 }
 function renderRepDistDoors(m){
   const d = buildDistDoors();
@@ -1912,10 +1952,10 @@ function buildSpecial(){
 }
 function repSpecialModel(){
   const d=buildSpecial(), body=[];
-  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, ...r.cells, r.total]}));
-  body.push({type:'tot', cells:['','الإجمالي', ...d.tot, d.total]});
+  d.list.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells, r.total]}));
+  body.push({type:'tot', cells:['الإجمالي', ...d.tot, d.total]});
   return {title:'المبيعات الخاصة — '+periodLabel(),
-    header:['م','العميل', ...d.cols.map(c=>c.label), 'الإجمالي'], body, d};
+    header:['العميل', ...d.cols.map(c=>c.label), 'الإجمالي'], body, d};
 }
 function renderRepSpecial(m){
   const d=buildSpecial();
@@ -1960,13 +2000,13 @@ function buildMonthCompare(){
 const pctTxt = p => p===null ? '—' : (p>0?'+':'')+p+'%';
 function repMonthCompareModel(){
   const d=buildMonthCompare(); const body=[];
-  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, Math.round(r.va), Math.round(r.vb),
+  d.list.forEach(r=> body.push({type:'row', cells:[r.name, Math.round(r.va), Math.round(r.vb),
     Math.round(r.diff), pctTxt(r.pct)]}));
   const tdiff=d.tb-d.ta, tpct=d.ta? Math.round(tdiff/d.ta*100) : null;
-  body.push({type:'tot', cells:['','الإجمالي', Math.round(d.ta), Math.round(d.tb), Math.round(tdiff), pctTxt(tpct)]});
+  body.push({type:'tot', cells:['الإجمالي', Math.round(d.ta), Math.round(d.tb), Math.round(tdiff), pctTxt(tpct)]});
   return {title:`مقارنة المبيعات — ${moName(d.a)} مقابل ${moName(d.b)}`,
-    header:['م','بيان', moName(d.a)||'—', moName(d.b)||'—', 'الفرق', 'النسبة'],
-    body, sign:['','','','','auto','auto'], d};
+    header:['بيان', moName(d.a)||'—', moName(d.b)||'—', 'الفرق', 'النسبة'],
+    body, sign:['','','','auto','auto'], d};
 }
 function renderRepMonthCompare(m){
   const d=buildMonthCompare();
@@ -2017,14 +2057,13 @@ function exportRep(id, kind){
   const file = md.title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_');
   md.hiLo = md.hiLo || modelHiLo(md);
   if(kind==='x'){
-    const w = md.header.map(h=> h==='م' ? 5
-      : (/^(الصنف|الموزع|العميل|بيان)$/.test(h) ? 34 : (h==='الكود' ? 10 : 14)));
+    const w = md.header.map((h,i)=> i===0 ? (h==='الكود' ? 14 : 34) : 14);
     saveAoaXlsx(modelToAoa(md, true), 'تقرير', file+'.xlsx', w,
       {title: md.title, sign: md.sign||[], hiLo: md.hiLo});
     return;
   }
-  if(md.header[0]==='م'){ let i=0;                 // ميداليات في المستند زي الشاشة
-    md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]; i++; } }); }
+  { let i=0;                                       // ميداليات في المستند زي الشاشة
+    md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]+' '+r.cells[0]; i++; } }); }
   const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docTableHtml(md)}</div>`;
   if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
 }
@@ -2143,10 +2182,10 @@ function buildDistTotal(){
 }
 function repDistTotalModel(){
   const d=buildDistTotal(), body=[];
-  d.list.forEach((r,i)=> body.push({type:'row', cells:[i+1, r.name, ...r.cells, r.total]}));
-  body.push({type:'tot', cells:['','الإجمالي', ...d.tot, d.total]});
+  d.list.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells, r.total]}));
+  body.push({type:'tot', cells:['الإجمالي', ...d.tot, d.total]});
   return {title:'مبيعات الموزعين — إجمالي '+periodLabel(),
-    header:['م','بيان', ...d.cols.map(c=>c.label), 'الإجمالي'], body, d};
+    header:['بيان', ...d.cols.map(c=>c.label), 'الإجمالي'], body, d};
 }
 function renderSalesReport(m){
   const d=buildDistTotal();
@@ -2381,7 +2420,26 @@ async function exportDocImage(bodyHtml, filename, landscape){
   catch(e){ console.error(e); toast('تعذر التصدير — تأكد من الاتصال بالإنترنت'); }
   finally{ el.remove(); }
 }
-async function exportDocPdf(bodyHtml, filename, landscape){
+/* كل زرار PDF بيسأل الأول: طولي ولا أفقي؟ والاختيار بيتفكر للمرة الجاية. */
+let pdfPending=null;
+function exportDocPdf(bodyHtml, filename, landscape){
+  pdfPending={bodyHtml, filename};
+  const def = load('_pdfLand_', landscape? 1 : 0);
+  const btn=(v,t,e)=>`<button onclick="pdfGo(${v})" style="flex:1;padding:14px 10px;border-radius:11px;
+    border:1px solid ${def===v?'var(--blue)':'var(--border)'};background:${def===v?'var(--blue)':'var(--panel2)'};
+    color:${def===v?'#fff':'var(--text)'};font-weight:700;font-size:14px;cursor:pointer">${e}<br>${t}</button>`;
+  openSheet(`<h3>اتجاه ورقة الـPDF</h3>
+    <p style="font-size:13px;color:var(--muted)">${esc(filename)}</p>
+    <div style="display:flex;gap:8px;margin:10px 0">${btn(0,'طولي','📄')}${btn(1,'أفقي','📃')}</div>
+    <div class="f-actions"><button class="btn-cancel" onclick="pdfCancel()">إلغاء</button></div>`);
+}
+function pdfCancel(){ pdfPending=null; closeSheet(); }
+function pdfGo(land){
+  save('_pdfLand_', land);
+  const p=pdfPending; pdfPending=null; closeSheet();
+  if(p) doExportDocPdf(p.bodyHtml, p.filename, !!land);
+}
+async function doExportDocPdf(bodyHtml, filename, landscape){
   toast('جاري تجهيز ملف PDF...'); const el=mkDoc(bodyHtml,landscape);
   try{
     await loadLib('jspdf',()=>window.jspdf);

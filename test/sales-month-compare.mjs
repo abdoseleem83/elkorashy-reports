@@ -51,12 +51,12 @@ console.log(d2.a==='2026-02'?'✅ اختيار الشهر شغّال':'❌ '+d2.
 // النموذج المصدَّر
 await pg.evaluate(()=> setCmpMo('a','2026-01')); await pg.waitForTimeout(300);
 const md=await pg.evaluate(()=> repMonthCompareModel());
-console.log(md.header.length===6&&md.sign[4]==='auto'&&md.sign[5]==='auto'
+console.log(md.header.length===5&&md.sign[3]==='auto'&&md.sign[4]==='auto'
   ?'✅ نموذج التصدير فيه أعمدة الفرق والنسبة ملوّنة':'❌ '+JSON.stringify(md.header)+JSON.stringify(md.sign));
-if(!(md.header.length===6&&md.sign[4]==='auto'&&md.sign[5]==='auto')) bad++;
+if(!(md.header.length===5&&md.sign[3]==='auto'&&md.sign[4]==='auto')) bad++;
 const last=md.body[md.body.length-1];
-console.log(last.cells[5]==='+15%'?'✅ نسبة الإجمالي +15%':'❌ '+last.cells[5]);
-if(last.cells[5]!=='+15%') bad++;
+console.log(last.cells[4]==='+15%'?'✅ نسبة الإجمالي +15%':'❌ '+last.cells[4]);
+if(last.cells[4]!=='+15%') bad++;
 // شريط التصدير ظاهر فعلاً
 const vis=await pg.evaluate(()=>{
   const btns=[...document.querySelectorAll('button')].filter(b=>b.textContent.includes('إكسل'));
