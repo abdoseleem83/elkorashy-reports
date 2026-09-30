@@ -205,7 +205,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.7</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.8</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -3629,16 +3629,17 @@ function payTableHtml(model){
     : (PAY_MINUS_COL.test(h) ? 'minus' : (PAY_PLUS_COL.test(h) ? 'plus' : '')));
   // الساعات والأيام بخانتين عشريتين زي الورقة، والفلوس بفواصل الآلاف
   const isTime = H.map(h=> /\(ساعات\)|\(أيام\)/.test(h));
+  const cc = H.map(docColClass);   // «م» على قده والاسم عرض مريح، زي باقي التقارير
   const num = (v, i)=> isTime[i] ? Number(v).toFixed(2) : fmtN(Math.round(Number(v)));
   const cell = (c, i)=>{
     const empty = c === '' || c === 0 || c === null || c === undefined;
-    const cls = [empty ? '' : kind[i]];
+    const cls = [cc[i], empty ? '' : kind[i]];
     const txt = typeof c === 'number' ? (empty ? '' : num(c, i)) : esc(c);
     return `<td class="${cls.filter(Boolean).join(' ')}">${txt}</td>`;
   };
-  return `<table class="pay"><tr>${H.map(h=>`<th>${esc(h)}</th>`).join('')}</tr>`
+  return `<table class="pay"><tr>${H.map((h,i)=>`<th class="${cc[i]}">${esc(h)}</th>`).join('')}</tr>`
     + model.body.map(r=> `<tr class="${r.type==='tot'?'m':'z'}">${r.cells.map((c,i)=>
-        r.type==='tot' ? `<td>${typeof c==='number'? (c? num(c,i) : '') : esc(c)}</td>` : cell(c,i)
+        r.type==='tot' ? `<td class="${cc[i]}">${typeof c==='number'? (c? num(c,i) : '') : esc(c)}</td>` : cell(c,i)
       ).join('')}</tr>`).join('') + `</table>`;
 }
 function modelToAoa(model, noTitle){

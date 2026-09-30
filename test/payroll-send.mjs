@@ -144,5 +144,11 @@ check('المعاينة محدودة الطول مش ماخدة الصفحة', c
 
 check('مفيش أخطاء جافاسكريبت', errs.length===0, errs.join(' | '));
 console.log(`\n${pass} نجح · ${fail} فشل`);
+
+// ── عمود «م» على قد الرقم في الـPDF (كان بياخد مساحة زي عمود الاسم)
+const wd = await pg.evaluate(()=>{ const el=mkDoc(payDocBody(), true);
+  const th=[...el.querySelectorAll('table.pay th')].map(x=>x.getBoundingClientRect().width);
+  el.remove(); return th; });
+check('عمود «م» ضيق في الـPDF', wd[0] < 50 && wd[0] < wd[1]/2, wd.map(Math.round).join(','));
 await b.close();
 process.exit(fail?1:0);
