@@ -49,7 +49,7 @@ ck('رجوع للكل', (await pg.evaluate(()=> salesMonths())).length===6);
 const u=await pg.evaluate(()=> unknownItems());
 ck('الأصناف غير المعروفة بتتحسب',
   u.length===1 && u[0].name==='صنف مش معروف' && u[0].val===7000, JSON.stringify(u));
-await pg.evaluate(()=> showUnknownItems()); await pg.waitForTimeout(250);
+await pg.evaluate(()=> secSheet('غير معروف')); await pg.waitForTimeout(250);   // الأصناف غير المعروفة بتظهر في شيت العمود
 ck('الشيت بيوري الصنف', /صنف مش معروف/.test(await pg.evaluate(()=>document.body.innerText)));
 // ── أعمدة القطاعات: ضغط · إعادة تسمية · إخفاء
 await pg.evaluate(()=>{

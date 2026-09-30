@@ -1,7 +1,7 @@
 // زحف على كل الشاشات والضغط على كل زرار — بأسماء فيها ' و " و < و & — ومفيش ولا خطأ JS
 import {chromium} from '/opt/node22/lib/node_modules/playwright/index.mjs';
 let bad=0; const ck=(n,ok,x='')=>{ console.log((ok?'✅':'❌')+' '+n+(x?'  — '+x:'')); if(!ok) bad++; };
-const b=await chromium.launch(); const pg=await b.newPage({viewport:{width:412,height:880}});
+const b=await chromium.launch(); const pg=await b.newPage({viewport:{width:+(process.env.CRAWL_W||412),height:880}});
 const errs=[];
 pg.on('pageerror',e=> errs.push('pageerror: '+e.message));
 pg.on('console',m=>{ if(m.type()==='error' && !/Failed to load resource|net::ERR|jsdelivr|script\.google|lib /i.test(m.text())) errs.push('console: '+m.text()); });
