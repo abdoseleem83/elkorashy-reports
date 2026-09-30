@@ -41,6 +41,9 @@ await pg.addInitScript(()=>{
     rows:items.slice(12).map((it,i)=>({gid:'g'+i,qty:'100',recv:'90'}))}]));
   localStorage.setItem('employees_v1', JSON.stringify([{id:'e1',name:Q,branch:"الاسكندرية 'ب'",salary:'9000',half:2},
     {id:'e2',name:'جمال',branch:'طنطا',salary:'8000',half:1}]));
+  localStorage.setItem('bonusAksa_v1', JSON.stringify({period:"الربع 'التاني'",rates:{},itemLine:{},files:{
+    kraft:{file:'k.xlsx',at:'2026-09-30',rows:[{name:Q,val:1000000,type:''},{name:'ضلفه',val:500000,type:''}]},
+    acc:{file:'a.xlsx',at:'2026-09-30',rows:[{name:'سلك بليسيه',val:100000,type:''},{name:Q+' سيلكون',val:5000,type:''}]}}}));
   localStorage.setItem('trialBal_v1', JSON.stringify({'2026-08':[
     {code:'12',name:'متداولة',debit:500,credit:0},{code:'1201',name:Q,debit:500,credit:0},
     {code:'4102',name:'مبيعات PVC',debit:0,credit:900},{code:'3211',name:'تكلفة',debit:400,credit:0},
@@ -63,6 +66,7 @@ const screens = await pg.evaluate(()=>{
   [0,1,2].forEach(t=> S.push({mod:'gv', gv:t}));
   [0,1,2].forEach(t=> S.push({mod:'payroll', k:'_payTab_', v:t}));
   FIN_VIEWS.forEach(v=> S.push({mod:'fin', k:'_finView_', v:v.id}));
+  ['files','rep'].forEach(v=> S.push({mod:'bonus', k:'_bonusTab_', v}));
   return S; });
 
 

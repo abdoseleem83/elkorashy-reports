@@ -50,6 +50,9 @@ await pg.addInitScript(()=>{
   const pd={}; emps.forEach((e,i)=> pd['2026-08|1|'+e.id]={absent:i,late:i*2,extra:i*3,bonus:i*100,adv:i*50,ins:i*20,note:'ملاحظة طويلة للموظف '+i});
   localStorage.setItem('payData_v1', JSON.stringify(pd));
   // ميزان مراجعة
+  localStorage.setItem('bonusAksa_v1', JSON.stringify({period:'الربع الثاني 2026',rates:{},itemLine:{},files:{
+    kraft:{file:'k.xlsx',at:'2026-09-30',rows:[{name:'ضلفه شباك مفصلي كرافت بيج طول 6.5 م',val:54383565,type:''}]},
+    acc:{file:'a.xlsx',at:'2026-09-30',rows:[{name:'سلك بليسيه 2.2 (66متر) aksa',val:496068,type:''},{name:'فوم 900 جم',val:689159,type:''}]}}}));
   localStorage.setItem('trialBal_v1', JSON.stringify({'2026-08':[
     {code:'1',name:'الأصول',debit:9000000,credit:0},
     {code:'12',name:'الأصول المتداولة',debit:9000000,credit:0},
@@ -82,7 +85,7 @@ const docs = await pg.evaluate(()=>{
     ['استلام جيفز',      ()=> gvRecvDocBody(), true],
     ['تسعير جيفز',       ()=> gvPriceDocBody(), true],
   ];
-  ['dist','distsec','doorcode','distdoor','special','cmpmo'].forEach(id=>
+  ['dist','distsec','doorcode','distdoor','special','cmpmo','bonus'].forEach(id=>
     list.push(['تقرير '+id, ()=>{ const md=repModel(id); md.hiLo=modelHiLo(md);
       return `<div class="dx"><h2>${md.title}</h2><div class="sub">x</div>${docTableHtml(md)}</div>`; }, true]));
   ['tb','fin_isco','fin_bs'].forEach(id=>
@@ -128,7 +131,7 @@ const xl = await pg.evaluate(()=>{
     ['استلام جيفز', ()=> exportGvRecvExcel()],
     ['تسعير جيفز', ()=> exportGvPriceExcel()],
   ];
-  ['dist','distsec','doorcode','distdoor','special','cmpmo','tb','fin_isco','fin_bs'].forEach(id=>
+  ['dist','distsec','doorcode','distdoor','special','cmpmo','tb','fin_isco','fin_bs','bonus'].forEach(id=>
     runs.push(['إكسل '+id, ()=> exportRep(id,'x')]));
   runs.forEach(([name, fn])=>{
     let got=null;
