@@ -199,7 +199,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.1</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -2482,8 +2482,9 @@ const DOC_CSS=`<style>
 .dx .sub{text-align:center;color:#444;margin-bottom:12px;font-size:15px}
 .dx table{width:100%;border-collapse:collapse}
 .dx th{background:#1d4ed8;color:#fff;padding:9px 7px;border:1px solid #173fb0;font-size:15.5px;font-weight:700}
-.dx td{padding:8px 6px;border:1px solid #cfd6e6;text-align:center;font-weight:700}
-.dx td:first-child{text-align:right}
+.dx td{padding:8px 6px;border:1px solid #cfd6e6;text-align:center;font-weight:700;white-space:nowrap}
+.dx th{white-space:nowrap}
+.dx td:first-child{text-align:right;white-space:normal;min-width:150px}
 .dx tr.m td{background:#cfdcff;font-weight:700;text-align:right}
 .dx tr.s td{background:#e8eefc;font-weight:700}
 .dx tr.z:nth-child(even) td{background:#f6f8fd}
@@ -2521,7 +2522,13 @@ function docHeader(){
 function mkDoc(bodyHtml, landscape){
   const el=document.createElement('div');
   el.style.cssText='position:fixed;left:-99999px;top:0;width:'+(landscape?1120:780)+'px;background:#fff;color:#111;padding:18px;direction:rtl;font-family:Tahoma,Arial,sans-serif;box-sizing:border-box';
-  el.innerHTML=DOC_CSS+docHeader()+bodyHtml; document.body.appendChild(el); return el;
+  el.innerHTML=DOC_CSS+docHeader()+bodyHtml;
+  document.body.appendChild(el);
+  /* جدول أعمدته كتير أعرض من الورقة كان بيتقص من الشمال. بنوسّع
+     المستند لعرض الجدول الطبيعي، والـPDF بيصغّره ليدخل الورقة. */
+  const over = el.scrollWidth - el.clientWidth;
+  if(over > 2) el.style.width = Math.min(el.scrollWidth + 8, 3400) + 'px';
+  return el;
 }
 async function docToCanvas(el){
   await loadLib('html2canvas',()=>window.html2canvas);
@@ -2568,8 +2575,10 @@ function exportDocPdf(bodyHtml, filename, landscape){
   const btn=(v,t,e)=>`<button onclick="pdfGo(${v})" style="flex:1;padding:14px 10px;border-radius:11px;
     border:1px solid ${def===v?'var(--blue)':'var(--border)'};background:${def===v?'var(--blue)':'var(--panel2)'};
     color:${def===v?'#fff':'var(--text)'};font-weight:700;font-size:14px;cursor:pointer">${e}<br>${t}</button>`;
+  const ncol=(bodyHtml.match(/<th/g)||[]).length;
   openSheet(`<h3>اتجاه ورقة الـPDF</h3>
-    <p style="font-size:13px;color:var(--muted)">${esc(filename)}</p>
+    <p style="font-size:13px;color:var(--muted);line-height:1.7">${esc(filename)}${
+      ncol>5? `<br><b>التقرير فيه ${ncol} أعمدة — الأفقي بيطلع أوضح.</b>` : ''}</p>
     <div style="display:flex;gap:8px;margin:10px 0">${btn(0,'طولي','📄')}${btn(1,'أفقي','📃')}</div>
     <div class="f-actions"><button class="btn-cancel" onclick="pdfCancel()">إلغاء</button></div>`);
 }
