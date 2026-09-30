@@ -205,7 +205,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.8</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.9</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -289,7 +289,9 @@ function save(k,v){
     if(r.n) setTimeout(()=> toast('اتفضى ' + fmtKB(r.bytes) + ' من بيانات التطبيق القديم'), 1500);
   }catch(e){}
 })();
-function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000); }
+// رسالتين ورا بعض: مؤقّت الأولى كان بيخفي التانية بعد نص ثانية
+let _toastT=null;
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(_toastT); _toastT=setTimeout(()=>t.classList.remove('show'),2000); }
 function openSheet(html){ $('#sheet').innerHTML=html; $('#overlay').classList.add('show'); }
 function closeSheet(){ $('#overlay').classList.remove('show'); }
 $('#overlay').addEventListener('click', e=>{ if(e.target.id==='overlay') closeSheet(); });
@@ -1050,7 +1052,8 @@ function importGvCodes(file){
   r.onload=e=>{
     try{
       const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-      const rows=XLSX.utils.sheet_to_json(wb.Sheets['اكواد جيفز'],{header:1,defval:''});
+      // شيت باسم تاني (أو اتغيّر اسمه) كان بيوقّع الاستيراد بـ«خطأ في الملف» — بناخد أول شيت
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets['اكواد جيفز']||wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
       let list=[];
       for(let i=1;i<rows.length;i++){ const r2=rows[i]; if(!r2[0]) continue;
         list.push({id:uid(), name:String(r2[0]).trim(), code:String(r2[1]||'').trim(),
@@ -1071,7 +1074,7 @@ function importItems(file){
   r.onload=e=>{
     try{
       const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-      const rows=XLSX.utils.sheet_to_json(wb.Sheets['data'],{header:1,defval:''});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets['data']||wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
       let newItems=[];
       for(let i=1;i<rows.length;i++){ const r2=rows[i]; if(!r2[0]) continue;
         newItems.push({id:uid(), name:String(r2[0]).trim(), mainGroup:String(r2[1]||'').trim(),
@@ -1126,11 +1129,14 @@ function mergeDupWarehouse(name){
   rest.forEach(w=>{
     Object.entries(whStock[w.id]||{}).forEach(([n,v])=>{
       whStock[keep.id]=whStock[keep.id]||{};
-      if(whStock[keep.id][n]===undefined) whStock[keep.id][n]=v;   // الأقدم يكسب مش يتجمع
+      if(whStock[keep.id][n]===undefined) whStock[keep.id][n]=v;   // اللي فوق في القايمة يكسب مش يتجمع
     });
+    // سطر نواقص فاضي (اتفتح من غير كمية) ما يغطّيش على سطر فيه كمية في المخزن التاني
+    const hasQ = r=> r && (nz(r.q1)||nz(r.q2)||nz(r.cartons)||nz(r.pieces)||nz(r.order));
     Object.entries(whShortage[w.id]||{}).forEach(([n,v])=>{
       whShortage[keep.id]=whShortage[keep.id]||{};
-      if(whShortage[keep.id][n]===undefined) whShortage[keep.id][n]=v;
+      const cur=whShortage[keep.id][n];
+      if(cur===undefined || (!hasQ(cur) && hasQ(v))) whShortage[keep.id][n]=v;
     });
     Object.entries(invCounts[w.id]||{}).forEach(([n,v])=>{
       invCounts[keep.id]=invCounts[keep.id]||{};
@@ -1186,14 +1192,14 @@ function pieceBreakdown(name, s){
   const rq = Number(it.rollQty)||0;
   const bigLbl = unit==='لفة'?'لفة':(unit==='كرتونة'?'كرتونة':'وحدة كبيرة');
   const smallLbl = unit==='لفة'?'عود':'قطعة';
-  let big = Number(s.big)||0, small = Number(s.small)||0;
-  if(!big && !small && rq>1){ const b=Number(s.balance)||0; big=Math.floor(b/rq); small=b%rq; }
+  let big = nz(s.big), small = nz(s.small);
+  if(!big && !small && rq>1){ const b=nz(s.balance); big=Math.floor(b/rq); small=b%rq; }
   return {unit, bigLbl, smallLbl, big, small};
 }
 function balText(name, s){
   s = s || {balance:0};
   const b = pieceBreakdown(name, s);
-  const bal = Number(s.balance)||0;
+  const bal = nz(s.balance);
   const parts=[]; if(b.big) parts.push(b.big+' '+b.bigLbl); if(b.small) parts.push(b.small+' '+b.smallLbl);
   if(parts.length) return bal+' ('+parts.join(' + ')+')';
   return bal+' '+(b.unit==='—'?'':b.unit);
@@ -1249,7 +1255,7 @@ function importStock(file, whId){
         let destId = whId;
         if(targetWh){ const match = warehouses.find(w=>w.name===targetWh); if(match) destId=match.id; else continue; }
         perWh[destId]=perWh[destId]||{};
-        perWh[destId][String(row[ni]).trim()] = {balance:row[bi]||0, big:bigI>=0?(row[bigI]||0):0, small:smallI>=0?(row[smallI]||0):0};
+        perWh[destId][String(row[ni]).trim()] = {balance:nz(row[bi]), big:bigI>=0? nz(row[bigI]) : 0, small:smallI>=0? nz(row[smallI]) : 0};
       }
       const totalRows = Object.values(perWh).reduce((a,m2)=>a+Object.keys(m2).length,0);
       pendingImport={type:'stock', perWh};
@@ -1352,7 +1358,7 @@ function renderWhShortage(m, whId){
   if(q) list = list.filter(i=>i.name.includes(q));
   if(!showZero) list = list.filter(i=>qtyOf(whId, i.name) > 0);
   const dates = load('whOrderDate_v1',{});
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayStr();
   const orderDate = dates[whId] || today;
   m.innerHTML = `
     <div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--border)">
@@ -1400,7 +1406,7 @@ function renderWhShortage(m, whId){
   $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderWhShortage(m, whId)); };
 }
 function unmarkShort(whId,name){ if(!whShortage[whId]) return; delete whShortage[whId][name]; save('whShortage_v1',whShortage); render(); }
-function getOrderDate(whId){ const d=load('whOrderDate_v1',{}); return d[whId] || new Date().toISOString().slice(0,10); }
+function getOrderDate(whId){ const d=load('whOrderDate_v1',{}); return d[whId] || todayStr(); }
 function buildGroupBreakdown(list, whId){
   const buckets={};
   const add=(o,u,v)=>{ if(v) o[u]=(o[u]||0)+v; };
@@ -1469,7 +1475,7 @@ function stockOf(whId, name){
   const k = stockKey(whId, name);
   return k === null ? undefined : (whStock[whId] || {})[k];
 }
-function qtyOf(whId, name){ return Number(stockOf(whId, name)?.balance) || 0; }
+function qtyOf(whId, name){ return nz(stockOf(whId, name)?.balance); }
 // أصناف موجودة في شيت الأرصدة ومالهاش مقابل في قايمة الأصناف — دي بتختفي
 // من المقارنات من غير ما حد يعرف، فبنعدّها ونقولك.
 function stockOrphans(){
@@ -1479,7 +1485,7 @@ function stockOrphans(){
   for(const w of warehouses){
     for(const n of Object.keys(whStock[w.id] || {})){
       if(known.has(n) || known.has(ordNorm(n))) continue;
-      if(!(Number((whStock[w.id][n]||{}).balance) || 0)) continue;
+      if(!nz((whStock[w.id][n]||{}).balance)) continue;
       out.push(n);
     }
   }
@@ -2505,14 +2511,16 @@ function importSales(file){
       const custMap={}, sectorMap={}, doorMap={}, itemMap={};
       const unmatchedCust=new Set(), unmatchedItems=new Set();
       const custByName={}; customers.forEach(c=>custByName[c.name]=c);
+      // الصنف بالاسم بالظبط، ولو مفيش بالبصمة (مسافة زيادة، ة/ه، أ/ا …) زي الأرصدة
+      const itemsByNorm={}; items.forEach(i=>{ const f=ordNorm(i.name); if(f && !itemsByNorm[f]) itemsByNorm[f]=i; });
       for(const row of dataRows){
         let cname=String(row[ci]).trim(); if(!cname) continue;
         cname = custAlias[cname] || cname;          // اسم اتدمج قبل كده
-        const vout=parseFloat(row[voi])||0, vin=parseFloat(row[vii])||0, net=vout-vin;
+        const vout=nz(row[voi]), vin=vii>=0? nz(row[vii]) : 0, net=vout-vin;
         custMap[cname]=(custMap[cname]||0)+net;
         if(!custByName[cname]) unmatchedCust.add(cname);
         const iname=String(row[ii]||'').trim();
-        const it=itemsByName[iname];
+        const it=itemsByName[iname] || (iname? itemsByNorm[ordNorm(iname)] : null);
         /* بنخزّن المجموعة الرئيسية زي ما هي، والتوزيع على أعمدة
            التقرير بيتعمل وقت العرض — فتقدر تنقل مجموعة لعمود تاني
            في أي وقت من غير ما ترفع الشيت تاني. */
@@ -2520,10 +2528,10 @@ function importSales(file){
         if(!it && iname) unmatchedItems.add(iname);
         sectorMap[cname]=sectorMap[cname]||{}; sectorMap[cname][sector]=(sectorMap[cname][sector]||0)+net;
         if(iname){ const im=itemMap[iname]=itemMap[iname]||{qty:0,val:0};
-          im.val+=net; im.qty+=(qoi>=0?(parseFloat(row[qoi])||0):0)-(qii>=0?(parseFloat(row[qii])||0):0); }
+          im.val+=net; im.qty+=(qoi>=0? nz(row[qoi]) : 0)-(qii>=0? nz(row[qii]) : 0); }
         // تفصيل الأبواب: لازم الكمية والكود عشان تقارير الأبواب
         if(isDoor(it, iname)){
-          const qty=(qoi>=0? (parseFloat(row[qoi])||0) : 0) - (qii>=0? (parseFloat(row[qii])||0) : 0);
+          const qty=(qoi>=0? nz(row[qoi]) : 0) - (qii>=0? nz(row[qii]) : 0);
           const code=(coi>=0? String(row[coi]||'').trim() : '') || codeFromName(iname);
           doorMap[cname]=doorMap[cname]||{};
           const d=doorMap[cname][iname]=doorMap[cname][iname]||{qty:0, val:0, code, sub:(it&&it.subGroup)||''};
@@ -2787,7 +2795,9 @@ async function doExportDocPdf(bodyHtml, filename, landscape){
   finally{ el.remove(); }
 }
 function downloadBlob(blob, name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
-const todayStr=()=>new Date().toISOString().slice(0,10);
+/* تاريخ النهارده بتوقيت الجهاز. toISOString بيدّي تاريخ جرينتش، فمن
+   ١٢ بالليل لحد ٢-٣ الفجر في مصر كان بيكتب تاريخ امبارح على الطلبية. */
+function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
 // ----- النواقص -----
 function breakdownTableHtml(buckets, cols){
@@ -3167,7 +3177,7 @@ function setInvCount(whId,itemId,kind,val){
 function invResult(whId){
   const inv=invGet(whId), stock=whStock[whId]||{}, rows=[];
   Object.entries(inv.counts).forEach(([name,c])=>{
-    const it=itemsByName[name]||{}, prog=Number(stock[name]?.balance)||0, act=Number(c.actual)||0;
+    const it=itemsByName[name]||{}, prog=nz(stock[name]?.balance), act=nz(c.actual);
     rows.push({name, mg:it.mainGroup||'غير مصنف', prog, act, diff:act-prog});
   });
   const def=rows.filter(r=>r.diff<0), exc=rows.filter(r=>r.diff>0);
@@ -3327,7 +3337,7 @@ function ordRows(){
   Object.keys(st).forEach(n=>{
     const t = ordTheirName(n);
     if(t === '') return;
-    rows.push({name: t || n, stock: Number(st[n] && st[n].balance) || 0});
+    rows.push({name: t || n, stock: nz(st[n] && st[n].balance)});
   });
   return rows;
 }
@@ -3408,7 +3418,7 @@ function ordDeductStock(){
   whStock[wh.id] = whStock[wh.id] || {};
   names.forEach(n=>{
     const cur = whStock[wh.id][n] || {balance:0};
-    cur.balance = (Number(cur.balance)||0) - dem[n];
+    cur.balance = nz(cur.balance) - dem[n];
     whStock[wh.id][n] = cur;
   });
   save('whStock_v1', whStock);
@@ -3584,7 +3594,21 @@ function reRenderKeepQ(fn){
 }
 
 // ===================== أدوات مشتركة للجداول =====================
-const nz=x=>Number(x)||0;
+/* رقم من أي خانة: شيتات المحاسبة ساعات بتطلع الرقم نص «12,345.50» أو
+   بأرقام عربية «١٢٣» أو السالب بين قوسين «(500)». Number() كان بيرجّعها
+   صفر، و parseFloat كان بيقف عند الفاصلة فـ«12,345» تبقى 12. */
+function nz(x){
+  if(typeof x === 'number') return isFinite(x) ? x : 0;
+  if(x === null || x === undefined || x === '') return 0;
+  let s = String(x).trim()
+    .replace(/[٠-٩]/g, d=> d.charCodeAt(0)-1632).replace(/[۰-۹]/g, d=> d.charCodeAt(0)-1776)
+    .replace(/٫/g, '.').replace(/[,٬\s ]/g, '');
+  let neg = false;
+  if(/^\(.*\)$/.test(s)){ neg = true; s = s.slice(1,-1); }
+  if(/^[\d.]+-$/.test(s)){ neg = true; s = s.slice(0,-1); }
+  const n = Number(s);
+  return isFinite(n) ? (neg ? -n : n) : 0;
+}
 const rnd2=x=>Math.round((x+1e-9)*100)/100;
 const rnd0=x=>Math.round(x+1e-9);
 const mr5=x=>Math.round(x/5+1e-9)*5;
@@ -3913,8 +3937,8 @@ function importTrialBalance(file){
       const list=[];
       for(let i=h+1;i<rows.length;i++){
         const row=rows[i]; const nm=String(row[ni]||'').trim(); if(!nm) continue;
-        const d=parseFloat(String(row[di]||0).replace(/,/g,''))||0;
-        const cr=parseFloat(String(row[cri]||0).replace(/,/g,''))||0;
+        const d=di>=0? nz(row[di]) : 0;
+        const cr=cri>=0? nz(row[cri]) : 0;
         if(!d && !cr) continue;
         list.push({code: ci>=0? String(row[ci]||'').trim() : '', name:nm, debit:d, credit:cr});
       }
@@ -4523,9 +4547,9 @@ function gvImportExcel(file){
       if(!hit){ toast('لم يتم التعرف على أعمدة اسم الصنف/الكمية في الملف'); return; }
       const {rows,hi,ni,qi}=hit, newRows=o.rows.map(r2=>({...r2})); let matched=0; const unmatched=[];
       for(let i=hi+1;i<rows.length;i++){
-        const row=rows[i], name=String(row[ni]||'').trim(), qty=Number(row[qi])||0;
+        const row=rows[i], name=String(row[ni]||'').trim(), qty=nz(row[qi]);
         if(!name || !qty) continue;
-        const g=gvcodes.find(x=>x.name.trim()===name);
+        const g=gvcodes.find(x=>x.name.trim()===name) || gvcodes.find(x=>ordNorm(x.name)===ordNorm(name));  // فرق مسافة/همزة/ة
         if(!g){ unmatched.push(name); continue; }
         matched++;
         const ex=newRows.find(r2=>r2.gid===g.id);
