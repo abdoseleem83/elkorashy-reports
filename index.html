@@ -28,9 +28,11 @@ header h1{font-size:16px;margin:0;font-weight:700}
 header .ver{font-size:10px;opacity:.75}
 nav{display:flex;gap:4px;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--border);
   overflow-x:auto;flex-shrink:0;z-index:19}
-.nav-btn{flex:0 0 auto;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);
-  color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;transition:.2s}
-.nav-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.nav-btn{flex:0 0 auto;padding:9px 13px;border-radius:12px;border:1px solid var(--border);background:var(--panel2);
+  color:var(--muted);font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;transition:.2s}
+.nav-btn.active{background:var(--blue);color:#fff;border-color:var(--blue);box-shadow:0 3px 10px rgba(29,78,216,.3)}
+nav{scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
 main{flex:1;overflow-y:auto;padding:10px}
 /* ═══ الصفحة الرئيسية ═══ */
 .hero{background:linear-gradient(135deg,var(--blue),#4f46e5);color:#fff;border-radius:18px;
@@ -62,20 +64,30 @@ main{flex:1;overflow-y:auto;padding:10px}
 .hnote .dot{width:9px;height:9px;border-radius:50%;background:var(--ac);flex:0 0 auto}
 .mod{display:none}
 .mod.active{display:block}
+/* ═══ شريط تبويبات موحّد في كل الشاشات ═══ */
+.stabs{display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.stabs::-webkit-scrollbar{display:none}
+.stabs.grow>.stab{flex:1 1 0}
+.stab{flex:0 0 auto;padding:10px 13px;border-radius:13px;border:1px solid var(--border);
+  background:var(--panel);color:var(--muted);font-size:13px;font-weight:800;cursor:pointer;
+  white-space:nowrap;transition:background .15s,color .15s,box-shadow .15s}
+.stab:active{transform:scale(.97)}
+.stab.on{background:var(--blue);border-color:var(--blue);color:#fff;
+  box-shadow:0 4px 12px rgba(29,78,216,.28)}
 .toolbar{display:flex;gap:8px;margin-bottom:10px}
-.search{flex:1;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:14px}
-.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;
+.search{flex:1;padding:11px 13px;border-radius:13px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:14px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:11px 13px;margin-bottom:8px;
   display:flex;align-items:center;gap:8px}
 .card .info{flex:1;min-width:0}
 /* لوح عادي (مش صف) — .card نفسها flex فأي محتوى جواها بيتقسم أعمدة */
-.panelbox{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;display:block}
+.panelbox{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:13px;margin-bottom:10px;display:block}
 .card .name{font-weight:700;font-size:14px}
 .card .sub{font-size:12px;color:var(--muted);margin-top:2px}
 /* أول تلاتة فوق كل تقرير */
 .mobar{margin-bottom:8px}
 .morow{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;align-items:center}
-.mochip{border:1px solid var(--border);background:var(--panel2);color:var(--muted);border-radius:999px;
-  padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.5}
+.mochip{border:1px solid var(--border);background:var(--panel);color:var(--muted);border-radius:999px;
+  padding:4px 9px;font-size:11.5px;font-weight:700;cursor:pointer;line-height:1.5}
 .mochip.on{background:var(--blue);border-color:var(--blue);color:#fff}
 .mosep{font-size:11.5px;color:var(--muted);font-weight:700;margin-inline-start:6px}
 .top3{display:flex;gap:6px;margin-bottom:8px}
@@ -90,53 +102,72 @@ main{flex:1;overflow-y:auto;padding:10px}
 .t3lbl{font-size:12px;color:var(--muted);font-weight:700;margin:2px 0 4px}
 /* أعلى رقم في العمود أخضر وأقل رقم أحمر */
 table.rep tr.qsub td{font-size:12px;color:var(--muted);background:var(--panel2);font-weight:700}
+table.rep tr.dcexp td{background:var(--bg);padding:8px;white-space:normal;text-align:right}
+.dclist{display:block}
+.dcrow{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px dashed var(--border)}
+.dcrow:last-of-type{border-bottom:none}
+.dcn{flex:1;min-width:0;font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dcrow input{width:78px;padding:6px 8px;border-radius:9px;border:1px solid var(--border);
+  background:var(--panel);color:var(--text);font-weight:700;font-size:12.5px;text-align:center}
+.dcrow button{border:1px solid var(--border);background:var(--panel);border-radius:9px;
+  width:32px;height:32px;font-size:13px;cursor:pointer;flex:0 0 auto}
+.dcsave{width:100%;margin-top:8px;padding:9px;border-radius:11px;border:none;background:var(--blue);
+  color:#fff;font-weight:800;font-size:12.5px;cursor:pointer}
 table.rep td.hi{background:rgba(10,125,60,.18) !important}
 table.rep td.lo{background:rgba(192,32,47,.16) !important}
-.clsrow{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.clsrow{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
 .clschip{border:1px solid var(--border);background:var(--panel2);color:var(--muted);border-radius:999px;
-  padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.5}
+  padding:4px 8px;font-size:11.5px;font-weight:700;cursor:pointer;line-height:1.45}
 .clschip.on{background:var(--blue);border-color:var(--blue);color:#fff}
 .clschip.pend{background:#e0a800;border-color:#e0a800;color:#231a00}
 .act{display:flex;gap:6px}
-.act button{border:none;background:var(--panel2);width:32px;height:32px;border-radius:8px;font-size:14px;cursor:pointer}
-.empty{text-align:center;color:var(--muted);padding:40px 10px;font-size:13.5px}
+.act button{border:none;background:var(--panel2);width:33px;height:33px;border-radius:10px;font-size:14px;cursor:pointer}
+.act button:active{background:var(--border)}
+.empty{text-align:center;color:var(--muted);padding:34px 16px;font-size:13.5px;font-weight:700;line-height:1.9;
+  background:var(--panel);border:1px dashed var(--border);border-radius:16px}
 .fbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--bg);
   border-top:1px solid var(--border);padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px))}
 .fab{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:52px;height:52px;border-radius:50%;
   background:var(--blue);color:#fff;font-size:24px;border:none;box-shadow:0 4px 14px rgba(0,0,0,.25);z-index:25;cursor:pointer}
 .impbar{display:flex;gap:8px;margin-bottom:10px}
-.impbar label,.impbar button{flex:1;text-align:center;padding:9px 6px;border-radius:9px;font-size:12.5px;font-weight:700;
-  background:var(--panel2);border:1px solid var(--border);color:var(--text);cursor:pointer}
-.grp{border:1px solid var(--border);border-radius:12px;margin-bottom:8px;overflow:hidden;background:var(--panel)}
-.grp-h{display:flex;align-items:center;justify-content:space-between;padding:12px;cursor:pointer;font-weight:700;font-size:13.5px}
+.impbar label,.impbar button{flex:1;text-align:center;padding:11px 6px;border-radius:13px;font-size:12.5px;font-weight:800;
+  background:var(--panel);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s}
+.impbar label:active,.impbar button:active{background:var(--panel2)}
+.grp{border:1px solid var(--border);border-radius:15px;margin-bottom:9px;overflow:hidden;background:var(--panel)}
+.grp-h{display:flex;align-items:center;justify-content:space-between;padding:13px;cursor:pointer;font-weight:800;font-size:13.5px}
+.grp.open .grp-h{border-bottom:1px solid var(--border);background:var(--panel2)}
 .grp-h .cnt{font-weight:400;color:var(--muted);font-size:12px}
 .grp-h .arrow{transition:transform .2s;color:var(--muted)}
 .grp.open .grp-h .arrow{transform:rotate(180deg)}
-.grp-body{display:none;padding:0 8px 8px}
+.grp-body{display:none;padding:9px 9px 3px;background:var(--bg)}
 .grp.open .grp-body{display:block}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;z-index:50}
 .overlay.show{display:flex}
-.sheet{background:var(--panel);width:100%;max-height:88vh;overflow:auto;border-radius:16px 16px 0 0;
-  padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))}
-.sheet h3{margin:0 0 12px;font-size:15px}
+.sheet{background:var(--panel);width:100%;max-height:88vh;overflow:auto;border-radius:22px 22px 0 0;
+  padding:8px 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.sheet::before{content:'';display:block;width:42px;height:4px;border-radius:99px;background:var(--border);margin:0 auto 12px}
+.sheet h3{margin:0 0 12px;font-size:15.5px;font-weight:800}
 .f-row{margin-bottom:10px}
 .f-row label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
-.f-row input,.f-row select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:14px}
+.f-row input,.f-row select{width:100%;padding:11px;border-radius:11px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:14px}
+.f-row input:focus,.f-row select:focus,.search:focus{outline:none;border-color:var(--blue)}
 .f-actions{display:flex;gap:8px;margin-top:14px}
-.f-actions button{flex:1;padding:12px;border-radius:9px;border:none;font-size:14px;font-weight:700;cursor:pointer}
+.f-actions button{flex:1;padding:13px;border-radius:13px;border:none;font-size:14px;font-weight:800;cursor:pointer}
 .btn-save{background:var(--blue);color:#fff}
 .btn-cancel{background:var(--panel2);color:var(--text);border:1px solid var(--border) !important}
 .toast{position:fixed;bottom:calc(90px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);
   background:#1b2436;color:#fff;padding:10px 16px;border-radius:20px;font-size:13px;z-index:60;opacity:0;transition:opacity .25s}
 .toast.show{opacity:1}
-.warn{background:#fff4e5;color:#8a5a00;border:1px solid #f0c36d;border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:10px}
+.warn{background:#fff4e5;color:#8a5a00;border:1px solid #f0c36d;border-inline-start:4px solid #e8a33d;
+  border-radius:13px;padding:11px 13px;font-size:12.5px;font-weight:700;line-height:1.75;margin-bottom:10px}
 @media (prefers-color-scheme:dark){ .warn{background:#332a12;color:#f0c36d;border-color:#5a4a1f} }
-.pill{display:inline-block;background:var(--panel2);border:1px solid var(--border);border-radius:16px;padding:8px 12px;margin:0 6px 8px 0;font-size:12.5px;cursor:pointer}
+.pill{display:inline-block;background:var(--panel);border:1px solid var(--border);border-radius:999px;padding:8px 13px;margin:0 6px 8px 0;font-size:12.5px;font-weight:700;cursor:pointer}
 .pill.on{background:var(--blue);color:#fff;border-color:var(--blue)}
-table.rep{width:100%;border-collapse:collapse;font-size:14.5px;font-weight:700;background:var(--panel);border-radius:10px;overflow:hidden}
+table.rep{width:100%;border-collapse:collapse;font-size:14.5px;font-weight:700;background:var(--panel);
+  border-radius:14px;overflow:hidden;border:1px solid var(--border)}
 table.rep th,table.rep td{padding:7px 5px;border-bottom:1px solid var(--border);text-align:center;
   white-space:nowrap;width:1%}
-table.rep th{background:var(--panel2);font-size:13.5px;font-weight:700}
+table.rep th{background:var(--panel2);font-size:13.5px;font-weight:800;color:var(--text)}
 table.rep td:first-child,table.rep th:first-child{text-align:right;white-space:normal;width:auto}
 table.rep.stk{width:max-content;min-width:100%;overflow:visible}
 table.rep.stk td:first-child,table.rep.stk th:first-child{position:sticky;right:0;z-index:1;background:var(--panel);min-width:120px;max-width:190px}
@@ -162,7 +193,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.5</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.6</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -271,6 +302,7 @@ let salesArchive = load('salesArchive_v1', []);      // شهور مؤرشفة �
 let custAlias = load('custAlias_v1', {});            // اسم قديم ← الاسم الجديد بعد الدمج
 let secCfg = load('secCfg_v1', {});                  // القطاع ← {name: اسم بديل, hide: مخفي}
 let doorCodeMap = load('doorCodeMap_v1', {});        // اسم صنف الباب ← كود بالإيد
+let doorHide = load('doorHide_v1', []);              // أصناف اتشالت من تقارير الأبواب
 
 const CLS_OPTS=['موزع','مبيعات جملة','مبيعات خاصة','عميل ابواب','مستبعد'];
 const CLS_SHORT={'موزع':'موزع','مبيعات جملة':'جملة','مبيعات خاصة':'خاصة','عميل ابواب':'أبواب','مستبعد':'مستبعد'};
@@ -360,7 +392,7 @@ function exportBucket(mainGroup){ return EXPORT_GROUP_MAP[mainGroup] || mainGrou
 /* أول ما تفتح التطبيق تبدأ من الصفحة الرئيسية دايمًا — مش من آخر شاشة
    كنت فيها. الأقسام الفرعية كمان بترجع مقفولة. */
 let module=null, q='', openGroups=new Set(), pendingImport=null;
-try{ ['_whTab_','_whSub_','_cmpView_','_payTab_','_itemsTab_','_salesTab_','_salesRep_','_gvCur_','_moSel_','_moGroup_'].forEach(k=> localStorage.removeItem(k)); }catch(e){}
+try{ ['_whTab_','_whSub_','_cmpView_','_payTab_','_itemsTab_','_salesTab_','_salesRep_','_gvCur_','_moSel_','_moGroup_','_finView_'].forEach(k=> localStorage.removeItem(k)); }catch(e){}
 let whFilterMain=new Set(), whFilterSub=new Set();
 let shortMain=new Set(), shortSub=new Set();
 
@@ -377,7 +409,7 @@ let shortMain=new Set(), shortSub=new Set();
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
-  'paySendCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','doorCodeMap_v1'];
+  'paySendCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finMap_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
 /* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
@@ -493,7 +525,8 @@ const SYNC_VARS = {
   monthlySales_v1: v=>{ monthlySales = v; }, monthlySector_v1: v=>{ monthlySector = v; }, monthlyDoors_v1: v=>{ monthlyDoors = v; },
   monthlyItems_v1: v=>{ monthlyItems = v; }, salesArchive_v1: v=>{ salesArchive = v; },
   custAlias_v1: v=>{ custAlias = v; }, secCfg_v1: v=>{ secCfg = v; },
-  doorCodeMap_v1: v=>{ doorCodeMap = v; },
+  doorCodeMap_v1: v=>{ doorCodeMap = v; }, doorHide_v1: v=>{ doorHide = v; },
+  trialBal_v1: v=>{ trialBal = v; }, finMap_v1: v=>{ finMap = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
   invCounts_v1: v=>{ invCounts = v; }, ordMap_v1: v=>{ ordMap = v; }, gvMap_v1: v=>{ gvMap = v; },
   // ⚠️ التلاتة دول كانوا في SYNC_KEYS بس مش في SYNC_VARS — يعني بيتنزّلوا
@@ -813,7 +846,7 @@ async function wipeOldServerData(){
 }
 
 // nav
-const modules=[{id:'items',icon:'📦',name:'الأصناف'},{id:'warehouses',icon:'🏭',name:'المخازن'},{id:'sales',icon:'🧾',name:'المبيعات'},{id:'gv',icon:'📋',name:'جيفز'},{id:'payroll',icon:'💰',name:'المرتبات'}];
+const modules=[{id:'items',icon:'📦',name:'الأصناف'},{id:'warehouses',icon:'🏭',name:'المخازن'},{id:'sales',icon:'🧾',name:'المبيعات'},{id:'gv',icon:'📋',name:'جيفز'},{id:'payroll',icon:'💰',name:'المرتبات'},{id:'fin',icon:'🔐',name:'قوائم مالية'}];
 try{ $('#hdrLogo').src = LOGO; }catch(e){}
 /* المزامنة التلقائية: أول ما يفتح · كل دقيقة · أول ما ترجع للتطبيق ·
    وقبل ما تقفله لو فيه حاجة لسه ما اترفعتش. */
@@ -830,9 +863,12 @@ window.addEventListener('pagehide', ()=>{
   }catch(e){}
 });
 function renderNav(){
-  $('#nav').innerHTML = modules.map(m=>`<button class="nav-btn ${m.id===module?'active':''}" onclick="switchModule('${m.id}')">${m.icon} ${m.name}</button>`).join('');
+  $('#nav').innerHTML =
+    `<button class="nav-btn${module===null?' active':''}" onclick="goHome()">🏠 الرئيسية</button>`
+    + modules.map(m=>`<button class="nav-btn ${m.id===module?'active':''}" onclick="switchModule('${m.id}')">${m.icon} ${m.name}</button>`).join('');
 }
 function switchModule(m){ module=(module===m)?null:m; q=''; openGroups=new Set(); render(true); }
+function goHome(){ module=null; q=''; openGroups=new Set(); render(true); }
 $('#fab').addEventListener('click', ()=>{
   if(module==='items') editItem(null);
   else if(module==='warehouses') editWarehouse(null);
@@ -869,9 +905,8 @@ function delItem(id){ if(!confirm('حذف الصنف؟')) return; items=items.fi
 function renderItems(m){
   const tabs=['الأصناف','أكواد جيفز','الوحدات'];
   const st = load('_itemsTab_',null);
-  m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px">
-    ${tabs.map((t,i)=>`<button class="tab ${st===i?'active':''}" onclick="setItemsTab(${i})" style="flex:1;padding:9px;border-radius:9px;background:${st===i?'var(--blue)':'var(--panel2)'};color:${st===i?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13px">${t}</button>`).join('')}
-  </div><div id="it_content"></div>`;
+  m.innerHTML = tabStrip(tabs.map((t,i)=>({k:i,name:t})), st, k=>`setItemsTab(${k})`, {grow:true, cls:'tabs'})
+    + `<div id="it_content"></div>`;
   if(st===null) $('#it_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
   else if(st===0) renderItemsList($('#it_content'));
   else if(st===1) renderGvCodes($('#it_content'));
@@ -1065,9 +1100,8 @@ function renderWarehouses(m){
   /* المقارنات كانت مفروشة جنب المخازن في نفس الصف. دلوقتي تبويب واحد
      «مقارنات» وتحته التلاتة، فالصف فيه المخازن والمقارنات بس. */
   const tabs = [{id:'cmpx',name:'📊 مقارنات'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
-  m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
-    ${tabs.map(t=>`<button class="tab ${whTab===t.id?'active':''}" onclick="setWhTab('${t.id}')" style="flex:0 0 auto;padding:9px 12px;border-radius:9px;background:${whTab===t.id?'var(--blue)':'var(--panel2)'};color:${whTab===t.id?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:12.5px;white-space:nowrap">${t.name}</button>`).join('')}
-  </div>${dupWhBar()}<div id="wh_content"></div>`;
+  m.innerHTML = tabStrip(tabs.map(t=>({k:t.id,name:t.name})), whTab, k=>`setWhTab('${k}')`, {cls:'tabs'})
+    + dupWhBar() + `<div id="wh_content"></div>`;
   if(whTab===null) $('#wh_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
   else if(whTab==='cmpx') renderCompareHub($('#wh_content'));
   else renderWhDetail($('#wh_content'), whTab);
@@ -1078,11 +1112,8 @@ const CMP_VIEWS = [{id:'compare',name:'⚖️ الفروع'},{id:'colors',name:'
 function setCmpView(id){ const cur=load('_cmpView_',null); save('_cmpView_', cur===id?null:id); render(true); }
 function renderCompareHub(m){
   const v = load('_cmpView_', null);
-  m.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
-      ${CMP_VIEWS.map(x=>`<button onclick="setCmpView('${x.id}')" style="flex:1 0 auto;padding:10px 12px;border-radius:9px;
-        background:${v===x.id?'var(--blue)':'var(--panel2)'};color:${v===x.id?'#fff':'var(--text)'};
-        border:1px solid var(--border);font-weight:700;font-size:13.5px;white-space:nowrap">${x.name}</button>`).join('')}
-    </div><div id="cmp_c"></div>`;
+  m.innerHTML = tabStrip(CMP_VIEWS.map(x=>({k:x.id,name:x.name})), v, k=>`setCmpView('${k}')`)
+    + `<div id="cmp_c"></div>`;
   const c = $('#cmp_c');
   if(v==='compare') renderWhCompare(c);
   else if(v==='colors') renderWhColors(c);
@@ -1404,6 +1435,14 @@ function floatBar(inner){
   return `<div style="height:82px"></div>
     <div class="fbar"><div class="impbar" style="margin:0">${inner}</div></div>`;
 }
+/* شريط تبويبات واحد لكل الشاشات: نفس شكل الصفحة الرئيسية.
+   list = [{k, name}]، active = المفتوح، onc(k) = الكود اللي يتنفّذ. */
+function tabStrip(list, active, onc, opt){
+  opt=opt||{};
+  return `<div class="stabs${opt.grow?' grow':''}${opt.cls?' '+opt.cls:''}">${list.map(t=>
+    `<button class="stab${String(t.k)===String(active)?' on':''}" onclick="${onc(t.k)}">${t.name}</button>`
+  ).join('')}</div>`;
+}
 function noStockMsg(){ return !warehouses.some(w=>Object.keys(whStock[w.id]||{}).length); }
 
 function buildCompareTree(){
@@ -1584,9 +1623,8 @@ function renderSales(m){
   const tabs=['📥 رفع شيت المبيعات','👥 العملاء','📊 التقارير'];
   const empty = !customers.length && !Object.keys(monthlySales).length;
   const st = load('_salesTab_',null);
-  m.innerHTML = `<div class="tabs" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
-    ${tabs.map((t,i)=>`<button class="tab ${st===i?'active':''}" onclick="setSalesTab(${i})" style="flex:1 0 auto;padding:10px 12px;border-radius:9px;background:${st===i?'var(--blue)':'var(--panel2)'};color:${st===i?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:13.5px;white-space:nowrap">${t}</button>`).join('')}
-  </div><div id="st_content"></div>`;
+  m.innerHTML = tabStrip(tabs.map((t,i)=>({k:i,name:t})), st, k=>`setSalesTab(${k})`, {cls:'tabs'})
+    + `<div id="st_content"></div>`;
   if(st===null) $('#st_content').innerHTML = empty
     ? `<div class="empty">لسه مفيش بيانات — ابدأ من <b>📥 رفع شيت المبيعات</b> فوق</div>`
     : `<div class="empty">اضغط على قسم فوق</div>`;
@@ -1606,11 +1644,8 @@ const SALES_REPORTS = [
 function setSalesReport(id){ const cur=load('_salesRep_',null); save('_salesRep_', cur===id?null:id); render(true); }
 function renderSalesReportsHub(m){
   const v = load('_salesRep_', null);
-  m.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto">
-      ${SALES_REPORTS.map(x=>`<button onclick="setSalesReport('${x.id}')" style="flex:1 0 auto;padding:10px 12px;border-radius:9px;
-        background:${v===x.id?'var(--blue)':'var(--panel2)'};color:${v===x.id?'#fff':'var(--text)'};
-        border:1px solid var(--border);font-weight:700;font-size:13px;white-space:nowrap">${x.name}</button>`).join('')}
-    </div>${periodBar()}<div id="srep_c"></div>`;
+  m.innerHTML = tabStrip(SALES_REPORTS.map(x=>({k:x.id,name:x.name})), v, k=>`setSalesReport('${k}')`)
+    + periodBar() + `<div id="srep_c"></div>`;
   const c = $('#srep_c');
   if(v==='dist') renderSalesReport(c);
   else if(v==='distsec') renderRepDistSectors(c);
@@ -1734,12 +1769,14 @@ function renderRepTable(m, id, md, opt){
       return `<tr class="m">${r.cells.map(v=>`<td><b>${repCell(v)}</b></td>`).join('')}</tr>`;
     const i=n++;
     const tap=(md.rowTap||[])[i];
+    const exp=(md.expand||[])[i];
     const mdl = i<3 ? MEDALS[i]+' ' : '';      // الميدالية جنب الاسم/الكود
     return `<tr>${r.cells.map((v,c)=>{
       if(tap && c===md.tapCol)
         return `<td style="cursor:pointer;text-decoration:underline" onclick="${tap}">${mdl}${repCell(v)} ⚙️</td>`;
       if(c===0) return `<td>${mdl}${repCell(v)}</td>`;
-      return td(v,c); }).join('')}</tr>`;
+      return td(v,c); }).join('')}</tr>`
+      + (exp? `<tr class="dcexp"><td colspan="${md.header.length}">${exp}</td></tr>` : '');
   }).join('');
   m.innerHTML = `${opt.warn? `<div class="warn">${opt.warn}</div>`:''}
     ${opt.boxes||''}
@@ -1841,12 +1878,14 @@ function doorCol(name){
   return 'باقي';                        // باب من غير مقاس واضح في اسمه
 }
 function buildDoorsByCode(){
-  const rows={};
+  const rows={}, noCode={};        // اللي من غير كود مش بيدخل الجدول خالص
   salesMonths().forEach(mo=>{
     Object.values(monthlyDoors[mo]||{}).forEach(byItem=>{
       Object.entries(byItem).forEach(([name, d])=>{
         if(!isDoorItem(name, d.sub)) return;
-        const code = doorCodeMap[name] || d.code || 'بدون كود';
+        if(doorHide.indexOf(name)>=0) return;
+        const code = doorCodeMap[name] || d.code || '';
+        if(!code){ noCode[name]=(noCode[name]||0)+(d.val||0); return; }
         const r = rows[code] = rows[code] || {code, names:new Set(), cells:{}, qtys:{}, qty:0, val:0};
         r.names.add(name);
         const c = doorCol(name);
@@ -1867,6 +1906,7 @@ function buildDoorsByCode(){
   const tot=cols.map((c,i)=> list.reduce((a,r)=> a+r.cells[i],0));
   const totQ=cols.map((c,i)=> rnd2(list.reduce((a,r)=> a+r.qtys[i],0)));
   return {cols, list, tot, totQ,
+    noCode:Object.keys(noCode).map(n=>({name:n, val:noCode[n]})).sort((a,b)=>b.val-a.val),
     qty:list.reduce((a,r)=>a+r.qty,0), val:list.reduce((a,r)=>a+r.val,0)};
 }
 function repDoorsByCodeModel(){
@@ -1879,17 +1919,81 @@ function repDoorsByCodeModel(){
   body.push({type:'sub', cells:['كمية', ...d.totQ, rnd2(d.qty)]});
   return {title:'مبيعات الأبواب بالكود — '+periodLabel(),
     header:['الكود', ...d.cols, 'الإجمالي'],
-    tapCol:0, rowTap:d.list.map(r=>`doorCodeSheet(&quot;${esc(r.code)}&quot;)`), body, d};
+    tapCol:0, rowTap:d.list.map(r=>`toggleDoorCode(&quot;${esc(r.code)}&quot;)`),
+    expand:d.list.map(r=> dcOpen===r.code ? doorCodeRowHtml(r) : ''), body, d};
 }
 function renderRepDoorsByCode(m){
   const d=buildDoorsByCode();
-  if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات أبواب — ارفع شيت مبيعات فيه أصناف أبواب</div>`; return; }
+  const bars = (d.noCode.length? `<div class="morow"><button class="mochip on" onclick="noCodeSheet()">
+      🚫 ${d.noCode.length} صنف من غير كود — مش داخلين</button></div>`:'')
+    + (doorHide.length? `<div class="morow"><span class="mosep">متشال</span>${doorHide.map(n=>
+      `<button class="mochip" onclick="doorUnhide(${JSON.stringify(n).replace(/"/g,'&quot;')})">${esc(n)} ✕</button>`).join('')}</div>`:'');
+  if(!d.list.length){
+    m.innerHTML = bars + `<div class="empty">مفيش أبواب عليها أكواد${
+      d.noCode.length? ' — ابدأ من زرار «من غير كود» فوق' : ' — ارفع شيت مبيعات فيه أصناف أبواب'}</div>`;
+    return;
+  }
   renderRepTable(m, 'doorcode', repDoorsByCodeModel(), {
     warn: !d.qty? 'الشيت المرفوع مكانش فيه عمود كمية، فالتقرير بالقيمة بس.' : '',
-    boxes: topBoxes(d.list.map(r=>({name:r.code+' — '+r.name, val:r.val})), 'أعلى ٣ أكواد')
+    boxes: bars + topBoxes(d.list.map(r=>({name:r.code+' — '+r.name, val:r.val})), 'أعلى ٣ أكواد')
   });
 }
 
+let dcOpen=null;                       // الكود المفتوحة قايمته دلوقتي
+function toggleDoorCode(code){ dcOpen = (dcOpen===code)? null : code; render(); }
+/* قايمة الأصناف اللي تحت الكود: تغيّر كود أي صنف أو تشيله من التقرير */
+function doorCodeRowHtml(r){
+  return `<div class="dclist">${r.names.map((n,i)=>
+    `<div class="dcrow">
+       <span class="dcn" title="${esc(n)}">${esc(n)}</span>
+       <input id="dcx_${i}" value="${esc(doorCodeMap[n]||r.code)}" placeholder="بدون كود">
+       <button title="شيل الصنف من التقرير" onclick="doorHideItem(${JSON.stringify(n).replace(/"/g,'&quot;')})">🗑</button>
+     </div>`).join('')}
+    <button class="dcsave" onclick="doorCodeSaveRow(${JSON.stringify(r.names).replace(/"/g,'&quot;')})">💾 حفظ الأكواد</button>
+  </div>`;
+}
+function doorCodeSaveRow(names){
+  names.forEach((n,i)=>{
+    const el=document.getElementById('dcx_'+i); if(!el) return;
+    const v=(el.value||'').trim().toUpperCase();
+    if(v) doorCodeMap[n]=v; else delete doorCodeMap[n];
+  });
+  save('doorCodeMap_v1',doorCodeMap); render(); toast('اتحفظ');
+}
+function doorHideItem(name){
+  if(!confirm('تشيل «'+name+'» من تقارير الأبواب؟')) return;
+  if(doorHide.indexOf(name)<0) doorHide.push(name);
+  save('doorHide_v1',doorHide); render(); toast('اتشال');
+}
+function doorUnhide(name){
+  doorHide=doorHide.filter(x=>x!==name); save('doorHide_v1',doorHide); render(); toast('رجع');
+}
+/* الأصناف اللي من غير كود: مش بتظهر في الجدول، بس تقدر تديها أكواد من هنا */
+function noCodeSheet(){
+  const l=buildDoorsByCode().noCode;
+  openSheet(`<h3>أصناف من غير كود</h3>
+    <p style="font-size:13px;color:var(--muted);line-height:1.7">دي مش داخلة في تقرير «أبواب بالكود» لأنها من غير كود.
+      اكتب كود قدام اللي تعوزه ويدخل التقرير، أو شيله خالص.</p>
+    ${l.length? `<div style="max-height:50vh;overflow:auto">${l.map((r,i)=>
+      `<div class="dcrow" style="padding:8px 0">
+         <span class="dcn">${esc(r.name)}</span>
+         <input id="nc_${i}" placeholder="كود">
+         <button onclick="doorHideItem(${JSON.stringify(r.name).replace(/"/g,'&quot;')})">🗑</button>
+       </div>`).join('')}</div>`
+    : `<div class="empty">مفيش — كل الأصناف عليها أكواد</div>`}
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+      <button class="btn-save" onclick="noCodeSave(${JSON.stringify(l.map(r=>r.name)).replace(/"/g,'&quot;')})">حفظ</button></div>`);
+}
+function noCodeSave(names){
+  let n=0;
+  names.forEach((nm,i)=>{
+    const el=document.getElementById('nc_'+i); if(!el) return;
+    const v=(el.value||'').trim().toUpperCase();
+    if(v){ doorCodeMap[nm]=v; n++; }
+  });
+  save('doorCodeMap_v1',doorCodeMap); closeSheet(); render(true);
+  toast(n? ('اتحفظ '+n+' كود') : 'مفيش أكواد اتكتبت');
+}
 /* الضغط على الكود: يوري الأصناف اللي تحته وتقدر تغيّر كود أي صنف */
 function doorCodeSheet(code){
   const d=buildDoorsByCode(), row=d.list.find(r=>r.code===code);
@@ -1934,7 +2038,7 @@ function buildDistDoors(){
     Object.entries(monthlyDoors[mo]||{}).forEach(([cname, byItem])=>{
       if(clsOfName[cname]==='مستبعد') return;
       Object.entries(byItem).forEach(([nm,d])=>{
-        if(!isDoorItem(nm, d.sub)) return;      // نفس فلتر «أبواب بالكود» عشان التقريرين يطابقوا
+        if(!isDoorItem(nm, d.sub) || doorHide.indexOf(nm)>=0) return;   // نفس فلتر «أبواب بالكود»
         const r = rows[cname] = rows[cname] || {qty:0, val:0, by:{}};
         r.qty += (d.qty||0); r.val += (d.val||0);
         r.by[k]=(r.by[k]||0)+(d.val||0);
@@ -3492,10 +3596,155 @@ function payBar(allowMonth){
     <input type="month" value="${payMonth}" onchange="setPayMonth(this.value)" style="flex:1;padding:8px;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:14px"></div>
     <div style="display:flex;gap:6px;margin-bottom:10px">${b(1,'النصف الأول 1–15')}${b(2,'النصف الثاني 16–30')}${allowMonth?b('m','الشهر كامل'):''}</div>`;
 }
+/* ═══════════ قوائم مالية (محمية بكلمة سر) ═══════════
+   موازين المراجعة بتترفع من إكسل، والقوائم بتتبني منها بتوزيع
+   الحسابات على بنودها — والتوزيع بتظبطه بنفسك من الشاشة. */
+const FIN_PASS='2372010';
+let finUnlocked=false;                               // للجلسة دي بس
+let trialBal = load('trialBal_v1', {});              // الفترة ← [{code,name,debit,credit}]
+let finMap   = load('finMap_v1', {});                // كود الحساب ← البند
+const FIN_VIEWS=[
+  {id:'tb',    name:'⚖️ موازين المراجعة'},
+  {id:'isco',  name:'🏢 دخل الشركة'},
+  {id:'ispvc', name:'🧱 دخل PVC'},
+  {id:'isfac', name:'🏭 دخل المصنع'},
+  {id:'bs',    name:'📊 المركز المالي'},
+];
+function setFinView(id){ const c=load('_finView_',null); save('_finView_', c===id?null:id); render(true); }
+function finUnlock(){
+  const v=($('#fin_pw').value||'').trim();
+  if(v!==FIN_PASS){ toast('كلمة السر غلط'); return; }
+  finUnlocked=true; closeSheet(); render(true);
+}
+function finLock(){ finUnlocked=false; render(true); toast('اتقفلت'); }
+function renderFinance(m){
+  if(!finUnlocked){
+    m.innerHTML = `<div class="empty" style="padding:44px 18px">
+      <div style="font-size:40px;line-height:1">🔐</div>
+      القوائم المالية محمية بكلمة سر.<br>
+      <button onclick="finAskPass()" style="margin-top:12px;padding:11px 22px;border-radius:13px;border:none;
+        background:var(--blue);color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">دخول</button></div>`;
+    return;
+  }
+  const v=load('_finView_',null);
+  m.innerHTML = tabStrip(FIN_VIEWS.map(x=>({k:x.id,name:x.name})), v, k=>`setFinView('${k}')`)
+    + `<div id="fin_c"></div>`;
+  const c=$('#fin_c');
+  if(v==='tb') renderTrialBalance(c);
+  else if(v) renderFinStatement(c, v);
+  else c.innerHTML = `<div class="empty">اختار القائمة من فوق
+    <div style="margin-top:12px"><button onclick="finLock()" style="padding:9px 18px;border-radius:12px;
+      border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:700;cursor:pointer">🔒 اقفل</button></div></div>`;
+}
+function finAskPass(){
+  openSheet(`<h3>🔐 قوائم مالية</h3>
+    <div class="f-row"><label>كلمة السر</label>
+      <input id="fin_pw" type="password" inputmode="numeric" autocomplete="off"></div>
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+      <button class="btn-save" onclick="finUnlock()">دخول</button></div>`);
+  setTimeout(()=>{ const el=$('#fin_pw'); if(el){ el.focus();
+    el.onkeydown=e=>{ if(e.key==='Enter') finUnlock(); }; } }, 60);
+}
+/* ── ميزان المراجعة: رفع من إكسل ── */
+function finPeriods(){ return Object.keys(trialBal).sort(); }
+function finCur(){ const p=load('_finPer_',null), ps=finPeriods(); return ps.indexOf(p)>=0? p : ps[ps.length-1]||null; }
+function setFinPeriod(p){ save('_finPer_',p); render(true); }
+function importTrialBalance(file){
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+      let h=0; const has=t=>String(t||'').replace(/\s/g,'');
+      while(h<rows.length && !(rows[h]||[]).some(c=>/حساب|مدين|دائن|رصيد/.test(has(c)))) h++;
+      if(h>=rows.length){ toast('الملف مفيهوش أعمدة حساب/مدين/دائن'); return; }
+      const hdr=(rows[h]||[]).map(c=>String(c||'').trim());
+      const find=re=> hdr.findIndex(c=> re.test(c.replace(/\s/g,'')));
+      const ci=find(/^(كود|رقم)?الحساب$|^كود|^رقم$/), ni=find(/اسم|بيان|الحساب/),
+            di=find(/مدين/), cri=find(/دائن/);
+      if(ni<0 || (di<0 && cri<0)){ toast('مش لاقي عمود الاسم أو المدين/الدائن'); return; }
+      const list=[];
+      for(let i=h+1;i<rows.length;i++){
+        const row=rows[i]; const nm=String(row[ni]||'').trim(); if(!nm) continue;
+        const d=parseFloat(String(row[di]||0).replace(/,/g,''))||0;
+        const cr=parseFloat(String(row[cri]||0).replace(/,/g,''))||0;
+        if(!d && !cr) continue;
+        list.push({code: ci>=0? String(row[ci]||'').trim() : '', name:nm, debit:d, credit:cr});
+      }
+      if(!list.length){ toast('مفيش صفوف فيها أرقام'); return; }
+      const td=list.reduce((a,x)=>a+x.debit,0), tc=list.reduce((a,x)=>a+x.credit,0);
+      pendingImport={type:'tb', list};
+      openSheet(`<h3>تأكيد ميزان المراجعة</h3>
+        <p style="font-size:13px;line-height:1.8">${list.length} حساب —
+          مدين ${fmtN(Math.round(td))} · دائن ${fmtN(Math.round(tc))}
+          ${Math.abs(td-tc)>1? `<br><b style="color:var(--danger)">⚠️ الميزان مش متوازن — الفرق ${fmtN(Math.round(td-tc))}</b>`:'<br>✅ متوازن'}</p>
+        <div class="f-row"><label>الفترة *</label>
+          <div style="display:flex;gap:6px">
+            <select id="tb_mo" style="flex:2">${AR_MONTHS.map((n,i)=>
+              `<option value="${String(i+1).padStart(2,'0')}" ${i===new Date().getMonth()?'selected':''}>${n}</option>`).join('')}</select>
+            <select id="tb_yr" style="flex:1">${(()=>{const y=new Date().getFullYear(); let o='';
+              for(let v=y+1;v>=y-4;v--) o+=`<option ${v===y?'selected':''}>${v}</option>`; return o;})()}</select>
+          </div></div>
+        <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+          <button class="btn-save" onclick="commitTrialBalance()">💾 حفظ</button></div>`);
+    }catch(err){ console.error(err); toast('خطأ في الملف'); }
+  };
+  r.readAsArrayBuffer(file);
+}
+function commitTrialBalance(){
+  const p=pendingImport; if(!p||p.type!=='tb') return;
+  const per=$('#tb_yr').value+'-'+$('#tb_mo').value;
+  trialBal[per]=p.list; save('trialBal_v1',trialBal); save('_finPer_',per);
+  pendingImport=null; closeSheet(); render(true); toast('اتحفظ ميزان '+moName(per));
+}
+function delTrialBalance(per){
+  if(!confirm('حذف ميزان '+moName(per)+'؟')) return;
+  delete trialBal[per]; save('trialBal_v1',trialBal); render(true); toast('اتحذف');
+}
+function trialBalModel(per){
+  const list=trialBal[per]||[], body=[];
+  list.forEach(r=> body.push({type:'row', cells:[r.name, r.code||'—', Math.round(r.debit), Math.round(r.credit)]}));
+  const td=list.reduce((a,x)=>a+x.debit,0), tc=list.reduce((a,x)=>a+x.credit,0);
+  body.push({type:'tot', cells:['الإجمالي','', Math.round(td), Math.round(tc)]});
+  return {title:'ميزان المراجعة — '+moName(per), header:['الحساب','الكود','مدين','دائن'], body};
+}
+function renderTrialBalance(m){
+  const ps=finPeriods(), per=finCur();
+  const bar=`<div class="impbar"><label>📥 رفع ميزان مراجعة
+      <input type="file" id="impTB" accept=".xlsx,.xls" style="display:none"></label></div>`;
+  if(!per){ m.innerHTML = bar + `<div class="empty">لسه مفيش موازين — ارفع ملف إكسل فيه
+      أعمدة: الحساب · مدين · دائن (والكود لو موجود)</div>`;
+    $('#impTB').onchange=e=>{ if(e.target.files[0]) importTrialBalance(e.target.files[0]); }; return; }
+  const md=trialBalModel(per);
+  const tot=md.body[md.body.length-1].cells;
+  const diff=tot[2]-tot[3];
+  m.innerHTML = bar
+    + (ps.length>1? `<div class="morow">${ps.map(p=>
+        `<button class="mochip${p===per?' on':''}" onclick="setFinPeriod('${p}')">${moName(p)}</button>`).join('')}
+        <button class="mochip" onclick="delTrialBalance('${per}')">🗑 حذف</button></div>`
+      : `<div class="morow"><button class="mochip on">${moName(per)}</button>
+        <button class="mochip" onclick="delTrialBalance('${per}')">🗑 حذف</button></div>`)
+    + (Math.abs(diff)>1? `<div class="warn">⚠️ الميزان مش متوازن — الفرق ${fmtN(Math.round(diff))}</div>`:'')
+    + `<div id="tb_t"></div>`;
+  $('#impTB').onchange=e=>{ if(e.target.files[0]) importTrialBalance(e.target.files[0]); };
+  renderRepTable($('#tb_t'), 'tb', md, {});
+}
+/* ── القوائم التلاتة والمركز المالي ──
+   لسه محتاجين توزيع الحسابات على بنود كل قائمة. */
+const FIN_TITLES={isco:'قائمة دخل الشركة', ispvc:'قائمة دخل PVC', isfac:'قائمة دخل المصنع', bs:'المركز المالي'};
+function renderFinStatement(m, id){
+  const per=finCur();
+  m.innerHTML = `<div class="hsec">${FIN_TITLES[id]||''}</div>`
+    + (!per? `<div class="empty">ارفع ميزان مراجعة الأول من «موازين المراجعة»</div>`
+      : `<div class="empty" style="line-height:2">ميزان ${moName(per)} متحمّل و${(trialBal[per]||[]).length} حساب جاهزين.<br>
+          فاضل تقولّي كل حساب يروح أنهي بند في «${FIN_TITLES[id]||''}» —<br>
+          ابعتلي شكل القائمة اللي بتطلعها دلوقتي وأنا أبنيها بالظبط كده.</div>`);
+}
 function renderPayroll(m){
   const tabs=['👥 العاملين','✍️ الحضور والخصومات','📊 النواتج'];
   const st=load('_payTab_',null);
-  m.innerHTML=`<div style="display:flex;gap:6px;margin-bottom:10px">${tabs.map((t,i)=>`<button onclick="setPayTab(${i})" style="flex:1;padding:9px 4px;border-radius:9px;background:${st===i?'var(--blue)':'var(--panel2)'};color:${st===i?'#fff':'var(--text)'};border:1px solid var(--border);font-weight:700;font-size:12.5px">${t}</button>`).join('')}</div><div id="pay_c"></div>`;
+  m.innerHTML = tabStrip(tabs.map((t,i)=>({k:i,name:t})), st, k=>`setPayTab(${k})`, {grow:true})
+    + `<div id="pay_c"></div>`;
   const c=$('#pay_c');
   if(st===null) c.innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
   else if(st===0) renderPayEmployees(c);
@@ -3732,7 +3981,8 @@ function gvArchive(){
 function gvDelete(){ const o=gvGet(); if(!o||!confirm('حذف الطلبية نهائيًا؟')) return; gvOrders=gvOrders.filter(x=>x.id!==o.id); gvCur=null; save('_gvCur_',null); gvSave(); render(true); }
 function gvField(f,v){ const o=gvGet(); if(!o) return; o[f]=(f==='name'||f==='date')? v : nz(v); gvSave(); if(f==='containers'||f==='cap') render(); }
 function gvCalc(o){
-  const rows=o.rows.map((r,i)=>{
+  // طلبية جاية من مزامنة قديمة ممكن تكون من غير rows — ما تكسرش الشاشة كلها
+  const rows=((o&&o.rows)||[]).map((r,i)=>{
     const g=gvcodes.find(x=>x.id===r.gid)||{}, pc=nz(g.perCarton), w=nz(g.weight), p=nz(g.price), qty=nz(r.qty);
     return {i,gid:r.gid,name:g.name||r.name||'صنف محذوف',code:g.code||r.code||'',pc,w,p,qty,cartons:pc? qty/pc : 0,weight:qty*w,value:qty*p,noPrice:!p};
   });
@@ -3908,11 +4158,8 @@ function gvStatus(o){
 }
 function renderGV(m){
   const tabs = ['📋 الطلبيات','📥 الاستلام','💵 التسعير'];
-  m.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px">
-      ${tabs.map((t,i)=>`<button onclick="setGvTab(${i})" style="flex:1;padding:10px 4px;border-radius:9px;
-        background:${gvTab===i?'var(--blue)':'var(--panel2)'};color:${gvTab===i?'#fff':'var(--text)'};
-        border:1px solid var(--border);font-weight:700;font-size:13.5px">${t}</button>`).join('')}
-    </div><div id="gv_c"></div>`;
+  m.innerHTML = tabStrip(tabs.map((t,i)=>({k:i,name:t})), gvTab, k=>`setGvTab(${k})`, {grow:true})
+    + `<div id="gv_c"></div>`;
   const c = $('#gv_c');
   if(gvTab===0) renderGvOrders(c);
   else if(gvTab===1) renderGvReceive(c);
@@ -4145,10 +4392,11 @@ function renderInner(){
   else if(module==='warehouses') renderWarehouses(m);
   else if(module==='sales') renderSales(m);
   else if(module==='gv') renderGV(m);
+  else if(module==='fin') renderFinance(m);
   else renderPayroll(m);
 }
 /* ═══ الصفحة الرئيسية: نظرة سريعة وأيقونات الأقسام ═══ */
-const HOME_AC={items:'#f59e0b', warehouses:'#0ea5e9', sales:'#16a34a', gv:'#8b5cf6', payroll:'#ec4899'};
+const HOME_AC={items:'#f59e0b', warehouses:'#0ea5e9', sales:'#16a34a', gv:'#8b5cf6', payroll:'#ec4899', fin:'#0f766e'};
 function homeStats(){
   const mos=Object.keys(monthlySales).sort();
   const last=mos[mos.length-1];
@@ -4175,6 +4423,7 @@ function renderHome(m){
     sales:`${customers.length} عميل · ${S.months} شهر`,
     gv:`${gvOrders.length} طلبية`,
     payroll:`${employees.length} موظف`,
+    fin:finUnlocked? `${Object.keys(trialBal).length} فترة` : '🔒 محمي بكلمة سر',
   };
   // آخر أيقونة تاخد الصف كله لو العدد فردي، عشان ما تفضلش ناحية لوحدها
   const tile=(mo,i)=>`<div class="htile${(i===modules.length-1 && modules.length%2)?' wide':''}"

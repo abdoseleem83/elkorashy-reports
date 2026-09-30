@@ -17,50 +17,48 @@ await pg.evaluate(()=>{ module='sales'; save('_salesTab_',2); save('_salesRep_',
 await pg.waitForTimeout(400);
 
 let d=await pg.evaluate(()=> repModel('doorcode'));
-ck('صف «بدون كود» فيه الباب اللي من غير كود بس',
-  d.body.some(r=> r.cells[0]==='بدون كود'),
+ck('«بدون كود» مش بتظهر في الجدول خالص',
+  !d.body.some(r=> r.cells[0]==='بدون كود'),
   d.body.filter(r=>r.type==='row').map(r=>r.cells[0]).join('|'));
 ck('خلايا الكود قابلة للضغط', d.tapCol===0 && (d.rowTap||[]).length===d.body.filter(r=>r.type==='row').length,
   JSON.stringify(d.rowTap));
 ck('العلامة ⚙️ ظاهرة في عمود الكود',
   (await pg.evaluate(()=> document.querySelector('table.rep').innerText)).includes('⚙️'));
-// الضغط الحقيقي على «بدون كود» لازم يفتح الشيت (كان باظ بسبب علامات التنصيص)
-await pg.evaluate(()=>{ const sh=document.getElementById('sheet'); if(sh) sh.classList.remove('open'); });
-const cell = pg.locator('table.rep td', {hasText:'بدون كود'}).first();
-await cell.click(); await pg.waitForTimeout(300);
-ck('الضغط على «بدون كود» بيفتح الشيت',
-  /الكود «بدون كود»/.test(await pg.evaluate(()=>document.body.innerText)));
-await pg.evaluate(()=> closeSheet()); await pg.waitForTimeout(200);
+ck('شريط «من غير كود» بيعدّ الصنف اللي اتشال',
+  /1 صنف من غير كود/.test(await pg.evaluate(()=>document.body.innerText)), '');
 
-await pg.evaluate(()=> doorCodeSheet('بدون كود')); await pg.waitForTimeout(250);
-const sh=await pg.evaluate(()=>document.body.innerText);
-ck('الشيت بيوري الباب بس — الخدمة مستبعدة من التقرير',
-  /باب رشدي 80 سم/.test(sh) && !/خدمة قص ابواب/.test(sh));
-ck('الخانة فاضية لأنه من غير كود',
-  (await pg.locator('#dc_0').inputValue())==='' );
+// الضغط على الكود بيفتح قائمة بأصنافه جوه الجدول
+const cell = pg.locator('table.rep td', {hasText:'A02'}).first();
+await cell.click(); await pg.waitForTimeout(350);
+ck('القائمة المنسدلة فتحت تحت الكود', (await pg.locator('tr.dcexp .dcrow').count())===1);
+ck('وفيها اسم الصنف',
+  /باب كامل 90 سم A02/.test(await pg.evaluate(()=> document.querySelector('tr.dcexp').innerText)));
+// تغيير الكود من القائمة
+await pg.fill('#dcx_0','b7');
+await pg.evaluate(()=> doorCodeSaveRow(['باب كامل 90 سم A02'])); await pg.waitForTimeout(400);
+ck('الكود اتغيّر من القائمة بحروف كبيرة',
+  (await pg.evaluate(()=> JSON.parse(localStorage.getItem('doorCodeMap_v1'))))['باب كامل 90 سم A02']==='B7');
 
-// نحط كود لصنف واحد
-const names=await pg.evaluate(()=>{
-  const d2=buildDoorsByCode(); return d2.list.find(r=>r.code==='بدون كود').names; });
-const i=names.indexOf('باب رشدي 80 سم');
-await pg.fill('#dc_'+i,'a11');
-await pg.evaluate(n=> doorCodeSave(n), names); await pg.waitForTimeout(400);
-
-const map=await pg.evaluate(()=> JSON.parse(localStorage.getItem('doorCodeMap_v1')));
-ck('الكود اتحفظ بحروف كبيرة', map['باب رشدي 80 سم']==='A11', JSON.stringify(map));
+// شيل صنف غلط
+await pg.evaluate(()=>{ window.confirm=()=>true; });
+await pg.evaluate(()=> doorHideItem('باب كامل 90 سم A02')); await pg.waitForTimeout(400);
 d=await pg.evaluate(()=> repModel('doorcode'));
-const a11=d.body.find(r=> r.cells[0]==='A11');
-ck('الصنف اتنقل لكود A11 بقيمته',
-  a11 && a11.cells[a11.cells.length-1]===9000, JSON.stringify(a11&&a11.cells));
-ck('مبقاش فيه «بدون كود» خالص',
-  !d.body.some(r=> r.cells[0]==='بدون كود'),
-  d.body.filter(r=>r.type==='row').map(r=>r.cells[0]).join('|'));
+ck('الصنف المتشال خرج من التقرير',
+  !d.body.some(r=> r.cells[0]==='B7'), d.body.filter(r=>r.type==='row').map(r=>r.cells[0]).join('|'));
+ck('وبيبان في شريط «متشال» عشان ترجّعه',
+  /متشال/.test(await pg.evaluate(()=>document.body.innerText)));
+await pg.evaluate(()=> doorUnhide('باب كامل 90 سم A02')); await pg.waitForTimeout(400);
+d=await pg.evaluate(()=> repModel('doorcode'));
+ck('رجع تاني', d.body.some(r=> r.cells[0]==='B7'), d.body.filter(r=>r.type==='row').map(r=>r.cells[0]).join('|'));
 
-// الشيل: خانة فاضية = يرجع من غير كود
-await pg.evaluate(()=> doorCodeSheet('A11')); await pg.waitForTimeout(250);
-await pg.fill('#dc_0','');
-await pg.evaluate(()=> doorCodeSave(['باب رشدي 80 سم'])); await pg.waitForTimeout(400);
-ck('مسح الكود بيرجّعه «بدون كود»',
-  !(await pg.evaluate(()=> JSON.parse(localStorage.getItem('doorCodeMap_v1'))))['باب رشدي 80 سم']);
+// إدّي كود لصنف من غير كود من الشيت
+await pg.evaluate(()=> noCodeSheet()); await pg.waitForTimeout(300);
+ck('شيت «من غير كود» بيوري الباب', /باب رشدي 80 سم/.test(await pg.evaluate(()=>document.body.innerText)));
+await pg.fill('#nc_0','a11');
+await pg.evaluate(()=> noCodeSave(['باب رشدي 80 سم'])); await pg.waitForTimeout(400);
+d=await pg.evaluate(()=> repModel('doorcode'));
+ck('الصنف دخل التقرير بكود A11',
+  d.body.some(r=> r.cells[0]==='A11'), d.body.filter(r=>r.type==='row').map(r=>r.cells[0]).join('|'));
+
 console.log(bad?('❌ فشل '+bad):'✅ كله تمام');
 await b.close(); process.exit(bad?1:0);
