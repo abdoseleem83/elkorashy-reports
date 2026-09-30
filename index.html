@@ -32,6 +32,34 @@ nav{display:flex;gap:4px;padding:8px 10px;background:var(--panel);border-bottom:
   color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;transition:.2s}
 .nav-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 main{flex:1;overflow-y:auto;padding:10px}
+/* ═══ الصفحة الرئيسية ═══ */
+.hero{background:linear-gradient(135deg,var(--blue),#4f46e5);color:#fff;border-radius:18px;
+  padding:16px 16px 18px;margin-bottom:12px;box-shadow:0 6px 18px rgba(29,78,216,.22)}
+.hero .hi{font-size:13px;opacity:.85;font-weight:700}
+.hero .big{font-size:21px;font-weight:800;margin-top:2px;letter-spacing:-.2px}
+.hero .dt{font-size:12px;opacity:.8;margin-top:5px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.kpi{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22);border-radius:13px;
+  padding:9px 6px;text-align:center;cursor:pointer}
+.kpi b{display:block;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.25}
+.kpi span{display:block;font-size:10.5px;opacity:.9;margin-top:2px;font-weight:700}
+.hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(152px,1fr));gap:10px}
+.htile{position:relative;overflow:hidden;background:var(--panel);border:1px solid var(--border);
+  border-radius:17px;padding:14px 13px;cursor:pointer;text-align:right;
+  transition:transform .12s ease, box-shadow .12s ease}
+.htile:active{transform:scale(.975)}
+.htile::after{content:'';position:absolute;right:0;top:0;bottom:0;width:4px;background:var(--ac)}
+.htile.wide{grid-column:1/-1}
+.hico{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+  font-size:24px;background:color-mix(in srgb, var(--ac) 15%, transparent);margin-bottom:9px}
+@supports not (background: color-mix(in srgb, red 15%, transparent)){ .hico{background:var(--panel2)} }
+.htile .nm{font-size:14.5px;font-weight:800}
+.htile .sb{font-size:11.5px;color:var(--muted);font-weight:700;margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.hsec{font-size:12px;color:var(--muted);font-weight:800;margin:14px 2px 7px}
+.hnote{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border);
+  border-radius:13px;padding:10px 12px;margin-bottom:8px;font-size:12.5px;font-weight:700;cursor:pointer}
+.hnote .dot{width:9px;height:9px;border-radius:50%;background:var(--ac);flex:0 0 auto}
 .mod{display:none}
 .mod.active{display:block}
 .toolbar{display:flex;gap:8px;margin-bottom:10px}
@@ -134,7 +162,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.4</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.5</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -4112,12 +4140,73 @@ function renderInner(){
   renderNav();
   const fb=$('#fab'); if(fb) fb.style.display=fabVisible()?'':'none';
   const m=$('#main');
-  if(!module){ m.innerHTML=`<div class="empty">اضغط على أحد الأيقونات فوق</div>`; return; }
+  if(!module){ renderHome(m); return; }
   if(module==='items') renderItems(m);
   else if(module==='warehouses') renderWarehouses(m);
   else if(module==='sales') renderSales(m);
   else if(module==='gv') renderGV(m);
   else renderPayroll(m);
+}
+/* ═══ الصفحة الرئيسية: نظرة سريعة وأيقونات الأقسام ═══ */
+const HOME_AC={items:'#f59e0b', warehouses:'#0ea5e9', sales:'#16a34a', gv:'#8b5cf6', payroll:'#ec4899'};
+function homeStats(){
+  const mos=Object.keys(monthlySales).sort();
+  const last=mos[mos.length-1];
+  const lastVal=last? Object.values(monthlySales[last]||{}).reduce((a,b)=>a+b,0) : 0;
+  const unc=customers.filter(c=>!c.cls).length;
+  const short=Object.values(whShortage).reduce((a,o)=> a+Object.keys(o||{}).length, 0);
+  const stockItems=warehouses.reduce((a,w)=> a+Object.keys(whStock[w.id]||{}).length, 0);
+  return {last, lastVal, unc, short, stockItems, months:mos.length};
+}
+function shortNum(n){
+  n=Math.round(n||0);
+  if(n>=1e6) return (n/1e6).toFixed(n>=1e8?0:1).replace(/\.0$/,'')+' م';
+  if(n>=1e3) return (n/1e3).toFixed(n>=1e4?0:1).replace(/\.0$/,'')+' ألف';
+  return n.toLocaleString('en-US');
+}
+function renderHome(m){
+  const S=homeStats();
+  const today=new Date().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const hh=new Date().getHours();
+  const hi = hh<12 ? 'صباح الخير' : (hh<18 ? 'مساء الخير' : 'مساء الخير');
+  const sub={
+    items:`${items.length} صنف`,
+    warehouses:`${warehouses.length} مخزن · ${S.stockItems} رصيد`,
+    sales:`${customers.length} عميل · ${S.months} شهر`,
+    gv:`${gvOrders.length} طلبية`,
+    payroll:`${employees.length} موظف`,
+  };
+  // آخر أيقونة تاخد الصف كله لو العدد فردي، عشان ما تفضلش ناحية لوحدها
+  const tile=(mo,i)=>`<div class="htile${(i===modules.length-1 && modules.length%2)?' wide':''}"
+      style="--ac:${HOME_AC[mo.id]}" onclick="switchModule('${mo.id}')">
+      <div class="hico">${mo.icon}</div>
+      <div class="nm">${mo.name}</div><div class="sb">${sub[mo.id]||''}</div></div>`;
+  // تنبيهات تستاهل تتشاف من أول الشاشة
+  const notes=[];
+  if(S.unc) notes.push(['#f59e0b', `⚠️ ${S.unc} عميل من غير تصنيف — مش داخلين في التقارير`,
+    `switchModule('sales');save('_salesTab_',1);render(true)`]);
+  if(S.short) notes.push(['#dc2626', `🧾 ${S.short} صنف في طلب النواقص`, `switchModule('warehouses')`]);
+  if(dupWarehouses().length) notes.push(['#dc2626','🏭 في مخازن متكررة بنفس الاسم — محتاجة دمج',
+    `switchModule('warehouses')`]);
+  m.innerHTML = `
+    <div class="hero">
+      <div class="hi">${hi}</div>
+      <div class="big">تقارير القرشي</div>
+      <div class="dt">${today}</div>
+      <div class="kpis">
+        <div class="kpi" onclick="switchModule('sales');save('_salesTab_',2);render(true)">
+          <b>${S.last? shortNum(S.lastVal) : '—'}</b><span>${S.last? moName(S.last) : 'مفيش مبيعات'}</span></div>
+        <div class="kpi" onclick="switchModule('warehouses')">
+          <b>${S.short || '—'}</b><span>نواقص</span></div>
+        <div class="kpi" onclick="switchModule('sales');save('_salesTab_',1);render(true)">
+          <b>${S.unc || '—'}</b><span>غير مصنّف</span></div>
+      </div>
+    </div>
+    ${notes.length? `<div class="hsec">محتاج انتباهك</div>`+notes.map(([c,t,go])=>
+      `<div class="hnote" style="--ac:${c}" onclick="${go}"><span class="dot"></span><span>${t}</span></div>`).join('') : ''}
+    <div class="hsec">الأقسام</div>
+    <div class="hgrid">${modules.map(tile).join('')}</div>
+    <div style="height:14px"></div>`;
 }
 function render(top){
   const m=$('#main'); const st=m? m.scrollTop : 0;
