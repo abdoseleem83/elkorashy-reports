@@ -24,7 +24,7 @@ body{margin:0;font-family:Tahoma,Arial,sans-serif;font-size:15.5px;background:va
 input,select,textarea,button{font-family:inherit}
 header{background:var(--blue);color:#fff;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;
   display:flex;align-items:center;justify-content:space-between;flex-shrink:0;position:relative;z-index:20}
-header h1{font-size:16px;margin:0;font-weight:700;white-space:nowrap}
+header h1{font-size:16px;margin:0;font-weight:700;white-space:nowrap;cursor:pointer}
 @media (max-width:420px){ header .ver{display:none} header h1{font-size:15px} }
 /* الموبايلات الضيقة: اللوجو بيقول الاسم، فالكلام بيستخبى عشان ☰ والأزرار يدخلوا */
 @media (max-width:390px){ header h1 .ttl{display:none} }
@@ -52,7 +52,6 @@ body.menu-open .menu-bd{display:block}
 .nav-sub:hover{color:var(--text);background:var(--panel2)}
 .nav-sub.on{color:var(--blue);border-right-color:var(--blue);background:var(--panel2)}
 #menuBtn{font-size:16px}
-header h1{cursor:pointer}
 main{flex:1;overflow-y:auto;padding:10px}
 
 /* ═══ مربعات الأرقام الملونة فوق كل قسم ═══ */
@@ -270,7 +269,7 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
 </style>
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px">☰</button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.6</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px">☰</button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.7</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -459,7 +458,8 @@ function secDelCol(k){
 let _itNorm=null, _itNormFor=null;
 function itemFind(n){
   if(itemsByName[n]) return itemsByName[n];
-  if(_itNormFor!==items){ _itNorm={}; items.forEach(i=>{ const f=ordNorm(i.name); if(f && !_itNorm[f]) _itNorm[f]=i; }); _itNormFor=items; }
+  // الكاش بيتجدد لو القايمة اتبدلت أو اتضاف/اتشال منها صنف
+  if(_itNormFor!==items || _itNorm.__n!==items.length){ _itNorm={}; items.forEach(i=>{ const f=ordNorm(i.name); if(f && !_itNorm[f]) _itNorm[f]=i; }); _itNorm.__n=items.length; _itNormFor=items; }
   return _itNorm[ordNorm(n)] || null;
 }
 /* الأصناف اللي جوه بند في جدول القطاعات، من تفصيل الأصناف الشهري.
@@ -623,10 +623,6 @@ const MEDALS=['🥇','🥈','🥉'];
    فيناير يطلع بعد فبراير وآخر شهر يتحسب غلط. الترتيب بقى بالرقم. */
 function moNum(k){ const m=String(k||'').match(/^(\d{4})-(\d{1,2})$/); return m? (+m[1])*12 + (+m[2]) : 1e9; }
 const moSort = arr => arr.sort((a,b)=> moNum(a)-moNum(b) || String(a).localeCompare(String(b)));
-function monthsLabel(ms){
-  if(!ms || !ms.length) return '';
-  return ms.length===1 ? moName(ms[0]) : moName(ms[0])+' إلى '+moName(ms[ms.length-1]);
-}
 // تجميع مخصوص للتصدير: كرافت ونيو مع بعض، والاكسسوارات وكومبن مع بعض
 const EXPORT_GROUP_MAP={
   'قطاعات كرافت لاين':'كرافت ونيو لاين','نيو لاين':'كرافت ونيو لاين',
@@ -1122,8 +1118,8 @@ function renderNav(){
 }
 /* ☰ على الموبايل: الدرج بيقفل لوحده أول ما تختار حاجة (render بيقفله) */
 function toggleMenu(on){ document.body.classList.toggle('menu-open', on===undefined ? !document.body.classList.contains('menu-open') : !!on); }
-function switchModule(m){ module=(module===m)?null:m; q=''; openGroups=new Set(); render(true); }
-function goHome(){ module=null; q=''; openGroups=new Set(); render(true); }
+function switchModule(m){ toggleMenu(false); module=(module===m)?null:m; q=''; openGroups=new Set(); render(true); }
+function goHome(){ toggleMenu(false); module=null; q=''; openGroups=new Set(); render(true); }
 $('#fab').addEventListener('click', ()=>{
   if(module==='items') editItem(null);
   else if(module==='warehouses') editWarehouse(null);
@@ -1425,11 +1421,6 @@ function renderWhStock(m, whId){
   `;
   $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderWhStock(m, whId)); };
   $('#impStock').onchange=e=>{ if(e.target.files[0]) importStock(e.target.files[0], whId); };
-}
-function toggleWhFilter(kind, val, whId){
-  const set = kind==='main'? whFilterMain : whFilterSub;
-  if(set.has(val)) set.delete(val); else set.add(val);
-  render();
 }
 function importStock(file, whId){
   const r=new FileReader();
@@ -1917,9 +1908,6 @@ function renderSalesReportsHub(m){
   else c.innerHTML = `<div class="empty">اختار التقرير من فوق</div>`;
 }
 // الموزعين بس (العملاء المصنّفين «موزع»)
-function distributorNames(){
-  return customers.filter(c=> (c.cls||'')==='موزع').map(c=> c.name);
-}
 function monthsLive(){ return moSort(Object.keys(monthlySales)).filter(mo=> !isArchived(mo)); }
 function salesMonths(){
   const sel=load('_moSel_',null), live=monthsLive();
@@ -1978,7 +1966,6 @@ const repFmt = n=> n? Math.round(n).toLocaleString('en-US') : '—';
 
 /* ═══ أدوات مشتركة لكل تقارير المبيعات ═══ */
 /* الشهور الشغّالة = المرفوعة ناقص المؤرشفة */
-function salesMonthsAll(){ return moSort(Object.keys(monthlySales)); }
 function isArchived(mo){ return salesArchive.indexOf(mo)>=0; }
 function toggleArchiveMonth(mo){
   if(isArchived(mo)) salesArchive = salesArchive.filter(x=>x!==mo);
@@ -2073,17 +2060,6 @@ function unknownItems(){
     if(itemFind(n)) return;
     agg[n]=(agg[n]||0)+(d.val||0); }));
   return Object.keys(agg).map(n=>({name:n, val:agg[n]})).sort((a,b)=> b.val-a.val);
-}
-function showUnknownItems(){
-  const l=unknownItems();
-  openSheet(`<h3>أصناف غير معروفة</h3>
-    <p style="font-size:13px;color:var(--muted);line-height:1.7">الأصناف دي مش موجودة في «الأصناف»، فمش عارفين قطاعها.
-      ضيفها في شاشة الأصناف بمجموعتها الرئيسية وهتتوزّع على قطاعها لوحدها في الاستيراد الجاي.</p>
-    ${l.length? `<div style="max-height:50vh;overflow:auto">${l.map(r=>
-      `<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(r.name)}</div></div>
-       <div style="font-weight:800;color:var(--blue)">${repFmt(r.val)}</div></div>`).join('')}</div>`
-    : `<div class="empty">مفيش — أو الشيت اللي مرفوع قديم ومفيهوش تفصيل الأصناف</div>`}
-    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">تمام</button></div>`);
 }
 /* أول ٣ أصناف من كل الشهور الشغّالة */
 function topItems(){
@@ -2275,22 +2251,6 @@ function noCodeSave(names){
   toast(n? ('اتحفظ '+n+' كود') : 'مفيش أكواد اتكتبت');
 }
 /* الضغط على الكود: يوري الأصناف اللي تحته وتقدر تغيّر كود أي صنف */
-function doorCodeSheet(code){
-  const d=buildDoorsByCode(), row=d.list.find(r=>r.code===code);
-  const names=row? row.names : [];
-  openSheet(`<h3>الكود «${esc(code)}»</h3>
-    <p style="font-size:13px;color:var(--muted);line-height:1.7">${names.length} صنف تحت الكود ده.
-      غيّر الكود قدام أي صنف واحفظ — التغيير بيفضل محفوظ ومش بيتشال مع رفع شيت جديد.</p>
-    <div style="max-height:52vh;overflow:auto">${names.map((n,i)=>
-      `<div class="card" style="flex-wrap:wrap"><div class="info" style="flex-basis:100%">
-        <div class="name" style="font-size:12.5px">${esc(n)}</div></div>
-        <input id="dc_${i}" value="${esc(doorCodeMap[n] || (code==='بدون كود' ? '' : code))}" placeholder="بدون كود"
-          style="flex:1;padding:7px 9px;border-radius:8px;border:1px solid var(--border);
-          background:var(--panel2);color:var(--text);font-weight:700;font-size:13px"></div>`).join('')}</div>
-    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
-      <button class="btn-save" onclick="doorCodeSave()">حفظ</button></div>`);
-  dcNames = names;
-}
 let dcNames=[];
 function doorCodeSave(names){
   (names||dcNames).forEach((n,i)=>{
@@ -2709,8 +2669,6 @@ function importSales(file){
       const custMap={}, sectorMap={}, doorMap={}, itemMap={};
       const unmatchedCust=new Set(), unmatchedItems=new Set();
       const custByName={}; customers.forEach(c=>custByName[c.name]=c);
-      // الصنف بالاسم بالظبط، ولو مفيش بالبصمة (مسافة زيادة، ة/ه، أ/ا …) زي الأرصدة
-      const itemsByNorm={}; items.forEach(i=>{ const f=ordNorm(i.name); if(f && !itemsByNorm[f]) itemsByNorm[f]=i; });
       for(const row of dataRows){
         let cname=String(row[ci]).trim(); if(!cname) continue;
         cname = custAlias[cname] || cname;          // اسم اتدمج قبل كده
@@ -2718,7 +2676,7 @@ function importSales(file){
         custMap[cname]=(custMap[cname]||0)+net;
         if(!custByName[cname]) unmatchedCust.add(cname);
         const iname=String(row[ii]||'').trim();
-        const it=itemsByName[iname] || (iname? itemsByNorm[ordNorm(iname)] : null);
+        const it=iname? itemFind(iname) : null;   // بالاسم، ولو مفيش بالبصمة (مسافة، ة/ه، أ/ا)
         /* بنخزّن المجموعة الرئيسية زي ما هي، والتوزيع على أعمدة
            التقرير بيتعمل وقت العرض — فتقدر تنقل مجموعة لعمود تاني
            في أي وقت من غير ما ترفع الشيت تاني. */
@@ -2762,6 +2720,12 @@ function commitSalesImport(){
   const p=pendingImport; if(!p) return;
   const month=$('#s_yr').value+'-'+$('#s_mo').value;
   if(!/^\d{4}-\d{2}$/.test(month)){ toast('اختار الشهر'); return; }
+  /* نفس الشهر مرفوع قبل كده (أو بصيغة قديمة زي 2026-1) — كان بيتكتب فوقه
+     من غير ما يسأل، والصيغة القديمة كانت بتفضل جنبه فالشهر يتحسب مرتين */
+  const same=Object.keys(monthlySales).filter(k=> moNum(k)===moNum(month));
+  if(same.length && !confirm('شهر '+moName(month)+' مرفوع قبل كده — تستبدله بالشيت ده؟')) return;
+  same.filter(k=> k!==month).forEach(k=>{ delete monthlySales[k]; delete monthlySector[k]; delete monthlyDoors[k]; delete monthlyItems[k];
+    salesArchive=salesArchive.filter(x=> x!==k); });
   p.unmatchedCust.forEach(name=>{ customers.push({id:uid(),name,cls:''}); });
   save('customers_v1',customers);
   monthlySales[month]=p.custMap; monthlySector[month]=p.sectorMap;
@@ -4200,6 +4164,7 @@ function importTrialBalance(file){
 function commitTrialBalance(){
   const p=pendingImport; if(!p||p.type!=='tb') return;
   const per=$('#tb_yr').value+'-'+$('#tb_mo').value;
+  if(trialBal[per] && !confirm('ميزان '+moName(per)+' مرفوع قبل كده — تستبدله؟')) return;
   trialBal[per]=p.list; save('trialBal_v1',trialBal); save('_finPer_',per);
   finAutoSeg(per);                                  // توزيع أوّلي على فروع PVC
   pendingImport=null; closeSheet(); render(true); toast('اتحفظ ميزان '+moName(per));
@@ -4601,12 +4566,6 @@ function payColsSheet(){
 let payExportBranch = load('_payExportBranch_','');
 function paySendToggle(key){ if(paySendVisible.has(key)) paySendVisible.delete(key); else paySendVisible.add(key); save('paySendCols_v1',[...paySendVisible]); render(); }
 function setPayExportBranch(v){ payExportBranch=v; save('_payExportBranch_',v); render(); }
-function paySendColsSheet(){ return payColsSheet(); }
-function _oldPaySendColsSheet(){
-  openSheet(`<h3>الأعمدة الظاهرة في كشف الإرسال</h3>
-    ${PAY_COLS.send.map(([k,l])=>`<label style="display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid var(--border)"><input type="checkbox" ${paySendVisible.has(k)?'checked':''} onchange="paySendToggle('${k}')"> ${esc(l)}</label>`).join('')}
-    <div class="f-actions"><button class="btn-save" onclick="closeSheet()">تم</button></div>`);
-}
 /* الفترة بالشكل اللي في الكشف المطبوع: «١٦ الى آخر الشهر» مش «16 – 30» */
 const toArabicDigits = n=> String(n).replace(/[0-9]/g, d=> '٠١٢٣٤٥٦٧٨٩'[+d]);
 function payPeriodLabel(month, half){
@@ -5350,6 +5309,7 @@ function renderBonusReport(c){
    navTo بيفتح الشاشة على طول (مش زي أزرار التبويب اللي بتقفل لو دوست تاني). */
 function navTo(mod, keys, gv, qq){
   try{ closeSheet(); }catch(e){}
+  toggleMenu(false);
   module=mod; q=''; openGroups=new Set();
   Object.entries(keys||{}).forEach(([k,v])=> save(k,v));
   if(gv!==undefined && gv!==null) gvTab=gv;
@@ -5525,7 +5485,6 @@ function renderHome(m){
     <div style="height:14px"></div></div>`;
 }
 function render(top){
-  document.body.classList.remove('menu-open');
   const m=$('#main'); const st=m? m.scrollTop : 0;
   renderInner();
   if(m) m.scrollTop = top? 0 : st;
