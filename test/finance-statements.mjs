@@ -100,14 +100,49 @@ ck('الحساب الطرفي بيرث قطاع الأب',
   (await pg.evaluate(()=> finSegOf('31770001')))==='pvc');
 await pg.evaluate(()=> segPick('4103','pvc')); await pg.waitForTimeout(300);
 
+// ── البنود منسدلة جوه الجدول، من غير شيت بينط
+await pg.evaluate(()=>{ setFinView('isco'); finOpen={}; setFinDetail(0); }); await pg.waitForTimeout(400);
+ck('البنود مقفولة في الأول', (await pg.locator('tr.dcexp').count())===0);
+ck('علامة الفتح على البنود',
+  /▸/.test(await pg.evaluate(()=> document.querySelector('table.rep').innerText)));
+await pg.evaluate(()=> toggleFinLine('isco','cogs')); await pg.waitForTimeout(400);
+ck('البند فتح جوه الجدول مش في شيت',
+  (await pg.locator('tr.dcexp').count())===1 &&
+  (await pg.evaluate(()=> document.querySelector('.overlay.show')))===null);
+ck('وفيه حسابات التكلفة الأربعة', (await pg.locator('tr.dcexp .finrow').count())===4);
+
+// ── تكلفة البضاعة في قائمة المصنع: الحسابات بتبان وينفع تعلّمها
+await pg.evaluate(()=>{ setFinView('isfac'); finOpen={}; toggleFinLine('isfac','cogs'); });
+await pg.waitForTimeout(450);
+const nrow=await pg.locator('tr.dcexp .finrow').count();
+ck('حسابات التكلفة بتبان في قائمة المصنع كمان', nrow===4, 'عدد='+nrow);
+ck('ومكتوب إنهم برّه القطاع',
+  /قطاع/.test(await pg.evaluate(()=> document.querySelector('tr.dcexp').innerText)));
+await pg.locator('tr.dcexp .finrow').first().locator('.clschip', {hasText:'المصنع'}).click();
+await pg.waitForTimeout(450);
+const F2=await pg.evaluate(()=> finStatement('2026-01','isfac').V);
+ck('التعليم اشتغل وتكلفة المصنع بقت أكبر من صفر', Math.round(F2.cogs)>0, String(Math.round(F2.cogs)));
+ck('والشريحة بقت مضيّة',
+  (await pg.locator('tr.dcexp .finrow').first().locator('.clschip.on', {hasText:'المصنع'}).count())===1);
+
+// ── وضع «مفصّل» بيحط الحسابات في القائمة نفسها عشان الطباعة
+await pg.evaluate(()=>{ setFinView('isco'); setFinDetail(1); }); await pg.waitForTimeout(450);
+const mdD=await pg.evaluate(()=> repModel('fin_isco'));
+ck('المفصّل فيه صفوف حسابات', mdD.body.filter(r=>r.type==='sub').length>20,
+  String(mdD.body.filter(r=>r.type==='sub').length));
+const mdS=await pg.evaluate(()=>{ setFinDetail(0); return repModel('fin_isco'); });
+ck('المختصر ٩ بنود بس', mdS.body.length===9 && !mdS.body.some(r=>r.type==='sub'),
+  String(mdS.body.length));
+await pg.evaluate(()=>{ segPick('3211',''); }); await pg.waitForTimeout(300);
+
 // مفيش ميداليات في القوائم المالية
-await pg.evaluate(()=>{ setFinView('isco'); }); await pg.waitForTimeout(400);
+await pg.evaluate(()=>{ save('_finView_','isco'); finOpen={}; render(true); }); await pg.waitForTimeout(400);
 ck('مفيش ميداليات في القائمة',
   !/🥇/.test(await pg.evaluate(()=> document.querySelector('table.rep').innerText)));
 ck('صفوف الإجمالي مميّزة', (await pg.locator('table.rep tr.m').count())===3);
-// الضغط على بند بيوري حساباته
-await pg.evaluate(()=> finLineSheet('isco','sales')); await pg.waitForTimeout(300);
+// الضغط على المبيعات بيوري حساباتها جوه الجدول
+await pg.evaluate(()=> toggleFinLine('isco','sales')); await pg.waitForTimeout(350);
 ck('الضغط على المبيعات بيوري حساباتها',
-  /مبيعات - مخزن الاسكندرية PVC/.test(await pg.evaluate(()=>document.body.innerText)));
+  /مبيعات - مخزن الاسكندرية PVC/.test(await pg.evaluate(()=> document.querySelector('tr.dcexp').innerText)));
 console.log(bad?('❌ فشل '+bad):'✅ كله تمام');
 await b.close(); process.exit(bad?1:0);
