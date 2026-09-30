@@ -26,14 +26,33 @@ header{background:var(--blue);color:#fff;padding:calc(10px + env(safe-area-inset
   display:flex;align-items:center;justify-content:space-between;flex-shrink:0;position:relative;z-index:20}
 header h1{font-size:16px;margin:0;font-weight:700;white-space:nowrap}
 @media (max-width:420px){ header .ver{display:none} header h1{font-size:15px} }
+/* الموبايلات الضيقة: اللوجو بيقول الاسم، فالكلام بيستخبى عشان ☰ والأزرار يدخلوا */
+@media (max-width:390px){ header h1 .ttl{display:none} }
 header .ver{font-size:10px;opacity:.75}
-nav{display:flex;gap:4px;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--border);
-  overflow-x:auto;flex-shrink:0;z-index:19}
-.nav-btn{flex:0 0 auto;padding:9px 13px;border-radius:12px;border:1px solid var(--border);background:var(--panel2);
-  color:var(--muted);font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;transition:.2s}
-.nav-btn.active{background:var(--blue);color:#fff;border-color:var(--blue);box-shadow:0 3px 10px rgba(29,78,216,.3)}
-nav{scrollbar-width:none}
-nav::-webkit-scrollbar{display:none}
+/* القايمة = نفس شكل الكمبيوتر في كل الأجهزة: على الموبايل درج بيطلع من
+   اليمين بزرار ☰، وعلى الكمبيوتر ثابتة جنب الشغل */
+nav{display:flex;flex-direction:column;gap:2px;background:var(--panel);overflow-y:auto;overflow-x:hidden;
+  position:fixed;top:0;bottom:0;right:0;width:min(84vw,300px);z-index:46;
+  padding:calc(14px + env(safe-area-inset-top,0px)) 10px calc(20px + env(safe-area-inset-bottom,0px));
+  border-left:1px solid var(--border);box-shadow:-8px 0 30px rgba(0,0,0,.18);
+  transform:translateX(110%);transition:transform .22s ease;visibility:hidden}
+body.menu-open nav{transform:none;visibility:visible}
+.menu-bd{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:45;display:none}
+body.menu-open .menu-bd{display:block}
+.nav-head{display:flex;align-items:center;justify-content:space-between;padding:2px 6px 10px;font-weight:800;font-size:15px}
+.nav-head button{border:none;background:var(--panel2);color:var(--text);width:32px;height:32px;border-radius:10px;font-size:15px;cursor:pointer}
+.nav-btn{width:100%;text-align:right;background:transparent;border:1px solid transparent;border-radius:12px;padding:11px 12px;
+  font-size:14px;font-weight:800;color:var(--text);cursor:pointer;white-space:nowrap;transition:background .15s}
+.nav-btn:hover{background:var(--panel2)}
+.nav-btn.active{background:var(--blue);color:#fff;box-shadow:0 3px 10px rgba(29,78,216,.25)}
+.nav-search{display:block;width:100%;text-align:right;padding:11px 12px;margin-bottom:8px;border-radius:12px;border:1px solid var(--border);
+  background:var(--panel2);color:var(--muted);font-size:13px;font-weight:700;cursor:pointer}
+.nav-sub{display:block;text-align:right;padding:8px 12px 8px 8px;margin-right:14px;width:calc(100% - 14px);
+  border:none;border-right:2px solid var(--border);background:transparent;color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;border-radius:0 8px 8px 0}
+.nav-sub:hover{color:var(--text);background:var(--panel2)}
+.nav-sub.on{color:var(--blue);border-right-color:var(--blue);background:var(--panel2)}
+#menuBtn{font-size:16px}
+header h1{cursor:pointer}
 main{flex:1;overflow-y:auto;padding:10px}
 
 /* ═══ مربعات الأرقام الملونة فوق كل قسم ═══ */
@@ -55,25 +74,16 @@ main{flex:1;overflow-y:auto;padding:10px}
 .srch-r .t1{font-size:13.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .srch-r .t2{font-size:11.5px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hdr-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer}
-.nav-search,.nav-sub,.nav-sec{display:none}
 /* ═══ الكمبيوتر: قايمة جانبية ثابتة على اليمين والشغل في النص ═══ */
 @media (min-width:1000px){
   body{display:grid;grid-template-columns:250px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
   header{grid-column:1/-1}
-  nav{grid-row:2;grid-column:1;flex-direction:column;overflow-y:auto;overflow-x:hidden;gap:2px;padding:12px 10px 20px;
-    border-bottom:none;border-left:1px solid var(--border)}
+  body nav{grid-row:2;grid-column:1;position:static;width:auto;transform:none;visibility:visible;box-shadow:none;
+    padding:12px 10px 20px;z-index:1}
   body main{grid-row:2;grid-column:2;padding:18px 24px}
-  .nav-btn{width:100%;text-align:right;background:transparent;border-color:transparent;padding:10px 12px;font-size:13.5px;color:var(--text)}
-  .nav-btn:hover{background:var(--panel2)}
-  .nav-btn.active{background:var(--blue);color:#fff}
-  .nav-search{display:block;width:100%;text-align:right;padding:10px 12px;margin-bottom:8px;border-radius:12px;border:1px solid var(--border);
-    background:var(--panel2);color:var(--muted);font-size:13px;font-weight:700;cursor:pointer}
-  .nav-sec{display:block;font-size:11px;color:var(--muted);font-weight:800;margin:10px 12px 4px}
-  .nav-sub{display:block;width:100%;text-align:right;padding:7px 12px 7px 8px;margin-right:14px;width:calc(100% - 14px);
-    border:none;border-right:2px solid var(--border);background:transparent;color:var(--muted);font-size:12.5px;font-weight:700;cursor:pointer;border-radius:0 8px 8px 0}
-  .nav-sub:hover{color:var(--text);background:var(--panel2)}
-  .nav-sub.on{color:var(--blue);border-right-color:var(--blue);background:var(--panel2)}
-  #hdrSearch{display:none}
+  .nav-btn{padding:10px 12px;font-size:13.5px}
+  .nav-sub{font-size:12.5px;padding:7px 12px 7px 8px}
+  .nav-head,.menu-bd,#menuBtn,#hdrSearch{display:none !important}
   body .fbar{right:250px}
   body .overlay{justify-content:center;align-items:center}
   body .sheet{max-width:640px;border-radius:22px;max-height:84vh}
@@ -260,8 +270,8 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.5</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
-<nav id="nav"></nav>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px">☰</button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.6</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
 
@@ -1104,11 +1114,14 @@ function renderNav(){
   // على الكمبيوتر: بحث فوق، وتحت القسم المفتوح شاشاته (على الموبايل بيستخبّوا)
   const subs = sc=> sc.map(x=>`<button class="nav-sub${x.on()?' on':''}" onclick="${x.go}">${esc(x.name)}</button>`).join('');
   $('#nav').innerHTML =
-    `<button class="nav-search" onclick="openSearch()">🔍 بحث في كل حاجة…</button>`
+    `<div class="nav-head"><span>القايمة</span><button onclick="toggleMenu(false)">✕</button></div>`
+    + `<button class="nav-search" onclick="toggleMenu(false);openSearch()">🔍 بحث في كل حاجة…</button>`
     + `<button class="nav-btn${module===null?' active':''}" onclick="goHome()">🏠 الرئيسية</button>`
-    + modules.map(m=>`<button class="nav-btn ${m.id===module?'active':''}" onclick="switchModule('${m.id}')">${m.icon} ${m.name}</button>`
+    + modules.map(m=>`<button class="nav-btn ${m.id===module?'active':''}" onclick="${m.id===module? 'toggleMenu(false)' : `switchModule('${m.id}')`}">${m.icon} ${m.name}</button>`
       + (m.id===module ? subs(appScreens().filter(x=> x.mod===m.id)) : '')).join('');
 }
+/* ☰ على الموبايل: الدرج بيقفل لوحده أول ما تختار حاجة (render بيقفله) */
+function toggleMenu(on){ document.body.classList.toggle('menu-open', on===undefined ? !document.body.classList.contains('menu-open') : !!on); }
 function switchModule(m){ module=(module===m)?null:m; q=''; openGroups=new Set(); render(true); }
 function goHome(){ module=null; q=''; openGroups=new Set(); render(true); }
 $('#fab').addEventListener('click', ()=>{
@@ -5512,6 +5525,7 @@ function renderHome(m){
     <div style="height:14px"></div></div>`;
 }
 function render(top){
+  document.body.classList.remove('menu-open');
   const m=$('#main'); const st=m? m.scrollTop : 0;
   renderInner();
   if(m) m.scrollTop = top? 0 : st;

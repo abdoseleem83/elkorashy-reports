@@ -47,6 +47,7 @@ await pg.evaluate(()=>{ switchModule('items'); }); await pg.waitForTimeout(300);
 ck('الرجوع بيوري الرئيسية تاني', (await pg.locator('.htile').count())===nMods);
 // زرار الرئيسية في الشريط بيرجّع من أي قسم
 await pg.evaluate(()=>{ switchModule('sales'); }); await pg.waitForTimeout(250);
+await pg.locator('#menuBtn').click(); await pg.waitForTimeout(300);
 await pg.locator('nav .nav-btn', {hasText:'الرئيسية'}).click(); await pg.waitForTimeout(300);
 ck('زرار 🏠 بيرجّع للرئيسية',
   (await pg.evaluate(()=>module))===null && (await pg.locator('.htile').count())===nMods);
