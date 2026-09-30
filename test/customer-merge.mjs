@@ -49,7 +49,7 @@ ck('جدول التحويل اتسجّل', st.alias['موزع طنطا القد�
 
 // التقارير بتشوف سطر واحد بس
 const d=await pg.evaluate(()=> repModel('dist'));
-const rows=d.body.filter(r=>r.type==='row').map(r=>r.cells[1]);
+const rows=d.body.filter(r=>r.type==='row').map(r=>r.cells[0]);
 ck('التقرير فيه سطر واحد للموزع', rows.length===1 && rows[0]==='موزع طنطا الجديد', rows.join('|'));
 
 // دمج تاني: التحويل القديم بيتحدّث للاسم الأحدث

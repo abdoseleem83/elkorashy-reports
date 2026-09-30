@@ -53,58 +53,57 @@ check('٦ تقارير جوه أيقونة التقارير',
 // ١) موزعين إجمالي
 const d1 = await pg.evaluate(()=>repModel('dist'));
 check('الإجمالي: الشهور أعمدة بأسماء عربية',
-  d1.header.join('|')==='م|بيان|أغسطس 2026|سبتمبر 2026|الإجمالي', d1.header.join('|'));
+  d1.header.join('|')==='بيان|أغسطس 2026|سبتمبر 2026|الإجمالي', d1.header.join('|'));
 const t1 = d1.body[d1.body.length-1].cells;
-check('أغسطس ١٩٠ ألف (المستبعد مش داخل)', t1[2]===190000, String(t1[2]));
-check('سبتمبر ١٨٠ ألف والإجمالي ٣٧٠', t1[3]===180000 && t1[4]===370000, t1.join('/'));
-check('مرتّب من الأعلى للأقل', d1.body[0].cells[1]==='موزع طنطا', String(d1.body[0].cells[1]));
+check('أغسطس ١٩٠ ألف (المستبعد مش داخل)', t1[1]===190000, String(t1[1]));
+check('سبتمبر ١٨٠ ألف والإجمالي ٣٧٠', t1[2]===180000 && t1[3]===370000, t1.join('/'));
+check('مرتّب من الأعلى للأقل', d1.body[0].cells[0]==='موزع طنطا', String(d1.body[0].cells[0]));
 
 // ٢) موزعين قطاعات
 const d2 = await pg.evaluate(()=>repModel('distsec'));
 check('القطاعات بالترتيب المطلوب: كرافت قبل كومبن قبل اكسسوارات قبل ابواب',
-  d2.header.join('|')==='م|الموزع|كرافت لاين|كومبن|اكسسوارات|ابواب|الإجمالي', d2.header.join('|'));
+  d2.header.join('|')==='الموزع|كرافت لاين|كومبن|اكسسوارات|ابواب|الإجمالي', d2.header.join('|'));
 const t2 = d2.body[d2.body.length-1].cells;
 check('كرافت ٥٠ · كومبن ١٦٠ · اكسسوارات ٢٠ · أبواب ١٤٠',
-  t2[2]===50000 && t2[3]===160000 && t2[4]===20000 && t2[5]===140000, t2.join('/'));
+  t2[1]===50000 && t2[2]===160000 && t2[3]===20000 && t2[4]===140000, t2.join('/'));
 // القطاعات لازم تطابق موزعين إجمالي: نفس الصفوف ونفس الإجمالي
 check('مبيعات الجملة سطر مجمّع زي موزعين إجمالي',
-  d2.body.some(r=> r.cells[1]==='مبيعات جملة'),
-  d2.body.filter(r=>r.type==='row').map(r=>r.cells[1]).join('|'));
+  d2.body.some(r=> r.cells[0]==='مبيعات جملة'),
+  d2.body.filter(r=>r.type==='row').map(r=>r.cells[0]).join('|'));
 check('إجمالي القطاعات = إجمالي موزعين إجمالي',
   t2[t2.length-1]===t1[t1.length-1], t2[t2.length-1]+' مقابل '+t1[t1.length-1]);
 
 // ٣) أبواب بالكود — كمية وقيمة
 const d3 = await pg.evaluate(()=>repModel('doorcode'));
 check('صف = الكود، وأعمدة المقاسات اللي فيها أرقام بس',
-  d3.header.join('|')==='م|الكود|80|90|الكمية|الإجمالي', d3.header.join('|'));
-const a05 = d3.body.find(r=> r.cells[1]==='A05');
-const a07 = d3.body.find(r=> r.cells[1]==='A07');
+  d3.header.join('|')==='الكود|80|90|الإجمالي', d3.header.join('|'));
+const a05 = d3.body.find(r=> r.cells[0]==='A05');
+const a07 = d3.body.find(r=> r.cells[0]==='A07');
 check('الكالون (إكسسوار) مستبعد خالص — مفيش «بدون كود»',
-  !d3.body.some(r=> r.cells[1]==='بدون كود'),
-  d3.body.filter(r=>r.type==='row').map(r=>r.cells[1]).join('|'));
-check('A05 اتجمّع من الشهرين ومن العميلين: ٩٠ قطعة', a05 && a05.cells[4]===90, JSON.stringify(a05&&a05.cells));
-check('وقيمته ١٠٠ ألف', a05 && a05.cells[5]===100000, String(a05&&a05.cells[5]));
-check('A05 (٨٠ سم) وقع في عمود ٨٠ مش ٩٠', a05 && a05.cells[2]===100000 && a05.cells[3]===0, JSON.stringify(a05&&a05.cells));
-check('A07 (٩٠ سم) وقع في عمود ٩٠', a07 && a07.cells[3]===40000, JSON.stringify(a07&&a07.cells));
+  !d3.body.some(r=> r.cells[0]==='بدون كود'),
+  d3.body.filter(r=>r.type==='row').map(r=>r.cells[0]).join('|'));
+check('وقيمة A05 ١٠٠ ألف', a05 && a05.cells[3]===100000, JSON.stringify(a05&&a05.cells));
+check('A05 (٨٠ سم) وقع في عمود ٨٠ مش ٩٠', a05 && a05.cells[1]===100000 && a05.cells[2]===0, JSON.stringify(a05&&a05.cells));
+check('A07 (٩٠ سم) وقع في عمود ٩٠', a07 && a07.cells[2]===40000, JSON.stringify(a07&&a07.cells));
 const t3 = d3.body.filter(r=>r.type==='tot')[0].cells;
 const q3 = d3.body[d3.body.length-1].cells;
-check('سطر الكمية تحت سطر القيمة', q3[1]==='كمية' && q3[2]===90 && q3[3]===40, q3.join('/'));
+check('سطر الكمية تحت سطر القيمة', q3[0]==='كمية' && q3[1]===90 && q3[2]===40 && q3[3]===130, q3.join('/'));
 const a05q = d3.body[d3.body.indexOf(a05)+1];
-check('كل كود تحته سطر كميته', a05q && a05q.type==='sub' && a05q.cells[2]===90,
+check('كل كود تحته سطر كميته', a05q && a05q.type==='sub' && a05q.cells[1]===90,
   JSON.stringify(a05q&&a05q.cells));
-check('إجمالي الأبواب ١٣٠ باب و١٤٠ ألف', t3[4]===130 && t3[5]===140000, t3.join('/'));
+check('إجمالي الأبواب ١٤٠ ألف والكمية في السطر اللي تحته', t3[3]===140000 && q3[3]===130, t3.join('/'));
 
 // ٤) موزعين أبواب — كمية وقيمة
 const d4 = await pg.evaluate(()=>repModel('distdoor'));
 check('موزعين أبواب: أعمدة شهور زي موزعين إجمالي',
-  d4.header.join('|')==='م|العميل|أغسطس 2026|سبتمبر 2026|الكمية|القيمة', d4.header.join('|'));
-const tanta = d4.body.find(r=> r.cells[1]==='موزع طنطا');
+  d4.header.join('|')==='العميل|أغسطس 2026|سبتمبر 2026|الكمية|القيمة', d4.header.join('|'));
+const tanta = d4.body.find(r=> r.cells[0]==='موزع طنطا');
 check('طنطا ٥٥ قطعة و٦٠ ألف مقسومة على الشهرين',
-  tanta && tanta.cells[2]===30000 && tanta.cells[3]===30000 && tanta.cells[4]===55 && tanta.cells[5]===60000,
+  tanta && tanta.cells[1]===30000 && tanta.cells[2]===30000 && tanta.cells[3]===55 && tanta.cells[4]===60000,
   JSON.stringify(tanta&&tanta.cells));
 const t4 = d4.body[d4.body.length-1].cells;
 check('موزعين أبواب: الأبواب بس — الكالون (قطاع فرعي إكسسوارات) مش داخل',
-  t4[4]===130 && t4[5]===140000, t4.join('/'));
+  t4[3]===130 && t4[4]===140000, t4.join('/'));
 
 // ── التصدير في كل تقرير
 for(const [id,nm] of [['dist','إجمالي'],['distsec','قطاعات'],['doorcode','أبواب بالكود'],['distdoor','موزعين أبواب']]){
@@ -125,7 +124,7 @@ const x = await pg.evaluate(()=>{
   try{ exportRep('doorcode','x'); } finally { window.saveAoaXlsx=real; }
   return got; });
 check('إكسل الأبواب بالكود',
-  x && x.d[0].join('|')==='م|الكود|80|90|الكمية|الإجمالي', x? x.d[0].join('|'):'مفيش');
+  x && x.d[0].join('|')==='الكود|80|90|الإجمالي', x? x.d[0].join('|'):'مفيش');
 check('عرض الأعمدة مطابق', x.w.length===x.d[0].length, x.w.length+' vs '+x.d[0].length);
 
 // ── جهاز فاضي خالص: لازم يوصل لزرار الرفع، مايبقاش طريق مسدود
