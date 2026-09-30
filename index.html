@@ -193,7 +193,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.6</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.7</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -409,7 +409,7 @@ let shortMain=new Set(), shortSub=new Set();
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
-  'paySendCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finMap_v1'];
+  'paySendCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
 /* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
@@ -526,7 +526,7 @@ const SYNC_VARS = {
   monthlyItems_v1: v=>{ monthlyItems = v; }, salesArchive_v1: v=>{ salesArchive = v; },
   custAlias_v1: v=>{ custAlias = v; }, secCfg_v1: v=>{ secCfg = v; },
   doorCodeMap_v1: v=>{ doorCodeMap = v; }, doorHide_v1: v=>{ doorHide = v; },
-  trialBal_v1: v=>{ trialBal = v; }, finMap_v1: v=>{ finMap = v; },
+  trialBal_v1: v=>{ trialBal = v; }, finSeg_v1: v=>{ finSeg = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
   invCounts_v1: v=>{ invCounts = v; }, ordMap_v1: v=>{ ordMap = v; }, gvMap_v1: v=>{ gvMap = v; },
   // ⚠️ التلاتة دول كانوا في SYNC_KEYS بس مش في SYNC_VARS — يعني بيتنزّلوا
@@ -1770,7 +1770,7 @@ function renderRepTable(m, id, md, opt){
     const i=n++;
     const tap=(md.rowTap||[])[i];
     const exp=(md.expand||[])[i];
-    const mdl = i<3 ? MEDALS[i]+' ' : '';      // الميدالية جنب الاسم/الكود
+    const mdl = (!opt.noMedal && i<3) ? MEDALS[i]+' ' : '';   // الميدالية جنب الاسم/الكود
     return `<tr>${r.cells.map((v,c)=>{
       if(tap && c===md.tapCol)
         return `<td style="cursor:pointer;text-decoration:underline" onclick="${tap}">${mdl}${repCell(v)} ⚙️</td>`;
@@ -2181,6 +2181,8 @@ function repModel(id){
   if(id==='distdoor') return repDistDoorsModel();
   if(id==='special')  return repSpecialModel();
   if(id==='cmpmo')    return repMonthCompareModel();
+  if(id==='tb')       return trialBalModel(finCur());
+  if(id.indexOf('fin_')===0) return finModel(finCur(), id.slice(4));
   return null;
 }
 function exportRep(id, kind){
@@ -2194,7 +2196,7 @@ function exportRep(id, kind){
       {title: md.title, sign: md.sign||[], hiLo: md.hiLo});
     return;
   }
-  { let i=0;                                       // ميداليات في المستند زي الشاشة
+  if(!/^(tb|fin_)/.test(id)){ let i=0;              // ميداليات في المستند زي الشاشة
     md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]+' '+r.cells[0]; i++; } }); }
   const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docTableHtml(md)}</div>`;
   if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
@@ -3602,7 +3604,7 @@ function payBar(allowMonth){
 const FIN_PASS='2372010';
 let finUnlocked=false;                               // للجلسة دي بس
 let trialBal = load('trialBal_v1', {});              // الفترة ← [{code,name,debit,credit}]
-let finMap   = load('finMap_v1', {});                // كود الحساب ← البند
+let finSeg   = load('finSeg_v1', {});                // كود الحساب ← القطاع (pvc | fac)
 const FIN_VIEWS=[
   {id:'tb',    name:'⚖️ موازين المراجعة'},
   {id:'isco',  name:'🏢 دخل الشركة'},
@@ -3655,13 +3657,19 @@ function importTrialBalance(file){
     try{
       const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
       const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
-      let h=0; const has=t=>String(t||'').replace(/\s/g,'');
-      while(h<rows.length && !(rows[h]||[]).some(c=>/حساب|مدين|دائن|رصيد/.test(has(c)))) h++;
-      if(h>=rows.length){ toast('الملف مفيهوش أعمدة حساب/مدين/دائن'); return; }
+      const has=t=>String(t||'').replace(/\s/g,'');
+      let h=0;
+      while(h<rows.length && !(rows[h]||[]).some(c=>/Account_Name|حساب|مدين|دائن|رصيد/i.test(has(c)))) h++;
+      if(h>=rows.length){ toast('الملف مفيهوش أعمدة الحساب والمدين والدائن'); return; }
       const hdr=(rows[h]||[]).map(c=>String(c||'').trim());
       const find=re=> hdr.findIndex(c=> re.test(c.replace(/\s/g,'')));
-      const ci=find(/^(كود|رقم)?الحساب$|^كود|^رقم$/), ni=find(/اسم|بيان|الحساب/),
-            di=find(/مدين/), cri=find(/دائن/);
+      /* صيغة برنامج المحاسبة: Account_Code · Account_Name · c_d · c_c (أرصدة آخر المدة)
+         وبرضه بنقبل أي ملف فيه أعمدة عربية: الحساب · مدين · دائن */
+      const ci = find(/^Account_Code$/i) >=0 ? find(/^Account_Code$/i) : find(/^(كود|رقم)?الحساب$|^كود$|^رقم$/);
+      const ni = find(/^Account_Name$/i) >=0 ? find(/^Account_Name$/i) : find(/اسم|بيان|الحساب/);
+      let di = find(/^c_d$/i), cri = find(/^c_c$/i);
+      if(di<0) di = find(/مدين/);
+      if(cri<0) cri = find(/دائن/);
       if(ni<0 || (di<0 && cri<0)){ toast('مش لاقي عمود الاسم أو المدين/الدائن'); return; }
       const list=[];
       for(let i=h+1;i<rows.length;i++){
@@ -3671,6 +3679,9 @@ function importTrialBalance(file){
         if(!d && !cr) continue;
         list.push({code: ci>=0? String(row[ci]||'').trim() : '', name:nm, debit:d, credit:cr});
       }
+      // تخمين أوّلي: أي حساب اسمه فيه PVC يبقى قطاع PVC
+      list.forEach(a=>{ if(a.code && !finSeg[a.code] && /pvc/i.test(a.name)) finSeg[a.code]='pvc'; });
+      save('finSeg_v1', finSeg);
       if(!list.length){ toast('مفيش صفوف فيها أرقام'); return; }
       const td=list.reduce((a,x)=>a+x.debit,0), tc=list.reduce((a,x)=>a+x.credit,0);
       pendingImport={type:'tb', list};
@@ -3727,18 +3738,125 @@ function renderTrialBalance(m){
     + (Math.abs(diff)>1? `<div class="warn">⚠️ الميزان مش متوازن — الفرق ${fmtN(Math.round(diff))}</div>`:'')
     + `<div id="tb_t"></div>`;
   $('#impTB').onchange=e=>{ if(e.target.files[0]) importTrialBalance(e.target.files[0]); };
-  renderRepTable($('#tb_t'), 'tb', md, {});
+  renderRepTable($('#tb_t'), 'tb', md, {noMedal:true});
 }
-/* ── القوائم التلاتة والمركز المالي ──
-   لسه محتاجين توزيع الحسابات على بنود كل قائمة. */
+/* ── قوائم الدخل والمركز المالي ──
+   بتتبني من الميزان نفسه: كل بند مجموع الحسابات الطرفية اللي
+   كودها بيبدأ بأرقام البند. الحسابات الأب مش بتتحسب عشان ما
+   يتعدّش الرقم مرتين. */
 const FIN_TITLES={isco:'قائمة دخل الشركة', ispvc:'قائمة دخل PVC', isfac:'قائمة دخل المصنع', bs:'المركز المالي'};
+const FIN_SEG_OF={isco:'', ispvc:'pvc', isfac:'fac'};
+const FIN_SEGS=[['','الشركة'],['pvc','PVC'],['fac','المصنع']];
+/* بند القائمة: pre = بدايات أكواد الحسابات، flip = الرصيد دائن (إيراد) */
+const IS_LINES=[
+  {k:'sales', n:'المبيعات',                pre:['41'], flip:true},
+  {k:'ret',   n:'مردود المبيعات',           pre:['33'], neg:true},
+  {k:'disc',  n:'خصم مسموح به',             pre:['35'], neg:true},
+  {k:'net',   n:'صافي المبيعات',            sub:true},
+  {k:'cogs',  n:'تكلفة البضاعة المباعة',    pre:['32'], neg:true},
+  {k:'gross', n:'مجمل الربح',               sub:true},
+  {k:'oth',   n:'إيرادات أخرى',             pre:['43','44','45'], flip:true},
+  {k:'exp',   n:'المصروفات العمومية',       pre:['31'], neg:true},
+  {k:'profit',n:'صافي الربح',               sub:true},
+];
+const BS_LINES=[
+  {k:'fixed', n:'الأصول الثابتة',            pre:['11']},
+  {k:'cur',   n:'الأصول المتداولة',          pre:['12']},
+  {k:'assets',n:'إجمالي الأصول',             sub:true},
+  {k:'cap',   n:'رأس المال',                 pre:['2101'], flip:true},
+  {k:'liabL', n:'إلتزامات طويلة الأجل',      pre:['21'], not:['2101'], flip:true},
+  {k:'liabS', n:'الإلتزامات المتداولة',      pre:['22'], flip:true},
+  {k:'profit',n:'صافي ربح الفترة',           sub:true},
+  {k:'total', n:'إجمالي الإلتزامات وحقوق الملكية', sub:true},
+];
+/* الحسابات الطرفية بس (اللي مالهاش حسابات تحتها) */
+function finLeaves(per){
+  const list=trialBal[per]||[];
+  const codes=list.map(a=>String(a.code||'')).filter(Boolean);
+  const pre={}; codes.forEach(c=>{ for(let i=1;i<c.length;i++) pre[c.slice(0,i)]=1; });
+  return list.filter(a=>{ const c=String(a.code||''); return c && !pre[c]; })
+             .map(a=>({code:String(a.code), name:a.name, bal:(a.debit||0)-(a.credit||0)}));
+}
+function finAccounts(per, line, seg){
+  return finLeaves(per).filter(a=>
+    (line.pre||[]).some(p=> a.code.startsWith(p)) &&
+    !(line.not||[]).some(p=> a.code.startsWith(p)) &&
+    (!seg || (finSeg[a.code]||'')===seg));
+}
+function finLineVal(per, line, seg){
+  const v=finAccounts(per, line, seg).reduce((a,x)=>a+x.bal,0);
+  return line.flip? -v : v;
+}
+function finStatement(per, id){
+  const seg=FIN_SEG_OF[id]||'', isBS = id==='bs';
+  const L = isBS? BS_LINES : IS_LINES, V={};
+  L.forEach(l=>{ if(!l.sub) V[l.k]=finLineVal(per, l, isBS? '' : seg); });
+  if(isBS){
+    V.assets = V.fixed + V.cur;
+    const P=IS_LINES.filter(l=>!l.sub);
+    const pv={}; P.forEach(l=> pv[l.k]=finLineVal(per,l,''));
+    V.profit = pv.sales - pv.ret - pv.disc - pv.cogs + pv.oth - pv.exp;
+    V.total  = V.cap + V.liabL + V.liabS + V.profit;
+  } else {
+    V.net    = V.sales - V.ret - V.disc;
+    V.gross  = V.net - V.cogs;
+    V.profit = V.gross + V.oth - V.exp;
+  }
+  return {lines:L, V, seg, isBS};
+}
+function finModel(per, id){
+  const R=finStatement(per, id), body=[];
+  R.lines.forEach(l=> body.push({type: l.sub? 'tot':'row',
+    cells:[(l.neg?'( ناقص ) ':'')+l.n, Math.round(R.V[l.k]||0)]}));
+  return {title:(FIN_TITLES[id]||'')+' — '+moName(per), header:['البيان','المبلغ'],
+    body, rowTap:R.lines.filter(l=>!l.sub).map(l=>`finLineSheet('${id}','${l.k}')`), tapCol:0, R};
+}
+function finLineSheet(id, k){
+  const per=finCur(), R=finStatement(per, id);
+  const line=R.lines.find(l=>l.k===k); if(!line||line.sub) return;
+  const accs=finAccounts(per, line, R.isBS? '' : R.seg);
+  openSheet(`<h3>${esc(line.n)}</h3>
+    <p style="font-size:12.5px;color:var(--muted);line-height:1.7">${accs.length} حساب —
+      ${fmtN(Math.round(finLineVal(per,line,R.isBS?'':R.seg)))}${
+      R.isBS? '' : '<br>دوس على القطاع قدام أي حساب علشان يتحسب في قائمة PVC أو المصنع.'}</p>
+    <div style="max-height:52vh;overflow:auto">${accs.map(a=>
+      `<div class="card" style="flex-wrap:wrap"><div class="info" style="flex-basis:100%">
+        <div class="name" style="font-size:12.5px">${esc(a.name)}</div>
+        <div class="sub">${esc(a.code)}</div></div>
+        <div style="font-weight:800;color:var(--blue);font-variant-numeric:tabular-nums">${fmtN(Math.round(line.flip? -a.bal : a.bal))}</div>
+        ${R.isBS? '' : `<div class="clsrow" style="flex-basis:100%">${FIN_SEGS.map(([sk,sn])=>
+          `<button class="clschip${(finSeg[a.code]||'')===sk?' on':''}"
+            onclick="setFinSeg('${esc(a.code)}','${sk}','${id}','${k}')">${sn}</button>`).join('')}</div>`}
+      </div>`).join('')}</div>
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">تمام</button></div>`);
+}
+function setFinSeg(code, seg, id, k){
+  if(seg) finSeg[code]=seg; else delete finSeg[code];
+  save('finSeg_v1', finSeg); render(); finLineSheet(id, k);
+}
+/* الحسابات اللي لسه مش متخصّصة لقطاع — عشان ما تضيعش من قوائم PVC والمصنع */
+function finUnassigned(per){
+  const pre=IS_LINES.filter(l=>l.pre).reduce((a,l)=>a.concat(l.pre),[]);
+  return finLeaves(per).filter(a=> pre.some(p=>a.code.startsWith(p)) && !finSeg[a.code] && a.bal);
+}
 function renderFinStatement(m, id){
   const per=finCur();
-  m.innerHTML = `<div class="hsec">${FIN_TITLES[id]||''}</div>`
-    + (!per? `<div class="empty">ارفع ميزان مراجعة الأول من «موازين المراجعة»</div>`
-      : `<div class="empty" style="line-height:2">ميزان ${moName(per)} متحمّل و${(trialBal[per]||[]).length} حساب جاهزين.<br>
-          فاضل تقولّي كل حساب يروح أنهي بند في «${FIN_TITLES[id]||''}» —<br>
-          ابعتلي شكل القائمة اللي بتطلعها دلوقتي وأنا أبنيها بالظبط كده.</div>`);
+  if(!per){ m.innerHTML=`<div class="empty">ارفع ميزان مراجعة الأول من «موازين المراجعة»</div>`; return; }
+  const md=finModel(per, id), R=md.R;
+  let bars='';
+  if(!R.isBS && R.seg){
+    const u=finUnassigned(per);
+    if(u.length) bars += `<div class="warn">⚠️ ${u.length} حساب لسه مش متخصّص لقطاع، فمش داخل في القائمة دي.
+      دوس على أي بند تحت وحدّد قطاع كل حساب.</div>`;
+  }
+  if(R.isBS){
+    const d=R.V.assets - R.V.total;
+    bars += Math.abs(d)>1
+      ? `<div class="warn">⚠️ المركز مش متوازن — الفرق ${fmtN(Math.round(d))}</div>`
+      : `<div class="hnote" style="--ac:var(--ok)"><span class="dot"></span><span>✅ متوازن — الأصول = الإلتزامات وحقوق الملكية</span></div>`;
+  }
+  m.innerHTML = `<div class="hsec">${esc(FIN_TITLES[id]||'')} — ${moName(per)}</div><div id="fin_t"></div>`;
+  renderRepTable($('#fin_t'), 'fin_'+id, md, {boxes:bars, noColor:[1], noMedal:true});
 }
 function renderPayroll(m){
   const tabs=['👥 العاملين','✍️ الحضور والخصومات','📊 النواتج'];
