@@ -75,21 +75,24 @@ check('إجمالي القطاعات = إجمالي موزعين إجمالي',
 
 // ٣) أبواب بالكود — كمية وقيمة
 const d3 = await pg.evaluate(()=>repModel('doorcode'));
-check('صف = الكود وأعمدة المقاسات من غير عمود الصنف',
-  d3.header.join('|')==='م|الكود|70|80|90|متر|برور وحلق|خدمات|الكمية|الإجمالي', d3.header.join('|'));
+check('صف = الكود، وأعمدة المقاسات اللي فيها أرقام بس',
+  d3.header.join('|')==='م|الكود|80|90|الكمية|الإجمالي', d3.header.join('|'));
 const a05 = d3.body.find(r=> r.cells[1]==='A05');
 const a07 = d3.body.find(r=> r.cells[1]==='A07');
-check('A05 اتجمّع من الشهرين ومن العميلين: ٩٠ قطعة', a05 && a05.cells[8]===90, JSON.stringify(a05&&a05.cells));
-check('وقيمته ١٠٠ ألف', a05 && a05.cells[9]===100000, String(a05&&a05.cells[9]));
-check('A05 (٨٠ سم) وقع في عمود ٨٠ مش ٩٠', a05 && a05.cells[3]===100000 && a05.cells[4]===0, JSON.stringify(a05&&a05.cells));
-check('A07 (٩٠ سم) وقع في عمود ٩٠', a07 && a07.cells[4]===40000, JSON.stringify(a07&&a07.cells));
+check('الكالون (إكسسوار) مستبعد خالص — مفيش «بدون كود»',
+  !d3.body.some(r=> r.cells[1]==='بدون كود'),
+  d3.body.filter(r=>r.type==='row').map(r=>r.cells[1]).join('|'));
+check('A05 اتجمّع من الشهرين ومن العميلين: ٩٠ قطعة', a05 && a05.cells[4]===90, JSON.stringify(a05&&a05.cells));
+check('وقيمته ١٠٠ ألف', a05 && a05.cells[5]===100000, String(a05&&a05.cells[5]));
+check('A05 (٨٠ سم) وقع في عمود ٨٠ مش ٩٠', a05 && a05.cells[2]===100000 && a05.cells[3]===0, JSON.stringify(a05&&a05.cells));
+check('A07 (٩٠ سم) وقع في عمود ٩٠', a07 && a07.cells[3]===40000, JSON.stringify(a07&&a07.cells));
 const t3 = d3.body.filter(r=>r.type==='tot')[0].cells;
 const q3 = d3.body[d3.body.length-1].cells;
-check('سطر الكمية تحت سطر القيمة', q3[1]==='كمية' && q3[3]===90 && q3[4]===40, q3.join('/'));
+check('سطر الكمية تحت سطر القيمة', q3[1]==='كمية' && q3[2]===90 && q3[3]===40, q3.join('/'));
 const a05q = d3.body[d3.body.indexOf(a05)+1];
-check('كل كود تحته سطر كميته', a05q && a05q.type==='sub' && a05q.cells[3]===90,
+check('كل كود تحته سطر كميته', a05q && a05q.type==='sub' && a05q.cells[2]===90,
   JSON.stringify(a05q&&a05q.cells));
-check('إجمالي الأبواب ١٣٠ باب + ٥٠٠ كالون', t3[8]===630 && t3[9]===149000, t3.join('/'));
+check('إجمالي الأبواب ١٣٠ باب و١٤٠ ألف', t3[4]===130 && t3[5]===140000, t3.join('/'));
 
 // ٤) موزعين أبواب — كمية وقيمة
 const d4 = await pg.evaluate(()=>repModel('distdoor'));
@@ -122,7 +125,7 @@ const x = await pg.evaluate(()=>{
   try{ exportRep('doorcode','x'); } finally { window.saveAoaXlsx=real; }
   return got; });
 check('إكسل الأبواب بالكود',
-  x && x.d[0].join('|')==='م|الكود|70|80|90|متر|برور وحلق|خدمات|الكمية|الإجمالي', x? x.d[0].join('|'):'مفيش');
+  x && x.d[0].join('|')==='م|الكود|80|90|الكمية|الإجمالي', x? x.d[0].join('|'):'مفيش');
 check('عرض الأعمدة مطابق', x.w.length===x.d[0].length, x.w.length+' vs '+x.d[0].length);
 
 // ── جهاز فاضي خالص: لازم يوصل لزرار الرفع، مايبقاش طريق مسدود
