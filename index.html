@@ -199,7 +199,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.4</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -307,6 +307,7 @@ let monthlyItems = load('monthlyItems_v1', {});      // الشهر ← الصن�
 let salesArchive = load('salesArchive_v1', []);      // شهور مؤرشفة — برّه التقارير
 let custAlias = load('custAlias_v1', {});            // اسم قديم ← الاسم الجديد بعد الدمج
 let secCfg = load('secCfg_v1', {});                  // القطاع ← {name: اسم بديل, hide: مخفي}
+let secMove = load('secMove_v1', {});                // مجموعة رئيسية ← العمود اللي تروحه
 let doorCodeMap = load('doorCodeMap_v1', {});        // اسم صنف الباب ← كود بالإيد
 let doorHide = load('doorHide_v1', []);              // أصناف اتشالت من تقارير الأبواب
 
@@ -323,20 +324,55 @@ const SECTOR_MAP={
 const SECTOR_ORDER=['كرافت لاين','نيو لاين','كومبن','اكسسوارات','جيفز','ابواب','أخرى','غير معروف'];
 const SECTOR_ALIAS={'قطاعات كرافت لاين':'كرافت لاين','قطاعات PVC كومبن':'كومبن','ابواب WPC':'ابواب'};
 const secName = s2 => SECTOR_ALIAS[s2] || s2;
+/* المفتاح المخزّن ممكن يكون مجموعة رئيسية (البيانات الجديدة) أو اسم
+   قطاع جاهز (بيانات قديمة). secMove بتخليك تنقل أي مجموعة لعمود تاني. */
+function secColOf(key){
+  const k=String(key||'');
+  if(secMove[k]) return secMove[k];
+  if(SECTOR_MAP[k]) return SECTOR_MAP[k];
+  return secName(k);
+}
 const secLabel  = k => (secCfg[k]||{}).name || k;
 const secHidden = k => !!(secCfg[k]||{}).hide;
 /* المجموعات الرئيسية اللي بتتجمّع تحت القطاع ده */
+/* كل المفاتيح الموجودة في البيانات، وكل واحد رايح أنهي عمود */
+function secAllKeys(){
+  const set={};
+  salesMonths().forEach(mo=> Object.values(monthlySector[mo]||{}).forEach(o=>
+    Object.keys(o||{}).forEach(k=> set[k]=(set[k]||0)+(o[k]||0))));
+  Object.keys(SECTOR_MAP).forEach(g=>{ if(!(g in set)) set[g]=0; });
+  return set;
+}
+function secAllCols(){
+  const keys=secAllKeys(), cols={};
+  Object.keys(keys).forEach(k=> cols[secColOf(k)]=1);
+  SECTOR_ORDER.forEach(c=> cols[c]=1);
+  return Object.keys(cols).sort(secSort);
+}
 function secGroups(k){
-  return Object.keys(SECTOR_MAP).filter(g=> secName(SECTOR_MAP[g])===k);
+  const keys=secAllKeys();
+  return Object.keys(keys).filter(g=> secColOf(g)===k).map(g=>({name:g, val:keys[g]}))
+    .sort((a,b)=> b.val-a.val);
+}
+function secMoveTo(group, col){
+  if(col===secColOf(group)) return;
+  const nat = SECTOR_MAP[group] ? SECTOR_MAP[group] : secName(group);
+  if(col===nat) delete secMove[group]; else secMove[group]=col;
+  save('secMove_v1', secMove); render(); toast('اتنقل لعمود «'+secLabel(col)+'»');
 }
 function secSheet(k){
-  const gs=secGroups(k), unk = k==='غير معروف' ? unknownItems() : [];
+  const gs=secGroups(k), cols=secAllCols(), unk = k==='غير معروف' ? unknownItems() : [];
   const cfg=secCfg[k]||{};
   openSheet(`<h3>عمود «${esc(secLabel(k))}»</h3>
     <div class="f-row"><label>اسم العمود</label>
       <input id="sc_name" value="${esc(cfg.name||k)}" placeholder="${esc(k)}"></div>
-    ${gs.length? `<div class="t3lbl">المجموعات اللي تحته</div>
-      ${gs.map(g=>`<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(g)}</div></div></div>`).join('')}`:''}
+    ${gs.length? `<div class="t3lbl">البنود اللي تحته — دوس على عمود تنقله له</div>
+      ${gs.map(g=>`<div class="card" style="flex-wrap:wrap">
+        <div class="info" style="flex-basis:100%"><div class="name" style="font-size:12.5px">${esc(g.name)}</div></div>
+        <div style="font-weight:800;color:var(--blue);font-variant-numeric:tabular-nums">${repFmt(g.val)}</div>
+        <div class="clsrow" style="flex-basis:100%">${cols.map(c=>
+          `<button class="clschip${c===k?' on':''}" onclick="secMoveTo('${esc(g.name)}','${esc(c)}')">${esc(secLabel(c))}</button>`).join('')}</div>
+      </div>`).join('')}`:''}
     ${k==='غير معروف'? `<div class="t3lbl">أصناف مش موجودة في «الأصناف» (${unk.length})</div>
       ${unk.length? `<div style="max-height:32vh;overflow:auto">${unk.slice(0,60).map(r=>
         `<div class="card"><div class="info"><div class="name" style="font-size:12.5px">${esc(r.name)}</div></div>
@@ -415,7 +451,7 @@ let shortMain=new Set(), shortSub=new Set();
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
-  'paySendCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1'];
+  'paySendCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
 /* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
@@ -530,7 +566,7 @@ const SYNC_VARS = {
   whShortage_v1: v=>{ whShortage = v; }, customers_v1: v=>{ customers = v; },
   monthlySales_v1: v=>{ monthlySales = v; }, monthlySector_v1: v=>{ monthlySector = v; }, monthlyDoors_v1: v=>{ monthlyDoors = v; },
   monthlyItems_v1: v=>{ monthlyItems = v; }, salesArchive_v1: v=>{ salesArchive = v; },
-  custAlias_v1: v=>{ custAlias = v; }, secCfg_v1: v=>{ secCfg = v; },
+  custAlias_v1: v=>{ custAlias = v; }, secCfg_v1: v=>{ secCfg = v; }, secMove_v1: v=>{ secMove = v; },
   doorCodeMap_v1: v=>{ doorCodeMap = v; }, doorHide_v1: v=>{ doorHide = v; },
   trialBal_v1: v=>{ trialBal = v; }, finSeg_v1: v=>{ finSeg = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
@@ -1645,6 +1681,7 @@ const SALES_REPORTS = [
   {id:'doorcode',  name:'🚪 أبواب بالكود'},
   {id:'distdoor',  name:'🚪 موزعين أبواب'},
   {id:'special',   name:'🏷️ مبيعات خاصة'},
+  {id:'buys',      name:'🛒 مشتريات'},
   {id:'cmpmo',     name:'⚖️ مقارنة شهور'},
 ];
 function setSalesReport(id){ const cur=load('_salesRep_',null); save('_salesRep_', cur===id?null:id); render(true); }
@@ -1658,6 +1695,7 @@ function renderSalesReportsHub(m){
   else if(v==='doorcode') renderRepDoorsByCode(c);
   else if(v==='distdoor') renderRepDistDoors(c);
   else if(v==='special') renderRepSpecial(c);
+  else if(v==='buys') renderRepBuys(c);
   else if(v==='cmpmo') renderRepMonthCompare(c);
   else c.innerHTML = `<div class="empty">اختار التقرير من فوق</div>`;
 }
@@ -1752,6 +1790,20 @@ function modelHiLo(md, noColor){
   });
   return out;
 }
+function modelBoxesHtml(md){
+  return ((md && md.boxes) || []).map(g=> topBoxes(g.rows, g.l)).join('');
+}
+/* نفس مربعات «أعلى ٣» جوه ملف الـPDF والصورة */
+function docBoxesHtml(md){
+  return ((md && md.boxes) || []).map(g=>{
+    const t=(g.rows||[]).filter(r=> r.val>0).slice(0,3);
+    if(!t.length) return '';
+    return `<div class="dxtop"><div class="dxtl">${esc(g.l)}</div><div class="dxtr">${
+      t.map((r,i)=>`<div class="dxt dxt${i+1}"><div class="m">${MEDALS[i]}</div>
+        <div class="n">${esc(r.name)}</div><div class="v">${fmtN(Math.round(r.val))}</div></div>`).join('')
+    }</div></div>`;
+  }).join('');
+}
 const repCell = v => typeof v==='number'
   ? (v===0 ? '—' : (Number.isInteger(v) ? v.toLocaleString('en-US') : fmt1(v)))
   : esc(v);
@@ -1834,7 +1886,7 @@ function buildDistSectors(){
       if(!cls || cls==='مستبعد' || cls==='عميل ابواب' || cls==='مبيعات خاصة') return;
       const key = cls==='موزع' ? cname : cls;
       Object.entries(bySec).forEach(([sec0, v])=>{
-        const sec = secName(sec0);
+        const sec = secColOf(sec0);
         secs.add(sec); rows[key]=rows[key]||{}; rows[key][sec]=(rows[key][sec]||0)+v;
       });
     });
@@ -1852,15 +1904,15 @@ function repDistSectorsModel(){
   body.push({type:'tot', cells:['الإجمالي', ...d.tot.map(v=>Math.round(v)), Math.round(d.total)]});
   return {title:'مبيعات الموزعين حسب القطاع — '+periodLabel(),
     header:['الموزع', ...d.cols.map(secLabel), 'الإجمالي'],
-    headTap:['', ...d.cols.map(k=>`secSheet('${esc(k)}')`), ''], body, d};
+    headTap:['', ...d.cols.map(k=>`secSheet('${esc(k)}')`), ''], body, d,
+    boxes:[{l:'أعلى ٣ مجموعات', rows:d.cols.map((c,i)=>({name:secLabel(c), val:d.tot[i]})).sort((a,b)=>b.val-a.val)},
+           {l:'أعلى ٣ أصناف', rows:topItems()}]};
 }
 function renderRepDistSectors(m){
   const d = buildDistSectors();
   if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات مصنّفة — صنّف العملاء من شاشة العملاء</div>`; return; }
-  const topSecs = d.cols.map((c,i)=> ({name:secLabel(c), val:d.tot[i]})).sort((a,b)=> b.val-a.val);
-  renderRepTable(m, 'distsec', repDistSectorsModel(), {
-    boxes: hiddenSecBar() + topBoxes(topSecs,'أعلى ٣ مجموعات') + topBoxes(topItems(),'أعلى ٣ أصناف')
-  });
+  const md=repDistSectorsModel();
+  renderRepTable(m, 'distsec', md, { boxes: hiddenSecBar() + modelBoxesHtml(md) });
 }
 
 /* ٣) الأبواب بالكود — صف لكل كود، وأعمدة للمقاسات
@@ -1925,6 +1977,7 @@ function repDoorsByCodeModel(){
   body.push({type:'sub', cells:['كمية', ...d.totQ, rnd2(d.qty)]});
   return {title:'مبيعات الأبواب بالكود — '+periodLabel(),
     header:['الكود', ...d.cols, 'الإجمالي'],
+    boxes:[{l:'أعلى ٣ أكواد', rows:d.list.map(r=>({name:r.code+' — '+r.name, val:r.val}))}],
     tapCol:0, rowTap:d.list.map(r=>`toggleDoorCode(&quot;${esc(r.code)}&quot;)`),
     expand:d.list.map(r=> dcOpen===r.code ? doorCodeRowHtml(r) : ''), body, d};
 }
@@ -1939,9 +1992,10 @@ function renderRepDoorsByCode(m){
       d.noCode.length? ' — ابدأ من زرار «من غير كود» فوق' : ' — ارفع شيت مبيعات فيه أصناف أبواب'}</div>`;
     return;
   }
-  renderRepTable(m, 'doorcode', repDoorsByCodeModel(), {
+  const md=repDoorsByCodeModel();
+  renderRepTable(m, 'doorcode', md, {
     warn: !d.qty? 'الشيت المرفوع مكانش فيه عمود كمية، فالتقرير بالقيمة بس.' : '',
-    boxes: bars + topBoxes(d.list.map(r=>({name:r.code+' — '+r.name, val:r.val})), 'أعلى ٣ أكواد')
+    boxes: bars + modelBoxesHtml(md)
   });
 }
 
@@ -2062,15 +2116,55 @@ function repDistDoorsModel(){
     cells:[r.name, ...r.cells, rnd2(r.qty), Math.round(r.val)]}));
   body.push({type:'tot', cells:['الإجمالي', ...d.tot, rnd2(d.qty), Math.round(d.val)]});
   return {title:'مبيعات الأبواب للعملاء — '+periodLabel(),
-    header:['العميل', ...d.cols.map(c=>c.label), 'الكمية','القيمة'], body, d};
+    header:['العميل', ...d.cols.map(c=>c.label), 'الكمية','القيمة'], body, d,
+    boxes:[{l:'أعلى ٣ عملاء', rows:d.list.map(r=>({name:r.name, val:r.val}))}]};
 }
 function renderRepDistDoors(m){
   const d = buildDistDoors();
   if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات أبواب</div>`; return; }
-  renderRepTable(m, 'distdoor', repDistDoorsModel(), {
+  const md=repDistDoorsModel();
+  renderRepTable(m, 'distdoor', md, {
     warn: !d.qty? 'الشيت المرفوع مكانش فيه عمود كمية، فالتقرير بالقيمة بس.' : '',
-    boxes: topBoxes(d.list, 'أعلى ٣ عملاء')
+    boxes: modelBoxesHtml(md)
   });
+}
+
+/* ٥) مشتريات — كل عميل جملة بسطر، وقدامه اشترى كام من كل مجموعة.
+      نفس شكل «موزعين قطاعات» بس للعملاء مش للموزعين. */
+function buildBuys(){
+  const custByName={}; customers.forEach(c=> custByName[c.name]=c);
+  const secs=new Set(), rows={};
+  salesMonths().forEach(mo=>{
+    Object.entries(monthlySector[mo]||{}).forEach(([cname, bySec])=>{
+      const cls=(custByName[cname]||{}).cls||'';
+      if(cls!=='مبيعات جملة') return;                 // عملاء الجملة بس
+      Object.entries(bySec).forEach(([k, v])=>{
+        const sec=secColOf(k);
+        secs.add(sec); rows[cname]=rows[cname]||{}; rows[cname][sec]=(rows[cname][sec]||0)+v;
+      });
+    });
+  });
+  const cols=[...secs].filter(sec=> !secHidden(sec) && Object.keys(rows).some(n=> rows[n][sec])).sort(secSort);
+  const list=Object.keys(rows).map(n=>({name:n, cells:cols.map(c=> rows[n][c]||0),
+    total:cols.reduce((a,c)=> a+(rows[n][c]||0), 0)})).sort((a,b)=> b.total-a.total);
+  const tot=cols.map((c,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
+  return {cols, list, tot, total: tot.reduce((a,b)=>a+b,0)};
+}
+function repBuysModel(){
+  const d=buildBuys(), body=[];
+  d.list.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells.map(v=>Math.round(v)), Math.round(r.total)]}));
+  body.push({type:'tot', cells:['الإجمالي', ...d.tot.map(v=>Math.round(v)), Math.round(d.total)]});
+  return {title:'مشتريات عملاء الجملة — '+periodLabel(),
+    header:['العميل', ...d.cols.map(secLabel), 'الإجمالي'],
+    headTap:['', ...d.cols.map(k=>`secSheet('${esc(k)}')`), ''], body, d,
+    boxes:[{l:'أعلى ٣ عملاء', rows:d.list.map(r=>({name:r.name, val:r.total}))},
+           {l:'أعلى ٣ مجموعات', rows:d.cols.map((c,i)=>({name:secLabel(c), val:d.tot[i]})).sort((a,b)=>b.val-a.val)}]};
+}
+function renderRepBuys(m){
+  const d=buildBuys();
+  if(!d.list.length){ m.innerHTML=`<div class="empty">مفيش مشتريات لعملاء جملة —<br>صنّف العملاء «مبيعات جملة» من شاشة العملاء</div>`; return; }
+  const md=repBuysModel();
+  renderRepTable(m, 'buys', md, {boxes: hiddenSecBar() + modelBoxesHtml(md)});
 }
 
 /* ٥) مبيعات خاصة — كل عميل مصنّف «مبيعات خاصة» بسطر وعمود لكل شهر */
@@ -2093,14 +2187,14 @@ function repSpecialModel(){
   d.list.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells, r.total]}));
   body.push({type:'tot', cells:['الإجمالي', ...d.tot, d.total]});
   return {title:'المبيعات الخاصة — '+periodLabel(),
-    header:['العميل', ...d.cols.map(c=>c.label), 'الإجمالي'], body, d};
+    header:['العميل', ...d.cols.map(c=>c.label), 'الإجمالي'], body, d,
+    boxes:[{l:'أعلى ٣', rows:d.list.map(r=>({name:r.name, val:r.total}))}]};
 }
 function renderRepSpecial(m){
   const d=buildSpecial();
   if(!d.list.length){ m.innerHTML=`<div class="empty">مفيش عملاء مصنّفين «مبيعات خاصة» —<br>صنّفهم من شاشة العملاء</div>`; return; }
-  renderRepTable(m, 'special', repSpecialModel(), {
-    boxes: topBoxes(d.list.map(r=>({name:r.name, val:r.total})), 'أعلى ٣')
-  });
+  const md=repSpecialModel();
+  renderRepTable(m, 'special', md, { boxes: modelBoxesHtml(md) });
 }
 
 /* ═══ ٦) مقارنة المبيعات بين شهرين ═══
@@ -2144,7 +2238,8 @@ function repMonthCompareModel(){
   body.push({type:'tot', cells:['الإجمالي', Math.round(d.ta), Math.round(d.tb), Math.round(tdiff), pctTxt(tpct)]});
   return {title:`مقارنة المبيعات — ${moName(d.a)} مقابل ${moName(d.b)}`,
     header:['بيان', moName(d.a)||'—', moName(d.b)||'—', 'الفرق', 'النسبة'],
-    body, sign:['','','','auto','auto'], d};
+    body, sign:['','','','auto','auto'], d,
+    boxes:[{l:'أعلى ٣ في '+moName(d.b), rows:d.list.map(r=>({name:r.name, val:r.vb}))}]};
 }
 function renderRepMonthCompare(m){
   const d=buildMonthCompare();
@@ -2186,6 +2281,7 @@ function repModel(id){
   if(id==='doorcode') return repDoorsByCodeModel();
   if(id==='distdoor') return repDistDoorsModel();
   if(id==='special')  return repSpecialModel();
+  if(id==='buys')     return repBuysModel();
   if(id==='cmpmo')    return repMonthCompareModel();
   if(id==='tb')       return trialBalModel(finCur());
   if(id.indexOf('fin_')===0) return finModel(finCur(), id.slice(4), finDetailOn());
@@ -2204,7 +2300,7 @@ function exportRep(id, kind){
   }
   if(!/^(tb|fin_)/.test(id)){ let i=0;              // ميداليات في المستند زي الشاشة
     md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]+' '+r.cells[0]; i++; } }); }
-  const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docTableHtml(md)}</div>`;
+  const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docBoxesHtml(md)}${docTableHtml(md)}</div>`;
   if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
 }
 function setSalesTab(n){ const cur=load('_salesTab_',null); save('_salesTab_', cur===n?null:n); q=''; render(true); }
@@ -2325,16 +2421,18 @@ function repDistTotalModel(){
   d.list.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells, r.total]}));
   body.push({type:'tot', cells:['الإجمالي', ...d.tot, d.total]});
   return {title:'مبيعات الموزعين — إجمالي '+periodLabel(),
-    header:['بيان', ...d.cols.map(c=>c.label), 'الإجمالي'], body, d};
+    header:['بيان', ...d.cols.map(c=>c.label), 'الإجمالي'], body, d,
+    boxes:[{l:'أعلى ٣', rows:d.list.map(r=>({name:r.name, val:r.total}))}]};
 }
 function renderSalesReport(m){
   const d=buildDistTotal();
   if(!d.cols.length){ m.innerHTML=`<div class="empty">لا توجد شهور مستوردة</div>`; return; }
   if(!d.list.length){ m.innerHTML=`<div class="empty">مفيش عملاء مصنّفين — صنّفهم من شاشة العملاء</div>`; return; }
   const u=d.unclassified;
-  renderRepTable(m, 'dist', repDistTotalModel(), {
+  const md=repDistTotalModel();
+  renderRepTable(m, 'dist', md, {
     warn: u.length? `⚠️ عندك ${u.length} عميل لسه غير مصنّف ومش داخل في الجدول ده — صنّفهم من تاب العملاء: ${esc(u.slice(0,6).join('، '))}${u.length>6?' ...':''}` : '',
-    boxes: topBoxes(d.list.map(r=>({name:r.name, val:r.total})), 'أعلى ٣')
+    boxes: modelBoxesHtml(md)
   });
 }
 function importCustomers(file){
@@ -2398,7 +2496,10 @@ function importSales(file){
         if(!custByName[cname]) unmatchedCust.add(cname);
         const iname=String(row[ii]||'').trim();
         const it=itemsByName[iname];
-        const sector = it? (SECTOR_MAP[it.mainGroup]||'أخرى') : 'غير معروف';
+        /* بنخزّن المجموعة الرئيسية زي ما هي، والتوزيع على أعمدة
+           التقرير بيتعمل وقت العرض — فتقدر تنقل مجموعة لعمود تاني
+           في أي وقت من غير ما ترفع الشيت تاني. */
+        const sector = it? (it.mainGroup || 'غير معروف') : 'غير معروف';
         if(!it && iname) unmatchedItems.add(iname);
         sectorMap[cname]=sectorMap[cname]||{}; sectorMap[cname][sector]=(sectorMap[cname][sector]||0)+net;
         if(iname){ const im=itemMap[iname]=itemMap[iname]||{qty:0,val:0};
@@ -2505,6 +2606,14 @@ const DOC_CSS=`<style>
 .dx table.pay tr.m td:nth-child(2){text-align:right}
 .dx .payttl{background:#dce6f5;color:#1230a8;font-weight:700;text-align:center;
   padding:7px;border:1px solid #9db2dd;margin-bottom:0;font-size:13.5px}
+.dx .dxtop{margin:0 0 10px}
+.dx .dxtl{font-size:13px;color:#555;font-weight:700;margin-bottom:5px}
+.dx .dxtr{display:flex;gap:8px}
+.dx .dxt{flex:1;border:1px solid #cfd6e6;border-top:3px solid #cfd6e6;border-radius:9px;padding:7px 6px;text-align:center}
+.dx .dxt1{border-top-color:#d4af37}.dx .dxt2{border-top-color:#9aa3ad}.dx .dxt3{border-top-color:#b0703a}
+.dx .dxt .m{font-size:16px;line-height:1.1}
+.dx .dxt .n{font-size:12.5px;font-weight:700;margin-top:2px}
+.dx .dxt .v{font-size:14px;font-weight:700;color:#1d4ed8;margin-top:2px}
 .dxhead{display:flex;align-items:center;justify-content:space-between;gap:12px;
   border-bottom:3px solid #1d4ed8;padding-bottom:8px;margin-bottom:12px}
 .dxhead img{height:42px;width:auto}
