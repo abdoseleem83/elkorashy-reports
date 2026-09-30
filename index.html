@@ -24,7 +24,8 @@ body{margin:0;font-family:Tahoma,Arial,sans-serif;font-size:15.5px;background:va
 input,select,textarea,button{font-family:inherit}
 header{background:var(--blue);color:#fff;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;
   display:flex;align-items:center;justify-content:space-between;flex-shrink:0;position:relative;z-index:20}
-header h1{font-size:16px;margin:0;font-weight:700}
+header h1{font-size:16px;margin:0;font-weight:700;white-space:nowrap}
+@media (max-width:420px){ header .ver{display:none} header h1{font-size:15px} }
 header .ver{font-size:10px;opacity:.75}
 nav{display:flex;gap:4px;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--border);
   overflow-x:auto;flex-shrink:0;z-index:19}
@@ -34,6 +35,54 @@ nav{display:flex;gap:4px;padding:8px 10px;background:var(--panel);border-bottom:
 nav{scrollbar-width:none}
 nav::-webkit-scrollbar{display:none}
 main{flex:1;overflow-y:auto;padding:10px}
+
+/* ═══ مربعات الأرقام الملونة فوق كل قسم ═══ */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(76px,1fr));gap:7px;margin-bottom:10px}
+.stat{border-radius:13px;padding:9px 5px 8px;color:#fff;text-align:center;cursor:pointer;background:var(--c,#1e3a8a);
+  box-shadow:0 3px 10px rgba(0,0,0,.10);min-width:0;transition:transform .12s}
+.stat:active{transform:scale(.97)}
+.stat b{display:block;font-size:16.5px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat span{display:block;font-size:10.5px;font-weight:700;opacity:.92;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ═══ البحث في كل التطبيق ═══ */
+.srch-in{width:100%;padding:12px 14px;border-radius:13px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:15px}
+.srch-in:focus{outline:none;border-color:var(--blue)}
+.srch-h{font-size:11.5px;color:var(--muted);font-weight:800;margin:12px 2px 5px}
+.srch-r{display:flex;align-items:center;gap:10px;padding:10px 11px;border:1px solid var(--border);border-radius:12px;
+  background:var(--panel);margin-bottom:6px;cursor:pointer}
+.srch-r:active{background:var(--panel2)}
+.srch-r .ic{font-size:18px;width:26px;text-align:center;flex-shrink:0}
+.srch-r .tx{flex:1;min-width:0}
+.srch-r .t1{font-size:13.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srch-r .t2{font-size:11.5px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hdr-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer}
+.nav-search,.nav-sub,.nav-sec{display:none}
+/* ═══ الكمبيوتر: قايمة جانبية ثابتة على اليمين والشغل في النص ═══ */
+@media (min-width:1000px){
+  body{display:grid;grid-template-columns:250px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  header{grid-column:1/-1}
+  nav{grid-row:2;grid-column:1;flex-direction:column;overflow-y:auto;overflow-x:hidden;gap:2px;padding:12px 10px 20px;
+    border-bottom:none;border-left:1px solid var(--border)}
+  body main{grid-row:2;grid-column:2;padding:18px 24px}
+  .nav-btn{width:100%;text-align:right;background:transparent;border-color:transparent;padding:10px 12px;font-size:13.5px;color:var(--text)}
+  .nav-btn:hover{background:var(--panel2)}
+  .nav-btn.active{background:var(--blue);color:#fff}
+  .nav-search{display:block;width:100%;text-align:right;padding:10px 12px;margin-bottom:8px;border-radius:12px;border:1px solid var(--border);
+    background:var(--panel2);color:var(--muted);font-size:13px;font-weight:700;cursor:pointer}
+  .nav-sec{display:block;font-size:11px;color:var(--muted);font-weight:800;margin:10px 12px 4px}
+  .nav-sub{display:block;width:100%;text-align:right;padding:7px 12px 7px 8px;margin-right:14px;width:calc(100% - 14px);
+    border:none;border-right:2px solid var(--border);background:transparent;color:var(--muted);font-size:12.5px;font-weight:700;cursor:pointer;border-radius:0 8px 8px 0}
+  .nav-sub:hover{color:var(--text);background:var(--panel2)}
+  .nav-sub.on{color:var(--blue);border-right-color:var(--blue);background:var(--panel2)}
+  #hdrSearch{display:none}
+  body .fbar{right:250px}
+  body .overlay{justify-content:center;align-items:center}
+  body .sheet{max-width:640px;border-radius:22px;max-height:84vh}
+  body .homewrap{max-width:980px}
+  .stats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .stat{padding:14px 10px}
+  .stat b{font-size:22px}
+  .stat span{font-size:12px}
+}
 /* ═══ الصفحة الرئيسية ═══ */
 .homewrap{max-width:760px;margin:0 auto}
 @media (min-width:900px){
@@ -168,7 +217,8 @@ table.rep td.lo{background:rgba(192,32,47,.16) !important}
 .btn-save{background:var(--blue);color:#fff}
 .btn-cancel{background:var(--panel2);color:var(--text);border:1px solid var(--border) !important}
 .toast{position:fixed;bottom:calc(90px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);
-  background:#1b2436;color:#fff;padding:10px 16px;border-radius:20px;font-size:13px;z-index:60;opacity:0;transition:opacity .25s}
+  background:#1b2436;color:#fff;padding:10px 16px;border-radius:20px;font-size:13px;z-index:60;opacity:0;transition:opacity .25s;
+  pointer-events:none}  /* وهي مستخبية كانت بتاكل الضغطات اللي تحتها في نص الشاشة */
 .toast.show{opacity:1}
 .warn{background:#fff4e5;color:#8a5a00;border:1px solid #f0c36d;border-inline-start:4px solid #e8a33d;
   border-radius:13px;padding:11px 13px;font-size:12.5px;font-weight:700;line-height:1.75;margin-bottom:10px}
@@ -210,7 +260,7 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.4</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -1051,9 +1101,13 @@ window.addEventListener('pagehide', ()=>{
   }catch(e){}
 });
 function renderNav(){
+  // على الكمبيوتر: بحث فوق، وتحت القسم المفتوح شاشاته (على الموبايل بيستخبّوا)
+  const subs = sc=> sc.map(x=>`<button class="nav-sub${x.on()?' on':''}" onclick="${x.go}">${esc(x.name)}</button>`).join('');
   $('#nav').innerHTML =
-    `<button class="nav-btn${module===null?' active':''}" onclick="goHome()">🏠 الرئيسية</button>`
-    + modules.map(m=>`<button class="nav-btn ${m.id===module?'active':''}" onclick="switchModule('${m.id}')">${m.icon} ${m.name}</button>`).join('');
+    `<button class="nav-search" onclick="openSearch()">🔍 بحث في كل حاجة…</button>`
+    + `<button class="nav-btn${module===null?' active':''}" onclick="goHome()">🏠 الرئيسية</button>`
+    + modules.map(m=>`<button class="nav-btn ${m.id===module?'active':''}" onclick="switchModule('${m.id}')">${m.icon} ${m.name}</button>`
+      + (m.id===module ? subs(appScreens().filter(x=> x.mod===m.id)) : '')).join('');
 }
 function switchModule(m){ module=(module===m)?null:m; q=''; openGroups=new Set(); render(true); }
 function goHome(){ module=null; q=''; openGroups=new Set(); render(true); }
@@ -1093,7 +1147,7 @@ function delItem(id){ if(!confirm('حذف الصنف؟')) return; items=items.fi
 function renderItems(m){
   const tabs=['الأصناف','أكواد جيفز','الوحدات'];
   const st = load('_itemsTab_',null);
-  m.innerHTML = tabStrip(tabs.map((t,i)=>({k:i,name:t})), st, k=>`setItemsTab(${k})`, {grow:true, cls:'tabs'})
+  m.innerHTML = moduleStats('items') + tabStrip(tabs.map((t,i)=>({k:i,name:t})), st, k=>`setItemsTab(${k})`, {grow:true, cls:'tabs'})
     + `<div id="it_content"></div>`;
   if(st===null) $('#it_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
   else if(st===0) renderItemsList($('#it_content'));
@@ -1292,7 +1346,7 @@ function renderWarehouses(m){
   /* المقارنات كانت مفروشة جنب المخازن في نفس الصف. دلوقتي تبويب واحد
      «مقارنات» وتحته التلاتة، فالصف فيه المخازن والمقارنات بس. */
   const tabs = [{id:'cmpx',name:'📊 مقارنات'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
-  m.innerHTML = tabStrip(tabs.map(t=>({k:t.id,name:t.name})), whTab, k=>`setWhTab('${k}')`, {cls:'tabs'})
+  m.innerHTML = moduleStats('warehouses') + tabStrip(tabs.map(t=>({k:t.id,name:t.name})), whTab, k=>`setWhTab('${k}')`, {cls:'tabs'})
     + dupWhBar() + `<div id="wh_content"></div>`;
   if(whTab===null) $('#wh_content').innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
   else if(whTab==='cmpx') renderCompareHub($('#wh_content'));
@@ -1815,7 +1869,7 @@ function renderSales(m){
   const tabs=['📥 رفع شيت المبيعات','👥 العملاء','📊 التقارير'];
   const empty = !customers.length && !Object.keys(monthlySales).length;
   const st = load('_salesTab_',null);
-  m.innerHTML = tabStrip(tabs.map((t,i)=>({k:i,name:t})), st, k=>`setSalesTab(${k})`, {cls:'tabs'})
+  m.innerHTML = moduleStats('sales') + tabStrip(tabs.map((t,i)=>({k:i,name:t})), st, k=>`setSalesTab(${k})`, {cls:'tabs'})
     + `<div id="st_content"></div>`;
   if(st===null) $('#st_content').innerHTML = empty
     ? `<div class="empty">لسه مفيش بيانات — ابدأ من <b>📥 رفع شيت المبيعات</b> فوق</div>`
@@ -4006,7 +4060,7 @@ function renderFinance(m){
     return;
   }
   const v=load('_finView_',null);
-  m.innerHTML = tabStrip(FIN_VIEWS.map(x=>({k:x.id,name:x.name})), v, k=>`setFinView('${k}')`)
+  m.innerHTML = moduleStats('fin') + tabStrip(FIN_VIEWS.map(x=>({k:x.id,name:x.name})), v, k=>`setFinView('${k}')`)
     + `<div id="fin_c"></div>`;
   const c=$('#fin_c');
   if(v==='tb') renderTrialBalance(c);
@@ -4348,7 +4402,7 @@ function renderFinStatement(m, id){
 function renderPayroll(m){
   const tabs=['👥 العاملين','✍️ الحضور والخصومات','📊 النواتج'];
   const st=load('_payTab_',null);
-  m.innerHTML = tabStrip(tabs.map((t,i)=>({k:i,name:t})), st, k=>`setPayTab(${k})`, {grow:true})
+  m.innerHTML = moduleStats('payroll') + tabStrip(tabs.map((t,i)=>({k:i,name:t})), st, k=>`setPayTab(${k})`, {grow:true})
     + `<div id="pay_c"></div>`;
   const c=$('#pay_c');
   if(st===null) c.innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
@@ -4794,7 +4848,7 @@ function gvStatus(o){
 }
 function renderGV(m){
   const tabs = ['📋 الطلبيات','📥 الاستلام','💵 التسعير'];
-  m.innerHTML = tabStrip(tabs.map((t,i)=>({k:i,name:t})), gvTab, k=>`setGvTab(${k})`, {grow:true})
+  m.innerHTML = moduleStats('gv') + tabStrip(tabs.map((t,i)=>({k:i,name:t})), gvTab, k=>`setGvTab(${k})`, {grow:true})
     + `<div id="gv_c"></div>`;
   const c = $('#gv_c');
   if(gvTab===0) renderGvOrders(c);
@@ -5207,7 +5261,7 @@ function bonusMoveItem(name, to, from){
 function setBonusTab(k){ save('_bonusTab_', k); render(true); }
 function renderBonus(m){
   const tab=load('_bonusTab_','files');
-  m.innerHTML = tabStrip([{k:'files',name:'📁 الملفات'},{k:'rep',name:'🎁 البونص'}], tab, k=>`setBonusTab('${k}')`, {grow:true})
+  m.innerHTML = moduleStats('bonus') + tabStrip([{k:'files',name:'📁 الملفات'},{k:'rep',name:'🎁 البونص'}], tab, k=>`setBonusTab('${k}')`, {grow:true})
     + `<div id="bn_c"></div>`;
   const c=$('#bn_c');
   if(tab==='rep') return renderBonusReport(c);
@@ -5243,6 +5297,122 @@ function renderBonusReport(c){
     boxes: `<div style="display:flex;gap:8px;margin-bottom:10px">${box('صافي المشتريات',tot[1],'var(--blue)')}${box('البونص المستحق',tot[3],'var(--ok)')}</div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">دوس على القطاع تشوف أصنافه وتعدّل نسبته</div>`});
   const t=c.querySelector('table.rep'); if(t) t.classList.add('bon');
+}
+
+/* ═══ التنقل: كل شاشات التطبيق في مكان واحد ═══
+   بيستخدمها البحث (يدوّر في أسماء الشاشات) والقايمة الجانبية على الكمبيوتر.
+   navTo بيفتح الشاشة على طول (مش زي أزرار التبويب اللي بتقفل لو دوست تاني). */
+function navTo(mod, keys, gv, qq){
+  try{ closeSheet(); }catch(e){}
+  module=mod; q=''; openGroups=new Set();
+  Object.entries(keys||{}).forEach(([k,v])=> save(k,v));
+  if(gv!==undefined && gv!==null) gvTab=gv;
+  if(qq) q=qq;
+  render(true);
+}
+function appScreens(){
+  const S=[], k=(o)=> JSON.stringify(o).replace(/"/g,"'");
+  const add=(mod,name,keys,on,gv)=> S.push({mod,name,go:`navTo('${mod}',${k(keys)}${gv!==undefined?','+gv:''})`,on});
+  ['📦 الأصناف','🔖 أكواد جيفز','📏 الوحدات'].forEach((n,i)=> add('items',n,{_itemsTab_:i},()=> load('_itemsTab_',null)===i));
+  CMP_VIEWS.forEach(v=> add('warehouses',v.name,{_whTab_:'cmpx',_cmpView_:v.id},()=> load('_whTab_',null)==='cmpx' && load('_cmpView_',null)===v.id));
+  warehouses.forEach(w=> add('warehouses','🏭 '+w.name,{_whTab_:w.id},()=> load('_whTab_',null)===w.id));
+  ['📥 رفع شيت المبيعات','👥 العملاء'].forEach((n,i)=> add('sales',n,{_salesTab_:i},()=> load('_salesTab_',null)===i));
+  SALES_REPORTS.forEach(r=> add('sales',r.name,{_salesTab_:2,_salesRep_:r.id},()=> load('_salesTab_',null)===2 && load('_salesRep_',null)===r.id));
+  ['📋 الطلبيات','📥 الاستلام','💵 التسعير'].forEach((n,i)=> add('gv',n,{},()=> module==='gv' && gvTab===i, i));
+  ['👥 العاملين','✍️ الحضور والخصومات','📊 النواتج'].forEach((n,i)=> add('payroll',n,{_payTab_:i},()=> load('_payTab_',null)===i));
+  FIN_VIEWS.forEach(v=> add('fin',v.name,{_finView_:v.id},()=> load('_finView_',null)===v.id));
+  add('bonus','📁 ملفات البونص',{_bonusTab_:'files'},()=> load('_bonusTab_','files')==='files');
+  add('bonus','🎁 تقرير البونص',{_bonusTab_:'rep'},()=> load('_bonusTab_','files')==='rep');
+  return S;
+}
+/* ═══ مربعات الأرقام فوق كل قسم ═══ */
+const STAT_C=['#1e3a8a','#b7862b','#7c3aed','#15803d','#0e7490'];
+function statStrip(cards){
+  return `<div class="stats">${cards.map((c,i)=>`<div class="stat" style="--c:${c.c||STAT_C[i%STAT_C.length]}" ${c.go?`onclick="${c.go}"`:''}>
+    <b>${c.v}</b><span>${c.l}</span></div>`).join('')}</div>`;
+}
+function moduleStats(id){
+  const n=x=> fmtN(x||0);
+  if(id==='items') return statStrip([
+    {v:n(items.length), l:'صنف', go:"navTo('items',{_itemsTab_:0})"},
+    {v:n(new Set(items.map(i=>i.mainGroup).filter(Boolean)).size), l:'مجموعة', go:"navTo('items',{_itemsTab_:0})"},
+    {v:n(gvcodes.length), l:'كود جيفز', go:"navTo('items',{_itemsTab_:1})"},
+    {v:n(units.length), l:'وحدة', go:"navTo('items',{_itemsTab_:2})"}]);
+  if(id==='warehouses'){ const S=homeStats(); return statStrip([
+    {v:n(warehouses.length), l:'مخزن', go:"navTo('warehouses',{_whTab_:null})"},
+    {v:n(S.stockItems), l:'رصيد مرفوع', go:warehouses[0]? `navTo('warehouses',{_whTab_:'${warehouses[0].id}'})` : ''},
+    {v:S.short? n(S.short) : '✅', l:S.short? 'صنف نواقص' : 'مفيش نواقص', c:S.short?'#b91c1c':'#15803d',
+      go:warehouses[0]? `navTo('warehouses',{_whTab_:'${warehouses[0].id}',_whSub_:1})` : ''},
+    {v:'📊', l:'المقارنات', go:"navTo('warehouses',{_whTab_:'cmpx'})"}]); }
+  if(id==='sales'){ const S=homeStats(); return statStrip([
+    {v:S.last? shortNum(S.lastVal) : '—', l:S.last? 'مبيعات '+moName(S.last) : 'مفيش مبيعات', go:"navTo('sales',{_salesTab_:2,_salesRep_:'dist'})"},
+    {v:n(customers.length), l:'عميل', go:"navTo('sales',{_salesTab_:1})"},
+    {v:S.unc? n(S.unc) : '✅', l:S.unc? 'غير مصنّف' : 'كله مصنّف', c:S.unc?'#b45309':'#15803d', go:"navTo('sales',{_salesTab_:1})"},
+    {v:n(S.months), l:'شهر مرفوع', go:"navTo('sales',{_salesTab_:0})"}]); }
+  if(id==='gv'){ const cur=gvOrders.find(o=>o.id===gvCur)||gvOrders[0];
+    return statStrip([
+      {v:n(gvOrders.length), l:'طلبية', go:"navTo('gv',{},0)"},
+      {v:n(gvcodes.length), l:'كود جيفز', go:"navTo('items',{_itemsTab_:1})"},
+      {v:cur? n((cur.rows||[]).length) : '—', l:cur? 'صنف في الطلبية' : 'مفيش طلبية', go:"navTo('gv',{},0)"}]); }
+  if(id==='payroll'){ const br=new Set(employees.map(e=>e.branch||'')).size;
+    return statStrip([
+      {v:n(employees.length), l:'موظف', go:"navTo('payroll',{_payTab_:0})"},
+      {v:shortNum(employees.reduce((a,e)=>a+nz(e.salary),0)), l:'مرتبات الشهر', go:"navTo('payroll',{_payTab_:2})"},
+      {v:n(br), l:'فرع', go:"navTo('payroll',{_payTab_:0})"}]); }
+  if(id==='fin'){ if(!finUnlocked) return '';
+    const ps=finPeriods(), cur=finCur();
+    return statStrip([
+      {v:n(ps.length), l:'فترة', go:"navTo('fin',{_finView_:'tb'})"},
+      {v:cur? esc(cur) : '—', l:'الفترة الحالية', go:"navTo('fin',{_finView_:'tb'})"},
+      {v:cur? n(tbLeaves(trialBal[cur]||[]).length) : '—', l:'حساب', go:"navTo('fin',{_finView_:'seg'})"}]); }
+  if(id==='bonus'){ const nf=BONUS_FILES.filter(f=>bonusFile(f.k)).length, L=bonusLines();
+    return statStrip([
+      {v:nf+'/'+BONUS_FILES.length, l:'ملفات مرفوعة', c:nf===BONUS_FILES.length?'#15803d':'#b7862b', go:"navTo('bonus',{_bonusTab_:'files'})"},
+      {v:shortNum(L.reduce((a,o)=>a+o.net,0)), l:'صافي المشتريات', c:'#1e3a8a', go:"navTo('bonus',{_bonusTab_:'rep'})"},
+      {v:shortNum(L.reduce((a,o)=>a+o.bonus,0)), l:'البونص المستحق', c:'#15803d', go:"navTo('bonus',{_bonusTab_:'rep'})"}]); }
+  return '';
+}
+/* ═══ 🔍 بحث في كل حاجة: الشاشات · الأصناف · العملاء · الموظفين · المخازن · أكواد جيفز ═══ */
+let _srchQ='';
+function openSearch(){
+  openSheet(`<h3>🔍 بحث في كل حاجة</h3>
+    <input id="srch" class="srch-in" placeholder="اسم صنف، عميل، موظف، تقرير…" autocomplete="off" value="${esc(_srchQ)}">
+    <div id="srch_r"></div>
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إغلاق</button></div>`);
+  const el=$('#srch');
+  el.oninput=()=>{ _srchQ=el.value; searchRender(); };
+  setTimeout(()=>{ try{ el.focus(); }catch(e){} }, 60);
+  searchRender();
+}
+function searchResults(qs){
+  const t=ordNorm(qs); if(!t) return [];
+  const hit=x=> ordNorm(x).indexOf(t)>=0, out=[];
+  const grp=(title, list, max)=>{ if(list.length) out.push({title, list:list.slice(0,max||8), more:Math.max(0,list.length-(max||8))}); };
+  grp('الشاشات والتقارير', appScreens().filter(x=> hit(x.name.replace(/^\S+\s/,'')) || hit(x.name)).map(x=>({ic:'🧭',
+    t1:x.name.replace(/^\S+\s/,''), t2:(modules.find(m=>m.id===x.mod)||{}).name||'', go:x.go})), 6);
+  grp('الأصناف', items.filter(i=> hit(i.name) || hit(i.mainGroup||'')).map(i=>{
+    const st=warehouses.reduce((a,w)=>a+qtyOf(w.id,i.name),0);
+    return {ic:'📦', t1:i.name, t2:(i.mainGroup||'')+(i.subGroup?' · '+i.subGroup:'')+(warehouses.length?' · رصيد '+fmtN(st):''),
+      go:`navTo('items',{_itemsTab_:0},null,${jsArg(i.name)})`}; }));
+  grp('العملاء', customers.filter(c=> hit(c.name)).map(c=>({ic:'👤', t1:c.name, t2:c.cls||'غير مصنّف',
+    go:`navTo('sales',{_salesTab_:1},null,${jsArg(c.name)})`})));
+  grp('الموظفين', employees.filter(e=> hit(e.name) || hit(e.branch||'')).map(e=>({ic:'🧑‍💼', t1:e.name,
+    t2:(e.branch||'')+' · '+fmtN(nz(e.salary))+' ج', go:`navTo('payroll',{_payTab_:0});editEmployee('${e.id}')`})));
+  grp('المخازن', warehouses.filter(w=> hit(w.name)).map(w=>({ic:'🏭', t1:w.name, t2:fmtN(Object.keys(whStock[w.id]||{}).length)+' رصيد',
+    go:`navTo('warehouses',{_whTab_:'${w.id}'})`})));
+  grp('أكواد جيفز', gvcodes.filter(g=> hit(g.name) || hit(g.code||'')).map(g=>({ic:'🔖', t1:g.name, t2:g.code||'',
+    go:`navTo('items',{_itemsTab_:1},null,${jsArg(g.name)})`})));
+  return out;
+}
+function searchRender(){
+  const box=$('#srch_r'); if(!box) return;
+  const qs=($('#srch')||{}).value||'';
+  if(!qs.trim()){ box.innerHTML=`<div class="srch-h">اكتب أي حاجة — بيدوّر في الشاشات والأصناف والعملاء والموظفين والمخازن</div>`; return; }
+  const R=searchResults(qs);
+  box.innerHTML = R.length ? R.map(g=>`<div class="srch-h">${g.title}${g.more?` <span style="font-weight:700">(+${g.more})</span>`:''}</div>`
+    + g.list.map(r=>`<div class="srch-r" onclick="${r.go}"><span class="ic">${r.ic}</span>
+        <div class="tx"><div class="t1">${esc(r.t1)}</div>${r.t2?`<div class="t2">${esc(r.t2)}</div>`:''}</div></div>`).join('')).join('')
+    : `<div class="empty" style="margin-top:10px">مفيش نتايج لـ«${esc(qs)}»</div>`;
 }
 /* ═══ الصفحة الرئيسية: نظرة سريعة وأيقونات الأقسام ═══ */
 const HOME_AC={items:'#f59e0b', warehouses:'#0ea5e9', sales:'#16a34a', gv:'#8b5cf6', payroll:'#ec4899', fin:'#0f766e', bonus:'#d97706'};
