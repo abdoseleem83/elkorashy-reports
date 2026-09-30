@@ -184,6 +184,11 @@ table.rep td:first-child,table.rep th:first-child{text-align:right;white-space:n
 table.rep.stk{width:max-content;min-width:100%;overflow:visible}
 table.rep.stk td:first-child,table.rep.stk th:first-child{position:sticky;right:0;z-index:1;background:var(--panel);min-width:120px;max-width:190px}
 table.rep.stk th:first-child{background:var(--panel2)}
+/* تقرير البونص ٤ أعمدة بس — لازم كلهم يبانوا على الموبايل من غير سحب */
+table.rep.bon{width:100%;font-size:13px}
+table.rep.bon th{white-space:normal;font-size:12px;line-height:1.3}
+table.rep.bon td,table.rep.bon th{padding:7px 3px}
+table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;max-width:none;width:34%}
 .qs{display:flex;gap:10px;font-size:12px;align-items:center;flex-wrap:wrap}
 .qs small{color:var(--muted)}
 .grp-h>span:first-child{flex:1;min-width:0}
@@ -205,7 +210,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.0</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.1</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -321,6 +326,7 @@ let secCfg = load('secCfg_v1', {});                  // القطاع ← {name: 
 let secMove = load('secMove_v1', {});                // مجموعة رئيسية ← العمود اللي تروحه
 let doorCodeMap = load('doorCodeMap_v1', {});        // اسم صنف الباب ← كود بالإيد
 let doorHide = load('doorHide_v1', []);              // أصناف اتشالت من تقارير الأبواب
+let bonusData = load('bonusAksa_v1', {period:'', files:{}, rates:{}, itemLine:{}});   // بونص اكسا
 
 const CLS_OPTS=['موزع','مبيعات جملة','مبيعات خاصة','عميل ابواب','مستبعد'];
 const CLS_SHORT={'موزع':'موزع','مبيعات جملة':'جملة','مبيعات خاصة':'خاصة','عميل ابواب':'أبواب','مستبعد':'مستبعد'};
@@ -380,7 +386,8 @@ function secNewCol(from){
   if(!v) return;
   if(secAllCols().indexOf(v)>=0){ toast('في عمود بالاسم ده'); return; }
   secCfg[v]={custom:1}; save('secCfg_v1',secCfg);
-  toast('اتعمل عمود «'+v+'» — انقل له البنود من الأزرار'); secSheet(from);
+  toast('اتعمل عمود «'+v+'» — انقل له البنود من الأزرار'); render();
+  if(from) secSheet(from); else secColsSheet();
 }
 function secDelCol(k){
   if(!confirm('حذف عمود «'+secLabel(k)+'»؟ البنود اللي فيه هترجع لأعمدتها الأصلية.')) return;
@@ -417,7 +424,7 @@ function secGroupItems(key){
              .filter(r=> Math.round(r.val)).sort((a,b)=> b.val-a.val),
            mos, noDetail, legacy: !isMG && key!=='غير معروف' };
 }
-function secItemsHtml(key){
+function secItemsHtml(key, back){
   const r=secGroupItems(key);
   const note = r.legacy && r.list.length
     ? `<div style="font-size:11.5px;color:var(--muted);line-height:1.6;margin:4px 0 6px">البند ده متجمّع من شهور اترفعت بنسخة قديمة
@@ -425,8 +432,8 @@ function secItemsHtml(key){
   const nod = r.noDetail.length ? `<div style="font-size:11.5px;color:var(--muted)">شهور مفيهاش تفصيل أصناف: ${r.noDetail.map(moName).join('، ')}</div>` : '';
   if(!r.list.length) return nod || `<div class="empty" style="padding:10px">مفيش تفصيل أصناف للبند ده</div>`;
   return note + `<div style="max-height:40vh;overflow:auto">${r.list.slice(0,150).map(x=>
-    `<div style="display:flex;gap:8px;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border);font-size:12px">
-      <span style="min-width:0">${esc(x.name)}${r.legacy&&x.grp?`<span style="color:var(--muted);font-size:11px"> · ${esc(x.grp)}</span>`:''}</span>
+    `<div onclick="itemGroupSheet(${jsArg(x.name)},${jsArg(back||'')})" style="display:flex;gap:8px;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer">
+      <span style="min-width:0">✏️ ${esc(x.name)}${r.legacy&&x.grp?`<span style="color:var(--muted);font-size:11px"> · ${esc(x.grp)}</span>`:''}</span>
       <b style="color:var(--blue);white-space:nowrap;font-variant-numeric:tabular-nums">${repFmt(x.val)}</b></div>`).join('')}
     ${r.list.length>150?`<div style="font-size:11.5px;color:var(--muted);padding:6px">+${r.list.length-150} صنف تاني</div>`:''}</div>` + nod;
 }
@@ -444,7 +451,7 @@ function secSheet(k){
             <span class="name" style="font-size:12.5px;font-weight:800">${esc(g.name)}
               <span style="color:var(--blue);font-size:11.5px;font-weight:700">▾ ${n? n+' صنف' : 'الأصناف'}</span></span>
             <b style="color:var(--blue);font-variant-numeric:tabular-nums">${repFmt(g.val)}</b></summary>
-          <div style="margin-top:6px">${secItemsHtml(g.name)}</div>
+          <div style="margin-top:6px">${secItemsHtml(g.name, k)}</div>
         </details>
         <div class="clsrow" style="flex-basis:100%">${cols.map(c=>
           `<button class="clschip${c===k?' on':''}" onclick="secMoveTo(${jsArg(g.name)},${jsArg(c)},${jsArg(k)})">${esc(secLabel(c))}</button>`).join('')}
@@ -479,11 +486,64 @@ function secShow(k){
   if(secCfg[k]){ delete secCfg[k].hide; if(!Object.keys(secCfg[k]).length) delete secCfg[k]; }
   save('secCfg_v1',secCfg); render(true);
 }
+/* شريط فوق تقارير القطاعات: زرار «الأعمدة» بيوريك كل عمود — ظاهر ولا
+   مخفي ولا فاضي (مفيش مبيعات في الشهور المختارة، فبيختفي لوحده) */
+function secColTotals(){
+  const keys=secAllKeys(), t={};
+  Object.keys(keys).forEach(k=>{ const c=secColOf(k); t[c]=(t[c]||0)+(keys[k]||0); });
+  return t;
+}
 function hiddenSecBar(){
-  const h=Object.keys(secCfg).filter(secHidden);
-  if(!h.length) return '';
-  return `<div class="morow"><span class="mosep">أعمدة مخفية</span>${h.map(k=>
+  const cols=secAllCols(), t=secColTotals();
+  const hid=cols.filter(secHidden), empty=cols.filter(c=> !secHidden(c) && !Math.round(t[c]||0));
+  return `<div class="morow"><button class="mochip" onclick="secColsSheet()">🧩 الأعمدة (${cols.length-hid.length-empty.length} ظاهر${hid.length?' · '+hid.length+' مخفي':''}${empty.length?' · '+empty.length+' فاضي':''})</button>${hid.map(k=>
     `<button class="mochip" onclick="secShow(${jsArg(k)})">${esc(secLabel(k))} ✕</button>`).join('')}</div>`;
+}
+function secColsSheet(){
+  const cols=secAllCols(), t=secColTotals();
+  openSheet(`<h3>🧩 أعمدة القطاعات</h3>
+    <p style="font-size:12.5px;color:var(--muted);line-height:1.7;margin:0 0 8px">العمود اللي مفيهوش مبيعات في الشهور المختارة بيختفي لوحده.
+      دوس 👁️ تخفي أو تظهر، و⚙️ تشوف البنود اللي تحته وتنقلها.</p>
+    ${cols.map(c=>{ const v=Math.round(t[c]||0), h=secHidden(c);
+      const st = h ? '<span style="color:var(--danger)">مخفي</span>' : (v ? '<span style="color:var(--ok)">ظاهر</span>' : '<span style="color:var(--muted)">فاضي — مفيش مبيعات</span>');
+      return `<div class="card"><div class="info"><div class="name">${esc(secLabel(c))}${(secCfg[c]||{}).custom?' <span style="font-size:11px;color:var(--blue)">(جديد)</span>':''}</div>
+          <div class="sub">${st} · ${v? repFmt(v) : '—'}</div></div>
+        <div class="act"><button title="${h?'إظهار':'إخفاء'}" onclick="secToggleHide(${jsArg(c)})">${h?'🙈':'👁️'}</button>
+          <button title="البنود" onclick="secSheet(${jsArg(c)})">⚙️</button></div></div>`; }).join('')}
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">تمام</button>
+      <button class="btn-save" onclick="secNewCol(null)">➕ عمود جديد</button></div>`);
+}
+function secToggleHide(c){
+  if(secHidden(c)){ delete secCfg[c].hide; if(!Object.keys(secCfg[c]).length) delete secCfg[c]; }
+  else secCfg[c]=Object.assign({}, secCfg[c], {hide:true});
+  save('secCfg_v1',secCfg); render(); secColsSheet();
+}
+/* تعديل مجموعة الصنف من جوه شيت العمود */
+function itemGroupSheet(name, back){
+  const it=itemFind(name), cur=it? (it.mainGroup||'') : '';
+  const groups=[...new Set(items.map(i=>i.mainGroup).filter(Boolean))].sort((a,b)=> a.localeCompare(b,'ar'));
+  openSheet(`<h3>مجموعة الصنف</h3>
+    <div style="font-weight:800;font-size:14px;margin-bottom:4px">${esc(name)}</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">المجموعة دلوقتي: <b style="color:var(--text)">${cur? esc(cur) : 'مش موجود في «الأصناف»'}</b></div>
+    <div class="t3lbl">دوس على المجموعة الجديدة</div>
+    <div class="clsrow">${groups.map(g=>
+      `<button class="clschip${g===cur?' on':''}" onclick="itemSetGroup(${jsArg(name)},${jsArg(g)},${jsArg(back||'')})">${esc(g)}</button>`).join('')}</div>
+    <div class="f-row" style="margin-top:10px"><label>أو مجموعة جديدة</label>
+      <input id="ig_new" placeholder="مثلاً: الومنيوم"></div>
+    <div style="font-size:11.5px;color:var(--muted);line-height:1.7">التغيير بيتحفظ في «الأصناف» وبيتطبق على شيتات المبيعات اللي هترفعها.
+      الشهور المرفوعة قبل كده متسجّلة بالمجموعة القديمة لكل عميل — عشان تتعدّل ارفع شيتها تاني.</div>
+    <div class="f-actions"><button class="btn-cancel" onclick="${back? `secSheet(${jsArg(back)})` : 'closeSheet()'}">رجوع</button>
+      <button class="btn-save" onclick="itemSetGroup(${jsArg(name)}, ($('#ig_new').value||'').trim(), ${jsArg(back||'')})">حفظ</button></div>`);
+}
+function itemSetGroup(name, g, back){
+  if(!g){ toast('اختار مجموعة أو اكتب اسم جديد'); return; }
+  let it=itemFind(name);
+  if(it) it.mainGroup=g;
+  else { it={id:uid(), name, mainGroup:g, subGroup:'', baseName:name, color:'', unit:''}; items.push(it); }
+  itemsByName={}; items.forEach(i=> itemsByName[i.name]=i); _itNormFor=null;
+  save('items_v1', items); render();
+  toast('«'+name+'» بقى في مجموعة «'+g+'»');
+  if(back) secSheet(back); else closeSheet();
 }
 const secSort = (a,b)=>{
   // الأعمدة الجديدة (زي «الومنيوم») بعد الأبواب وقبل «أخرى» و«غير معروف»
@@ -535,7 +595,7 @@ let shortMain=new Set(), shortSub=new Set();
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
-  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1'];
+  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','bonusAksa_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
 /* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
@@ -653,6 +713,7 @@ const SYNC_VARS = {
   custAlias_v1: v=>{ custAlias = v; }, secCfg_v1: v=>{ secCfg = v; }, secMove_v1: v=>{ secMove = v; },
   doorCodeMap_v1: v=>{ doorCodeMap = v; }, doorHide_v1: v=>{ doorHide = v; },
   trialBal_v1: v=>{ trialBal = v; }, finSeg_v1: v=>{ finSeg = v; },
+  bonusAksa_v1: v=>{ bonusData = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
   invCounts_v1: v=>{ invCounts = v; }, ordMap_v1: v=>{ ordMap = v; }, gvMap_v1: v=>{ gvMap = v; },
   // ⚠️ التلاتة دول كانوا في SYNC_KEYS بس مش في SYNC_VARS — يعني بيتنزّلوا
@@ -973,7 +1034,7 @@ async function wipeOldServerData(){
 }
 
 // nav
-const modules=[{id:'items',icon:'📦',name:'الأصناف'},{id:'warehouses',icon:'🏭',name:'المخازن'},{id:'sales',icon:'🧾',name:'المبيعات'},{id:'gv',icon:'📋',name:'جيفز'},{id:'payroll',icon:'💰',name:'المرتبات'},{id:'fin',icon:'🔐',name:'قوائم مالية'}];
+const modules=[{id:'items',icon:'📦',name:'الأصناف'},{id:'warehouses',icon:'🏭',name:'المخازن'},{id:'sales',icon:'🧾',name:'المبيعات'},{id:'gv',icon:'📋',name:'جيفز'},{id:'payroll',icon:'💰',name:'المرتبات'},{id:'fin',icon:'🔐',name:'قوائم مالية'},{id:'bonus',icon:'🎁',name:'بونص اكسا'}];
 try{ $('#hdrLogo').src = LOGO; }catch(e){}
 /* المزامنة التلقائية: أول ما يفتح · كل دقيقة · أول ما ترجع للتطبيق ·
    وقبل ما تقفله لو فيه حاجة لسه ما اترفعتش. */
@@ -2376,6 +2437,7 @@ function repModel(id){
   if(id==='buys')     return repBuysModel();
   if(id==='cmpmo')    return repMonthCompareModel();
   if(id==='tb')       return trialBalModel(finCur());
+  if(id==='bonus')    return bonusModel();
   if(id.indexOf('fin_')===0) return finModel(finCur(), id.slice(4), finDetailOn());
   return null;
 }
@@ -2390,7 +2452,7 @@ function exportRep(id, kind){
       {title: md.title, sign: md.sign||[], hiLo: md.hiLo});
     return;
   }
-  if(!/^(tb|fin_)/.test(id)){ let i=0;              // ميداليات في المستند زي الشاشة
+  if(!/^(tb|fin_|bonus)/.test(id)){ let i=0;              // ميداليات في المستند زي الشاشة
     md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]+' '+r.cells[0]; i++; } }); }
   const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docBoxesHtml(md)}${docTableHtml(md)}</div>`;
   if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
@@ -4973,10 +5035,200 @@ function renderInner(){
   else if(module==='sales') renderSales(m);
   else if(module==='gv') renderGV(m);
   else if(module==='fin') renderFinance(m);
+  else if(module==='bonus') renderBonus(m);
   else renderPayroll(m);
 }
+
+/* ═══════════ بونص اكسا ═══════════
+   ملف إكسل لكل قطاع (كرافت · كومبن ابيض · كومبن بيج · نيو لاين · اكسسوارات)
+   فيه الأصناف وصافي مشترياتها، والتقرير بيطلع لكل قطاع:
+   صافي المشتريات × نسبة البونص = البونص المستحق.
+   الاكسسوارات بتتقسم عام / بلسيه / سيلكون وفوم زي كشف اكسا، والفرش برّه. */
+const BONUS_FILES=[
+  {k:'kraft', name:'كرافت لاين', icon:'🟫'},
+  {k:'kw',    name:'كومبن ابيض', icon:'⬜'},
+  {k:'kb',    name:'كومبن بيج',  icon:'🟨'},
+  {k:'new',   name:'نيو لاين',   icon:'🟦'},
+  {k:'acc',   name:'اكسسوارات',  icon:'🔩'}];
+const BONUS_ACC=['اكسسوارات عام','اكسسوارات ( بلسيه )','اكسسوارات ( سيلكون وفوم)','خارج البونص'];
+const BONUS_RATE_DEF={'كرافت لاين':.02,'نيو لاين':.02,'كومبن ابيض':.02,'كومبن بيج':.02,
+  'اكسسوارات عام':.05,'اكسسوارات ( بلسيه )':.05,'اكسسوارات ( سيلكون وفوم)':.05,'خارج البونص':0};
+const BONUS_ORDER=['كرافت لاين','نيو لاين','كومبن ابيض','كومبن بيج',...BONUS_ACC];
+function bonusSave(){ save('bonusAksa_v1', bonusData); }
+function bonusFile(k){ return (bonusData.files||{})[k]; }
+function bonusRate(line){
+  const r=(bonusData.rates||{})[line];
+  return r!==undefined && r!==null && r!=='' ? +r : (BONUS_RATE_DEF[line] ?? 0);
+}
+function bonusAccLine(name, type){
+  const o=(bonusData.itemLine||{})[name]; if(o) return o;
+  const t=ordNorm(type||'');
+  if(t){ const hit=BONUS_ACC.find(l=> ordNorm(l)===t); if(hit) return hit; }
+  const n=String(name||'');
+  if(/بلي?سيه/.test(n)) return 'اكسسوارات ( بلسيه )';
+  if(/سيلكون|سليكون|فوم/.test(n)) return 'اكسسوارات ( سيلكون وفوم)';
+  if(/(^|\s)فرش(\s|$)/.test(n)) return 'خارج البونص';
+  return 'اكسسوارات عام';
+}
+function bonusLineOf(fk, r){ return fk==='acc' ? bonusAccLine(r.name, r.type) : BONUS_FILES.find(f=>f.k===fk).name; }
+/* قراءة الشيت: بندوّر في كل الشيتات على صف عناوين فيه الصنف والقيمة
+   (الصافي الأول)، وبناخد الشيت اللي طلع منه أكتر أصناف سليمة. لو فيه
+   عمود «النوع» فيه اسم القطاع ده، بناخد صفوف القطاع ده بس — فتقدر ترفع
+   ملف واحد فيه كل القطاعات في كل خانة. */
+function bonusParse(wb, fk){
+  const nameRe=/^(اسم\s*)?الصنف$|اسم الصنف|^الصنف|item_?name|^البيان$|^بيان$/i;
+  const valRes=[/صافي/, /قيمة المشتريات|المشتريات|^القيمه$|^القيمة$|القيمه|القيمة|vout|net|value|اجمالي|إجمالي/i];
+  const slot=BONUS_FILES.find(f=>f.k===fk);
+  const slotOk = t=>{ const n=ordNorm(t); return fk==='acc' ? /^اكسسوار/.test(n) : n.indexOf(ordNorm(slot.name))>=0; };
+  let best=null;
+  for(const sn of wb.SheetNames){
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
+    for(let h=0; h<Math.min(rows.length,15); h++){
+      const hdr=(rows[h]||[]).map(c=>String(c||'').trim());
+      const ni=hdr.findIndex(c=> nameRe.test(c)); if(ni<0) continue;
+      let vi=-1; for(const re of valRes){ vi=hdr.findIndex((c,i)=> i!==ni && re.test(c)); if(vi>=0) break; }
+      if(vi<0) continue;
+      const ti=hdr.findIndex(c=> /^النوع$|^القطاع$|^المجموعه$|^المجموعة$/.test(c));
+      let list=[];
+      for(let i=h+1;i<rows.length;i++){
+        const r=rows[i]||[], name=String(r[ni]||'').trim();
+        if(!name || /^#/.test(name) || /^(total|grand total|الإجمالي|الاجمالي|إجمالي|اجمالي)/i.test(name)) continue;
+        const val=nz(r[vi]); if(!val) continue;
+        list.push({name, val, type: ti>=0? String(r[ti]||'').trim() : ''});
+      }
+      if(ti>=0 && list.some(x=> slotOk(x.type))) list=list.filter(x=> slotOk(x.type));
+      if(list.length && (!best || list.length>best.list.length)) best={list, sheet:sn};
+      break;
+    }
+  }
+  if(!best) return null;
+  const agg={};                     // نفس الصنف مكرر (كذا فاتورة) = بيتجمع
+  best.list.forEach(x=>{ const a=agg[x.name]=agg[x.name]||{name:x.name,val:0,type:x.type}; a.val+=x.val; });
+  return {sheet:best.sheet, rows:Object.values(agg).sort((a,b)=> b.val-a.val)};
+}
+function bonusUpload(fk, input){
+  const f=input.files && input.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      const p=bonusParse(wb, fk);
+      if(!p || !p.rows.length){ toast('مش لاقي عمود الصنف وصافي المشتريات في الملف'); return; }
+      bonusData.files=bonusData.files||{};
+      bonusData.files[fk]={file:f.name, sheet:p.sheet, at:todayStr(), rows:p.rows};
+      bonusSave(); render();
+      const tot=p.rows.reduce((a,x)=>a+x.val,0);
+      toast(BONUS_FILES.find(x=>x.k===fk).name+': '+p.rows.length+' صنف · '+fmtN(Math.round(tot)));
+    }catch(err){ toast('خطأ في قراءة الملف'); }
+  };
+  r.readAsArrayBuffer(f);
+}
+function bonusClearFile(fk){
+  const b=BONUS_FILES.find(x=>x.k===fk);
+  if(!confirm('مسح ملف «'+b.name+'»؟')) return;
+  delete bonusData.files[fk]; bonusSave(); render();
+}
+function bonusNewPeriod(){
+  if(!confirm('فترة جديدة؟ هيتمسح كل الملفات المرفوعة (النِسَب بتفضل زي ما هي).')) return;
+  bonusData.files={}; bonusData.period=''; bonusSave(); render(true);
+}
+function bonusSetPeriod(v){ bonusData.period=String(v||'').trim(); bonusSave(); }
+/* سطور التقرير: كل قطاع بصافيه ونسبته وبونصه، والأصناف تحت كل سطر */
+function bonusLines(){
+  const L={};
+  BONUS_FILES.forEach(f=>{ const d=bonusFile(f.k); if(!d) return;
+    d.rows.forEach(r=>{ const line=bonusLineOf(f.k, r);
+      const o=L[line]=L[line]||{line, fk:f.k, net:0, items:[]}; o.net+=r.val; o.items.push(r); }); });
+  return BONUS_ORDER.filter(l=> L[l]).concat(Object.keys(L).filter(l=> BONUS_ORDER.indexOf(l)<0))
+    .map(l=>{ const o=L[l], rate=bonusRate(l); return Object.assign(o, {rate, bonus: Math.round(o.net*rate*100)/100}); });
+}
+const bonusPct = r=> (Math.round(r*10000)/100)+'%';
+function bonusModel(){
+  const lines=bonusLines(), body=[];
+  // البونص بالجنيه الصحيح عشان العمود يبقى بشكل واحد (الحسبة نفسها بالقروش)
+  lines.forEach(o=> body.push({type:'row', cells:[o.line, Math.round(o.net), bonusPct(o.rate), Math.round(o.bonus)]}));
+  const net=lines.reduce((a,o)=>a+o.net,0), bon=lines.reduce((a,o)=>a+o.bonus,0);
+  if(lines.length) body.push({type:'tot', cells:['الإجمالي', Math.round(net), '', Math.round(bon)]});
+  return {title:'بونص اكسا'+(bonusData.period?' — '+bonusData.period:''),
+    header:['القطاع','صافي المشتريات','نسبة البونص','البونص المستحق'], body,
+    hiLo:{},   // مفيش تلوين أعلى/أقل — التقرير ده حسبة مش مقارنة
+    rowTap: lines.map(o=>`bonusLineSheet(${jsArg(o.line)})`), tapCol:0, tapIcon:'▾', lines};
+}
+function bonusLineSheet(line){
+  const o=bonusLines().find(x=> x.line===line); if(!o) return;
+  const acc = o.fk==='acc';
+  openSheet(`<h3>${esc(line)}</h3>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+      <div style="flex:1;font-size:13px;color:var(--muted)">${o.items.length} صنف · صافي <b style="color:var(--text)">${fmtN(Math.round(o.net))}</b>
+        · بونص <b style="color:var(--ok)">${fmtN(Math.round(o.bonus))}</b></div></div>
+    <div class="f-row"><label>نسبة البونص %</label>
+      <input id="bn_rate" type="number" inputmode="decimal" step="0.01" value="${Math.round(o.rate*10000)/100}"></div>
+    ${acc? `<div class="t3lbl">دوس على سطر تاني عشان تنقل الصنف له</div>`:''}
+    <div style="max-height:46vh;overflow:auto">${o.items.slice().sort((a,b)=>b.val-a.val).map(r=>
+      `<div class="card" style="flex-wrap:wrap"><div class="info"><div class="name" style="font-size:12.5px">${esc(r.name)}</div></div>
+        <div style="font-weight:800;color:var(--blue);font-variant-numeric:tabular-nums">${fmtN(Math.round(r.val))}</div>
+        ${acc? `<div class="clsrow" style="flex-basis:100%">${BONUS_ACC.map(l=>
+          `<button class="clschip${l===line?' on':''}" onclick="bonusMoveItem(${jsArg(r.name)},${jsArg(l)},${jsArg(line)})">${esc(l.replace(/^اكسسوارات\s*/,'').replace(/[()]/g,'').trim()||l)}</button>`).join('')}</div>`:''}
+      </div>`).join('')}</div>
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إغلاق</button>
+      <button class="btn-save" onclick="bonusSaveRate(${jsArg(line)})">حفظ النسبة</button></div>`);
+}
+function bonusSaveRate(line){
+  const v=$('#bn_rate').value;
+  bonusData.rates=bonusData.rates||{};
+  if(v==='' || Math.abs(nz(v)/100-(BONUS_RATE_DEF[line]??0))<1e-9) delete bonusData.rates[line];
+  else bonusData.rates[line]=nz(v)/100;
+  bonusSave(); closeSheet(); render(); toast('اتحفظت نسبة '+line);
+}
+function bonusMoveItem(name, to, from){
+  bonusData.itemLine=bonusData.itemLine||{};
+  bonusData.itemLine[name]=to; bonusSave(); render();
+  const still=bonusLines().find(x=> x.line===from);
+  if(still) bonusLineSheet(from); else closeSheet();
+  toast('اتنقل لـ«'+to+'»');
+}
+function setBonusTab(k){ save('_bonusTab_', k); render(true); }
+function renderBonus(m){
+  const tab=load('_bonusTab_','files');
+  m.innerHTML = tabStrip([{k:'files',name:'📁 الملفات'},{k:'rep',name:'🎁 البونص'}], tab, k=>`setBonusTab('${k}')`, {grow:true})
+    + `<div id="bn_c"></div>`;
+  const c=$('#bn_c');
+  if(tab==='rep') return renderBonusReport(c);
+  const n=BONUS_FILES.filter(f=>bonusFile(f.k)).length;
+  c.innerHTML = `<div class="f-row"><label>الفترة (بتظهر في عنوان التقرير)</label>
+      <input value="${esc(bonusData.period||'')}" placeholder="مثلاً: الربع الثاني 2026" onchange="bonusSetPeriod(this.value)"></div>
+    ${BONUS_FILES.map(f=>{ const d=bonusFile(f.k), tot=d? d.rows.reduce((a,x)=>a+x.val,0) : 0;
+      return `<div class="card">
+        <div style="font-size:24px;width:40px;text-align:center">${f.icon}</div>
+        <div class="info"><div class="name">${esc(f.name)}</div>
+          <div class="sub">${d? `${d.rows.length} صنف · ${fmtN(Math.round(tot))} · <bdi>${esc(d.file)}</bdi> · <bdi>${d.at}</bdi>` : 'لسه ما اترفعش'}</div></div>
+        <div class="act" style="display:flex;gap:6px;align-items:center">
+          <label style="padding:8px 12px;border-radius:10px;background:${d?'var(--panel2)':'var(--blue)'};color:${d?'var(--text)':'#fff'};
+            font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap">📥 ${d?'تغيير':'رفع'}
+            <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="bonusUpload('${f.k}',this)"></label>
+          ${d? `<button onclick="bonusClearFile('${f.k}')">🗑️</button>`:''}</div></div>`; }).join('')}
+    <div class="impbar" style="margin-top:12px">
+      <button onclick="setBonusTab('rep')" style="background:var(--blue);color:#fff;border-color:var(--blue)">🎁 التقرير${n?' ('+n+' ملف)':''}</button>
+      ${n? `<button onclick="bonusNewPeriod()">🧹 فترة جديدة</button>`:''}</div>
+    <div style="font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:6px">
+      الملف لازم يكون فيه عمود «الصنف» وعمود «صافي قيمة المشتريات» (أو القيمة). لو فيه عمود «النوع»
+      بيتاخد منه صفوف القطاع ده بس. النِسَب: القطاعات 2% والاكسسوارات 5% — وتتعدّل من التقرير.</div>`;
+}
+function renderBonusReport(c){
+  const md=bonusModel();
+  if(!md.body.length){ c.innerHTML=`<div class="empty">ارفع ملفات القطاعات الأول من «📁 الملفات»</div>`; return; }
+  const miss=BONUS_FILES.filter(f=>!bonusFile(f.k)).map(f=>f.name);
+  const tot=md.body[md.body.length-1].cells;
+  const box=(t,v,col)=>`<div class="t3" style="flex:1;min-width:0"><div class="t3n">${t}</div>
+    <div style="font-weight:800;font-size:17px;color:${col};font-variant-numeric:tabular-nums">${fmtN(Math.round(v))}</div></div>`;
+  renderRepTable(c, 'bonus', md, {noMedal:true,
+    warn: miss.length? 'لسه ما اترفعش: '+miss.map(esc).join('، ') : '',
+    boxes: `<div style="display:flex;gap:8px;margin-bottom:10px">${box('صافي المشتريات',tot[1],'var(--blue)')}${box('البونص المستحق',tot[3],'var(--ok)')}</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">دوس على القطاع تشوف أصنافه وتعدّل نسبته</div>`});
+  const t=c.querySelector('table.rep'); if(t) t.classList.add('bon');
+}
 /* ═══ الصفحة الرئيسية: نظرة سريعة وأيقونات الأقسام ═══ */
-const HOME_AC={items:'#f59e0b', warehouses:'#0ea5e9', sales:'#16a34a', gv:'#8b5cf6', payroll:'#ec4899', fin:'#0f766e'};
+const HOME_AC={items:'#f59e0b', warehouses:'#0ea5e9', sales:'#16a34a', gv:'#8b5cf6', payroll:'#ec4899', fin:'#0f766e', bonus:'#d97706'};
 function homeStats(){
   const mos=moSort(Object.keys(monthlySales));
   const last=mos[mos.length-1];
@@ -5005,6 +5257,7 @@ function renderHome(m){
     gv:`${gvOrders.length} طلبية`,
     payroll:`${employees.length} موظف`,
     fin:finUnlocked? `${Object.keys(trialBal).length} فترة` : '🔒 محمي بكلمة سر',
+    bonus:`${BONUS_FILES.filter(f=>bonusFile(f.k)).length} من ${BONUS_FILES.length} ملفات${bonusData.period?' · '+bonusData.period:''}`,
   };
   // آخر أيقونة تاخد الصف كله لو فضلت لوحدها في صف
   const tile=(mo,i)=>`<div class="htile${(i===modules.length-1 && modules.length%3===1)?' wide':''}"

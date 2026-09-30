@@ -55,5 +55,29 @@ await pg.locator('#sheet button', {hasText:'حذف العمود'}).click(); awai
 md=await pg.evaluate(()=> repModel('distsec'));
 ck('بعد الحذف البنود رجعت أعمدتها (الشاتر لـ«أخرى»)', md.header.includes('الومنيوم') && md.header.includes('أخرى') && !md.header.includes('ومنيوم وشاتر'), md.header.join('|'));
 ck('secMove اتنضف', await pg.evaluate(()=> !Object.values(secMove).includes('ومنيوم وشاتر') && !secCustomCols().length));
+
+// ── الضغط على صنف جوه البند = تعديل مجموعته
+await pg.evaluate(()=>{ secSheet('أخرى'); }); await pg.waitForTimeout(150);
+await pg.locator('#sheet details summary').first().click(); await pg.waitForTimeout(100);
+await pg.locator('#sheet details div[onclick*="itemGroupSheet"]', {hasText:'شاتر ابيض'}).first().click(); await pg.waitForTimeout(150);
+ck('اتفتح شيت مجموعة الصنف', /مجموعة الصنف/.test(await pg.locator('#sheet').innerText()) && /المجموعة دلوقتي: شاتر/.test(await pg.locator('#sheet').innerText()));
+await pg.fill('#ig_new','اكسسوارات شاتر'); await pg.locator('#sheet .btn-save').click(); await pg.waitForTimeout(150);
+ck('الصنف اتنقل لمجموعة جديدة واتحفظ', await pg.evaluate(()=> itemsByName['شاتر ابيض'].mainGroup==='اكسسوارات شاتر' && JSON.parse(localStorage.getItem('items_v1')).find(i=>i.name==='شاتر ابيض').mainGroup==='اكسسوارات شاتر'));
+ck('ورجع لشيت العمود', /عمود «أخرى»/.test(await pg.locator('#sheet').innerText()));
+// صنف مش موجود في الأصناف بيتضاف بالمجموعة
+await pg.evaluate(()=> itemSetGroup('صنف جديد خالص','الومنيوم',''));
+ck('صنف غير معروف اتضاف للأصناف بمجموعته', await pg.evaluate(()=> (itemsByName['صنف جديد خالص']||{}).mainGroup==='الومنيوم'));
+
+// ── زرار الأعمدة: ظاهر / مخفي / فاضي
+await pg.evaluate(()=>{ closeSheet(); module='sales'; save('_salesTab_',2); save('_salesRep_','distsec'); render(true); }); await pg.waitForTimeout(200);
+const bar=await pg.locator('.morow .mochip', {hasText:'🧩'}).innerText();
+ck('شريط «🧩 الأعمدة» فيه العدد', /🧩 الأعمدة \(\d+ ظاهر/.test(bar) && /فاضي/.test(bar), bar);
+await pg.locator('.morow .mochip', {hasText:'🧩'}).click(); await pg.waitForTimeout(150);
+let sh=await pg.locator('#sheet').innerText();
+ck('الشيت بيوري كل عمود وحالته', /كومبن/.test(sh) && /ظاهر/.test(sh) && /فاضي — مفيش مبيعات/.test(sh), sh.slice(0,300));
+await pg.evaluate(()=> secToggleHide('كومبن')); await pg.waitForTimeout(150);
+ck('إخفاء من الشيت', await pg.evaluate(()=> secHidden('كومبن') && repModel('distsec').header.indexOf('كومبن')<0) && /مخفي/.test(await pg.locator('#sheet').innerText()));
+await pg.evaluate(()=> secToggleHide('كومبن')); await pg.waitForTimeout(150);
+ck('وإظهار تاني', await pg.evaluate(()=> !secHidden('كومبن') && repModel('distsec').header.indexOf('كومبن')>0));
 ck('مفيش أخطاء', !errs.length, errs.join('|'));
 await b.close(); process.exit(fail?1:0);
