@@ -48,7 +48,10 @@ check('البيانات القديمة اتختمت أول ما التطبيق �
   بذرة.ختم.items_v1===1 && بذرة.ختم.gvcodes_v1===1, JSON.stringify(بذرة.ختم));
 check('والختم بيتعمل مرة واحدة بس', بذرة.متختوم===true);
 
+// لو المزامنة التلقائية لسه شغّالة، syncNow بتأجّل الطلب — نستنى لحد ما كله يخلص
 const رفع = await موبايل.evaluate(async()=>{ await syncNow(true);
+  // (المؤجّلة بتبدأ بعد 300ms، فنستنى نص ثانية هادية من غير مزامنة شغّالة)
+  for(let i=0,idle=0;i<200 && idle<10;i++){ idle = syncBusy? 0 : idle+1; await new Promise(r=>setTimeout(r,50)); }
   return { ختم: JSON.parse(localStorage.getItem('_syncRevs_')||'{}') }; });
 check('الموبايل رفع الأصناف فعلاً', SRV['elk2:items_v1']!==undefined,
   'اللي على السيرفر: '+Object.keys(SRV).join(', '));
