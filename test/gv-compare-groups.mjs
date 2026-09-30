@@ -36,7 +36,8 @@ ck('إجمالي كراتين الكوالين ١٨', Math.round(g.find(x=>x.n==
   String(g.find(x=>x.n==='كوالين').c));
 ck('إجمالي كراتين المفصلات ١٥', Math.round(g.find(x=>x.n==='مفصلات').c)===15,
   String(g.find(x=>x.n==='مفصلات').c));
-ck('المجموعات مرتبة من الأكبر للأصغر', g[0].c>=g[1].c && g[1].c>=g[2].c, g.map(x=>x.c).join('/'));
+ck('المجموعات مرتبة أبجدي',
+  g.map(x=>x.n).join('|')==='بدون مجموعة|كوالين|مفصلات', g.map(x=>x.n).join('|'));
 
 // الجدول على الشاشة
 const t=await pg.evaluate(()=> document.querySelector('table.rep').innerText);
@@ -58,5 +59,35 @@ ck('الإكسل أول عمود فيه المجموعة', x && x[0][0]==='ال�
 ck('وفيه سطر إجمالي لكل مجموعة',
   x && x.filter(r=>/^إجمالي /.test(String(r[1]||''))).length===3,
   x? String(x.filter(r=>/^إجمالي /.test(String(r[1]||''))).length):'مفيش');
+
+// ── الترتيب جوه المجموعة أبجدي والأرقام بتتقرا أرقام
+await pg.evaluate(()=>{
+  items=[{id:'s1',name:'سبلونة 100 جرار',mainGroup:'جيفيز',subGroup:'سبلونات'},
+         {id:'s2',name:'سبلونة 30 جرار',mainGroup:'جيفيز',subGroup:'سبلونات'},
+         {id:'s3',name:'سبلونة 40 جرار',mainGroup:'جيفيز',subGroup:'سبلونات'},
+         {id:'s4',name:'سبلونة 40 مفصلي',mainGroup:'جيفيز',subGroup:'سبلونات مفصلي'}];
+  save('items_v1',items); itemsByName={}; items.forEach(i=>itemsByName[i.name]=i);
+  gvcodes=[{id:'c1',name:'سبلونة 100 جرار',code:'M1000',perCarton:'20'},
+           {id:'c2',name:'سبلونة 30 جرار',code:'M300',perCarton:'20'},
+           {id:'c3',name:'سبلونة 40 جرار',code:'M400',perCarton:'20'},
+           {id:'c4',name:'سبلونة 40 مفصلي',code:'M400',perCarton:'20'}];
+  save('gvcodes_v1',gvcodes);
+  whStock={w1:{'سبلونة 100 جرار':{balance:100},'سبلونة 30 جرار':{balance:60},
+               'سبلونة 40 جرار':{balance:40},'سبلونة 40 مفصلي':{balance:20}}};
+  save('whStock_v1',whStock); render(true); });
+await pg.waitForTimeout(450);
+const g2=await pg.evaluate(()=> buildGvCompare().groups.map(x=>({n:x.name, r:x.rows.map(y=>y.name)})));
+const jarar=g2.find(x=>x.n==='سبلونات');
+ck('٣٠ قبل ٤٠ قبل ١٠٠ (مش بالكميات)',
+  jarar && jarar.r.join('|')==='سبلونة 30 جرار|سبلونة 40 جرار|سبلونة 100 جرار',
+  JSON.stringify(g2));
+ck('المفصلي في مجموعته مش مع الجرار',
+  g2.some(x=>x.n==='سبلونات مفصلي' && x.r.length===1), JSON.stringify(g2.map(x=>x.n)));
+// مفصلي ما ياخدش رصيد الجرار رغم إن الكود واحد (M400)
+const rowsAll=await pg.evaluate(()=> buildGvCompare().rows.map(r=>({n:r.name, s:r.stockName, t:r.total})));
+const mf=rowsAll.find(r=>/مفصلي/.test(r.n)), jr=rowsAll.find(r=>r.n==='سبلونة 40 جرار');
+ck('المفصلي اترّبط بصنفه هو', mf && mf.s==='سبلونة 40 مفصلي' && mf.t===20, JSON.stringify(mf));
+ck('والجرار بصنفه هو — مش نفس الرصيد', jr && jr.s==='سبلونة 40 جرار' && jr.t===40, JSON.stringify(jr));
+
 console.log(bad?('❌ فشل '+bad):'✅ كله تمام');
 await b.close(); process.exit(bad?1:0);
