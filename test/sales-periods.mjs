@@ -61,7 +61,7 @@ await pg.evaluate(()=>{
 await pg.waitForTimeout(350);
 let sc=await pg.evaluate(()=> repModel('distsec'));
 ck('أعمدة القطاعات قابلة للضغط',
-  (sc.headTap||[]).indexOf("secSheet('كومبن')")>=0, JSON.stringify(sc.headTap));
+  (sc.headTap||[]).indexOf('secSheet(&quot;كومبن&quot;)')>=0, JSON.stringify(sc.headTap));
 ck('العناوين فيها ⚙️', (await pg.locator('table.rep th').allInnerTexts()).join('|').includes('⚙️'));
 await pg.evaluate(()=> secSheet('كومبن')); await pg.waitForTimeout(250);
 ck('الشيت بيوري المجموعة اللي تحت العمود',
