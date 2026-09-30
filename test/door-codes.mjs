@@ -17,7 +17,8 @@ await pg.evaluate(()=>{ module='sales'; save('_salesTab_',2); save('_salesRep_',
 await pg.waitForTimeout(400);
 
 let d=await pg.evaluate(()=> repModel('doorcode'));
-ck('صف «بدون كود» موجود', d.body.some(r=> r.cells[1]==='بدون كود'),
+ck('صف «بدون كود» فيه الباب اللي من غير كود بس',
+  d.body.some(r=> r.cells[1]==='بدون كود'),
   d.body.filter(r=>r.type==='row').map(r=>r.cells[1]).join('|'));
 ck('خلايا الكود قابلة للضغط', d.tapCol===1 && (d.rowTap||[]).length===d.body.filter(r=>r.type==='row').length,
   JSON.stringify(d.rowTap));
@@ -33,9 +34,9 @@ await pg.evaluate(()=> closeSheet()); await pg.waitForTimeout(200);
 
 await pg.evaluate(()=> doorCodeSheet('بدون كود')); await pg.waitForTimeout(250);
 const sh=await pg.evaluate(()=>document.body.innerText);
-ck('الشيت بيوري الصنفين اللي من غير كود',
-  /خدمة قص ابواب/.test(sh) && /باب رشدي 80 سم/.test(sh));
-ck('الخانات فاضية لأنهم من غير كود',
+ck('الشيت بيوري الباب بس — الخدمة مستبعدة من التقرير',
+  /باب رشدي 80 سم/.test(sh) && !/خدمة قص ابواب/.test(sh));
+ck('الخانة فاضية لأنه من غير كود',
   (await pg.locator('#dc_0').inputValue())==='' );
 
 // نحط كود لصنف واحد
@@ -49,9 +50,11 @@ const map=await pg.evaluate(()=> JSON.parse(localStorage.getItem('doorCodeMap_v1
 ck('الكود اتحفظ بحروف كبيرة', map['باب رشدي 80 سم']==='A11', JSON.stringify(map));
 d=await pg.evaluate(()=> repModel('doorcode'));
 const a11=d.body.find(r=> r.cells[1]==='A11');
-ck('الصنف اتنقل لكود A11 بقيمته', a11 && a11.cells[3]===9000, JSON.stringify(a11&&a11.cells));
-const none=d.body.find(r=> r.cells[1]==='بدون كود');
-ck('«بدون كود» فضل فيه الخدمة بس', none && none.cells[7]===2000, JSON.stringify(none&&none.cells));
+ck('الصنف اتنقل لكود A11 بقيمته',
+  a11 && a11.cells[a11.cells.length-1]===9000, JSON.stringify(a11&&a11.cells));
+ck('مبقاش فيه «بدون كود» خالص',
+  !d.body.some(r=> r.cells[1]==='بدون كود'),
+  d.body.filter(r=>r.type==='row').map(r=>r.cells[1]).join('|'));
 
 // الشيل: خانة فاضية = يرجع من غير كود
 await pg.evaluate(()=> doorCodeSheet('A11')); await pg.waitForTimeout(250);

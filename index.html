@@ -132,7 +132,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -1755,23 +1755,29 @@ function renderRepDistSectors(m){
 /* ٣) الأبواب بالكود — صف لكل كود، وأعمدة للمقاسات
       70 · 80 · 90 · متر · برور وحلق · خدمات.
       المقاس بيتقرا من اسم الصنف، والبرور والحلق مع بعض في عمود واحد. */
-const DOOR_COLS=['70','80','90','متر','برور وحلق','خدمات'];
+/* التقرير ده للأبواب نفسها بس: البرور والحلوق والخدمات والإكسسوارات
+   مستبعدين حتى لو عليهم أكواد، فمفيش سطر «بدون كود» من الأصل. */
+const DOOR_SIZES=['70','80','90','متر','باقي'];
+const NOT_A_DOOR=/برور|حلق|حلوق|خدم|كالون|مفصل|جوان|سليكون|مسمار|اكسسوار|إكسسوار|عتب/;
+function isDoorItem(name, sub){
+  if(NOT_A_DOOR.test(String(name||''))) return false;
+  return isDoorSub(name, sub);
+}
 function doorCol(name){
   const n=String(name||'');
-  if(/برور|حلق|حلوق/.test(n)) return 'برور وحلق';
-  if(/خدم/.test(n)) return 'خدمات';
   const m2=n.match(/(^|[\s(])(\d{2,3})(\s*سم)?([\s)]|$)/);
   if(m2){ const v=parseInt(m2[2],10);
     if(v===70) return '70'; if(v===80) return '80'; if(v===90) return '90';
     if(v>=100 && v<=130) return 'متر'; }
   if(/متر/.test(n)) return 'متر';
-  return 'خدمات';                       // إكسسوارات وخدمات الأبواب
+  return 'باقي';                        // باب من غير مقاس واضح في اسمه
 }
 function buildDoorsByCode(){
   const rows={};
   salesMonths().forEach(mo=>{
     Object.values(monthlyDoors[mo]||{}).forEach(byItem=>{
       Object.entries(byItem).forEach(([name, d])=>{
+        if(!isDoorItem(name, d.sub)) return;
         const code = doorCodeMap[name] || d.code || 'بدون كود';
         const r = rows[code] = rows[code] || {code, names:new Set(), cells:{}, qtys:{}, qty:0, val:0};
         r.names.add(name);
@@ -1782,14 +1788,17 @@ function buildDoorsByCode(){
       });
     });
   });
-  const list=Object.values(rows).map(r=>({
+  const all=Object.values(rows);
+  // عمود المقاس ما يظهرش غير لما يكون فيه أرقام
+  const cols=DOOR_SIZES.filter(c=> all.some(r=> r.cells[c]));
+  const list=all.map(r=>({
     code:r.code, name:[...r.names][0]||'', names:[...r.names], many:r.names.size>1,
-    cells:DOOR_COLS.map(c=> r.cells[c]||0), qtys:DOOR_COLS.map(c=> rnd2(r.qtys[c]||0)),
+    cells:cols.map(c=> r.cells[c]||0), qtys:cols.map(c=> rnd2(r.qtys[c]||0)),
     qty:r.qty, val:r.val
   })).sort((a,b)=> b.val-a.val);
-  const tot=DOOR_COLS.map((c,i)=> list.reduce((a,r)=> a+r.cells[i],0));
-  const totQ=DOOR_COLS.map((c,i)=> rnd2(list.reduce((a,r)=> a+r.qtys[i],0)));
-  return {cols:DOOR_COLS, list, tot, totQ,
+  const tot=cols.map((c,i)=> list.reduce((a,r)=> a+r.cells[i],0));
+  const totQ=cols.map((c,i)=> rnd2(list.reduce((a,r)=> a+r.qtys[i],0)));
+  return {cols, list, tot, totQ,
     qty:list.reduce((a,r)=>a+r.qty,0), val:list.reduce((a,r)=>a+r.val,0)};
 }
 function repDoorsByCodeModel(){
@@ -1857,7 +1866,7 @@ function buildDistDoors(){
     Object.entries(monthlyDoors[mo]||{}).forEach(([cname, byItem])=>{
       if(clsOfName[cname]==='مستبعد') return;
       Object.entries(byItem).forEach(([nm,d])=>{
-        if(!isDoorSub(nm, d.sub)) return;
+        if(!isDoorItem(nm, d.sub)) return;      // نفس فلتر «أبواب بالكود» عشان التقريرين يطابقوا
         const r = rows[cname] = rows[cname] || {qty:0, val:0, by:{}};
         r.qty += (d.qty||0); r.val += (d.val||0);
         r.by[k]=(r.by[k]||0)+(d.val||0);
