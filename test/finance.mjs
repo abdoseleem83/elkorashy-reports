@@ -34,9 +34,9 @@ ck('شاشة الميزان فيها زرار الرفع', /رفع ميزان م
 await pg.evaluate(()=>{
   // بنحقن الميزان مباشرة (مكتبة الإكسل مش متحمّلة في بيئة الاختبار)
   trialBal['2026-08']=[
-    {code:'1101',name:'الخزينة',debit:250000,credit:0},
-    {code:'4101',name:'المبيعات',debit:0,credit:900000},
-    {code:'5101',name:'تكلفة المبيعات',debit:650000,credit:0}];
+    {code:'1201',name:'الخزينة',debit:250000,credit:0},
+    {code:'4102',name:'المبيعات',debit:0,credit:900000},
+    {code:'3211',name:'تكلفة المبيعات',debit:650000,credit:0}];
   save('trialBal_v1',trialBal); save('_finPer_','2026-08'); render(true); });
 await pg.waitForTimeout(350);
 const md=await pg.evaluate(()=> trialBalModel('2026-08'));
@@ -48,11 +48,15 @@ await pg.evaluate(()=>{ trialBal['2026-08'].push({code:'9',name:'زيادة',deb
   save('trialBal_v1',trialBal); render(true); }); await pg.waitForTimeout(300);
 ck('تحذير لما الميزان مش متوازن', /مش متوازن/.test(await pg.evaluate(()=>document.body.innerText)));
 
-// القوائم التانية بتقول إنها محتاجة التوزيع
-await pg.evaluate(()=>{ setFinView('isco'); }); await pg.waitForTimeout(300);
+// قائمة الدخل بتتحسب من الميزان على طول
+await pg.evaluate(()=>{ setFinView('isco'); }); await pg.waitForTimeout(350);
 const st=await pg.evaluate(()=>document.body.innerText);
-ck('قائمة الدخل بتقول إن الميزان جاهز ومحتاجة البنود',
-  /قائمة دخل الشركة/.test(st) && /حساب جاهزين/.test(st), '');
+ck('قائمة دخل الشركة بتتبني من الميزان',
+  /قائمة دخل الشركة/.test(st) && /المبيعات/.test(st) && /صافي الربح/.test(st), '');
+const V=await pg.evaluate(()=> finStatement('2026-08','isco').V);
+ck('المبيعات ٩٠٠ ألف والتكلفة ٦٥٠ ألف',
+  Math.round(V.sales)===900000 && Math.round(V.cogs)===650000, JSON.stringify(V));
+ck('صافي الربح ٢٥٠ ألف', Math.round(V.profit)===250000, String(Math.round(V.profit)));
 
 // القفل
 await pg.evaluate(()=>{ setFinView('isco'); finLock(); }); await pg.waitForTimeout(300);
