@@ -22,10 +22,10 @@ ck('كلمة سر غلط مش بتفتح', (await pg.evaluate(()=>finUnlocked))=
 await pg.fill('#fin_pw','2372010');
 await pg.evaluate(()=> finUnlock()); await pg.waitForTimeout(350);
 ck('كلمة السر الصح بتفتح', (await pg.evaluate(()=>finUnlocked))===true);
-ck('٥ أيقونات جواها', (await pg.locator('#main > .stabs .stab').count())===5);
+ck("٦ أيقونات جواها", (await pg.locator("#main > .stabs .stab").count())===6);
 const names=await pg.locator('#main > .stabs .stab').allInnerTexts();
 ck('الأسماء صح',
-  names.join('|')==='⚖️ موازين المراجعة|🏢 دخل الشركة|🧱 دخل PVC|🏭 دخل المصنع|📊 المركز المالي',
+  names.join('|')==='⚖️ موازين المراجعة|🏢 دخل الشركة|🧱 دخل PVC|🏭 دخل المصنع|📊 المركز المالي|🏷️ توزيع القطاعات',
   names.join('|'));
 
 // رفع ميزان مراجعة

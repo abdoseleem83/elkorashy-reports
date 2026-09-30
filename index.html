@@ -193,7 +193,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.8</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.9</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -2799,6 +2799,12 @@ function allStockNames(){
   for(const w of warehouses) for(const n of Object.keys(whStock[w.id]||{})) out.add(n);
   return [...out];
 }
+/* كلمات بتفرّق بين أنواع متشابهة في الاسم والكود (سبلونة 40 مفصلي
+   وسبلونة 40 جرار الاتنين كودهم M400) — لازم النوع يتطابق قبل
+   ما نعتبرهم نفس الصنف، وإلا الاتنين بياخدوا نفس الرصيد. */
+const GV_KINDS=[/جرار/, /مفصل/, /كرنك/, /بكر/, /سحاب/];
+function gvKind(t){ t=String(t||''); for(let i=0;i<GV_KINDS.length;i++) if(GV_KINDS[i].test(t)) return i; return -1; }
+function gvKindOk(a,b){ const x=gvKind(a), y=gvKind(b); return x<0 || y<0 || x===y; }
 function gvStockName(name, codeId, code){
   if(codeId && Object.prototype.hasOwnProperty.call(gvMap, codeId)){
     const m = gvMap[codeId];
@@ -2806,14 +2812,16 @@ function gvStockName(name, codeId, code){
   }
   if(name) for(const w of warehouses) if(stockKey(w.id, name) !== null) return name;
   const names = allStockNames();
+  const ok = n=> gvKindOk(name, n);
   const cf = ordNorm(code || '');
   if(cf && cf.length >= 3){
-    const hit = names.find(n=> ordNorm(n).indexOf(cf) >= 0);
+    const hit = names.find(n=> ok(n) && ordNorm(n).indexOf(cf) >= 0);
     if(hit) return hit;
   }
   const nf = ordNorm(name || '');
   if(nf && nf.length >= 4){
-    const hit = names.find(n=>{ const x = ordNorm(n); return x.indexOf(nf) >= 0 || nf.indexOf(x) >= 0; });
+    const hit = names.find(n=>{ if(!ok(n)) return false;
+      const x = ordNorm(n); return x.indexOf(nf) >= 0 || nf.indexOf(x) >= 0; });
     if(hit) return hit;
   }
   return null;
@@ -2854,7 +2862,7 @@ function buildGvCompare(){
     rows.push({id:g.id, name:g.name, code:g.code||'', pc, pieces, stockName:nm,
       cartons: pieces.map(q=> pc ? q/pc : 0), total, totalCartons: pc ? total/pc : 0, matched: !!nm});
   });
-  rows.sort((a,b)=> b.totalCartons - a.totalCartons);
+  rows.sort(gvNameCmp);
   const tot = {pieces: warehouses.map((_,i)=> rows.reduce((a,r)=> a + r.pieces[i], 0))};
   tot.cartons = warehouses.map((_,i)=> rows.reduce((a,r)=> a + r.cartons[i], 0));
   tot.total = rows.reduce((a,r)=> a + r.total, 0);
@@ -2867,6 +2875,9 @@ function gvSubOf(r){
   const it = itemsByName[r.stockName] || {};
   return (it.subGroup || it.mainGroup || '').trim() || 'بدون مجموعة';
 }
+/* ترتيب أبجدي والأرقام جواه بتتقرا أرقام: ٣٠ ثم ٤٠ ثم ٦٠ ثم ١٠٠ */
+const AR_COLL = new Intl.Collator('ar', {numeric:true, sensitivity:'base'});
+const gvNameCmp = (a,b)=> AR_COLL.compare(gvShortName(a.name, a.code), gvShortName(b.name, b.code));
 function gvGroupRows(rows){
   const by={};
   rows.forEach(r=>{ const g=gvSubOf(r); (by[g]=by[g]||[]).push(r); });
@@ -2877,8 +2888,9 @@ function gvGroupRows(rows){
       pieces:  warehouses.map((_,i)=> list.reduce((a,r)=> a+r.pieces[i], 0))};
     t.totalCartons=list.reduce((a,r)=>a+r.totalCartons,0);
     t.total=list.reduce((a,r)=>a+r.total,0);
+    list.sort(gvNameCmp);
     return t;
-  }).sort((a,b)=> b.totalCartons - a.totalCartons);
+  }).sort((a,b)=> AR_COLL.compare(a.name, b.name));
 }
 const fmtC = n=> !n ? '' : (Math.abs(n - Math.round(n)) < 0.005 ? String(Math.round(n)) : n.toFixed(2));
 function gvCompareTableHtml(cls){
@@ -3640,6 +3652,7 @@ const FIN_VIEWS=[
   {id:'ispvc', name:'🧱 دخل PVC'},
   {id:'isfac', name:'🏭 دخل المصنع'},
   {id:'bs',    name:'📊 المركز المالي'},
+  {id:'seg',   name:'🏷️ توزيع القطاعات'},
 ];
 function setFinView(id){ const c=load('_finView_',null); save('_finView_', c===id?null:id); render(true); }
 function finUnlock(){
@@ -3662,6 +3675,7 @@ function renderFinance(m){
     + `<div id="fin_c"></div>`;
   const c=$('#fin_c');
   if(v==='tb') renderTrialBalance(c);
+  else if(v==='seg') renderFinSegments(c);
   else if(v) renderFinStatement(c, v);
   else c.innerHTML = `<div class="empty">اختار القائمة من فوق
     <div style="margin-top:12px"><button onclick="finLock()" style="padding:9px 18px;border-radius:12px;
@@ -3708,9 +3722,7 @@ function importTrialBalance(file){
         if(!d && !cr) continue;
         list.push({code: ci>=0? String(row[ci]||'').trim() : '', name:nm, debit:d, credit:cr});
       }
-      // تخمين أوّلي: أي حساب اسمه فيه PVC يبقى قطاع PVC
-      list.forEach(a=>{ if(a.code && !finSeg[a.code] && /pvc/i.test(a.name)) finSeg[a.code]='pvc'; });
-      save('finSeg_v1', finSeg);
+
       if(!list.length){ toast('مفيش صفوف فيها أرقام'); return; }
       const td=list.reduce((a,x)=>a+x.debit,0), tc=list.reduce((a,x)=>a+x.credit,0);
       pendingImport={type:'tb', list};
@@ -3735,6 +3747,7 @@ function commitTrialBalance(){
   const p=pendingImport; if(!p||p.type!=='tb') return;
   const per=$('#tb_yr').value+'-'+$('#tb_mo').value;
   trialBal[per]=p.list; save('trialBal_v1',trialBal); save('_finPer_',per);
+  finAutoSeg(per);                                  // توزيع أوّلي على فروع PVC
   pendingImport=null; closeSheet(); render(true); toast('اتحفظ ميزان '+moName(per));
 }
 function delTrialBalance(per){
@@ -3806,11 +3819,39 @@ function finLeaves(per){
   return list.filter(a=>{ const c=String(a.code||''); return c && !pre[c]; })
              .map(a=>({code:String(a.code), name:a.name, bal:(a.debit||0)-(a.credit||0)}));
 }
+/* القطاع بيتحدّد على الحساب الأب (٤ أرقام) وكل اللي تحته بيرثه،
+   وتقدر تخصّص حساب طرفي بعينه لو عايز تخالف الأب. */
+function finSegOf(code){
+  const c=String(code||'');
+  return finSeg[c] || finSeg[c.slice(0,4)] || '';
+}
+/* كلمات فروع PVC زي ما اتحددت: طنطا · اكسا العاشر · الاسكندرية ·
+   شتر وبلسيه، ومصروفاتهم: طنطا · الاسكندرية · السيارة · الموتوسيكل */
+const PVC_RE=/طنطا|اكسا|العاشر|المنصور|اسكندري|إسكندري|شتر|بلسيه|سبرباي|pvc|سياره|سيارة|شفروليه|موتوسيكل|موتسيكل|متوسيكل|متسيكل/i;
+function finAutoSeg(per){
+  let n=0;
+  finParents(per).forEach(a=>{ if(!finSeg[a.code] && PVC_RE.test(a.name)){ finSeg[a.code]='pvc'; n++; } });
+  save('finSeg_v1', finSeg);
+  return n;
+}
 function finAccounts(per, line, seg){
   return finLeaves(per).filter(a=>
     (line.pre||[]).some(p=> a.code.startsWith(p)) &&
     !(line.not||[]).some(p=> a.code.startsWith(p)) &&
-    (!seg || (finSeg[a.code]||'')===seg));
+    (!seg || finSegOf(a.code)===seg));
+}
+/* حسابات الأرباح والخسائر على مستوى ٤ أرقام — دي اللي بتخصّصها */
+function finParents(per){
+  const leaves=finLeaves(per), by={};
+  leaves.forEach(a=>{
+    if(!/^[34]/.test(a.code)) return;
+    const k=a.code.slice(0,4);
+    (by[k]=by[k]||{code:k, name:'', bal:0, n:0}).bal+=a.bal; by[k].n++;
+  });
+  (trialBal[per]||[]).forEach(a=>{ const c=String(a.code||''); if(by[c] && !by[c].name) by[c].name=a.name; });
+  Object.keys(by).forEach(k=>{ if(!by[k].name){
+    const f=leaves.find(a=>a.code.startsWith(k)); by[k].name=f? f.name : k; } });
+  return Object.values(by).sort((a,b)=> Math.abs(b.bal)-Math.abs(a.bal));
 }
 function finLineVal(per, line, seg){
   const v=finAccounts(per, line, seg).reduce((a,x)=>a+x.bal,0);
@@ -3854,7 +3895,7 @@ function finLineSheet(id, k){
         <div class="sub">${esc(a.code)}</div></div>
         <div style="font-weight:800;color:var(--blue);font-variant-numeric:tabular-nums">${fmtN(Math.round(line.flip? -a.bal : a.bal))}</div>
         ${R.isBS? '' : `<div class="clsrow" style="flex-basis:100%">${FIN_SEGS.map(([sk,sn])=>
-          `<button class="clschip${(finSeg[a.code]||'')===sk?' on':''}"
+          `<button class="clschip${finSegOf(a.code)===sk?' on':''}"
             onclick="setFinSeg('${esc(a.code)}','${sk}','${id}','${k}')">${sn}</button>`).join('')}</div>`}
       </div>`).join('')}</div>
     <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">تمام</button></div>`);
@@ -3865,8 +3906,43 @@ function setFinSeg(code, seg, id, k){
 }
 /* الحسابات اللي لسه مش متخصّصة لقطاع — عشان ما تضيعش من قوائم PVC والمصنع */
 function finUnassigned(per){
-  const pre=IS_LINES.filter(l=>l.pre).reduce((a,l)=>a.concat(l.pre),[]);
-  return finLeaves(per).filter(a=> pre.some(p=>a.code.startsWith(p)) && !finSeg[a.code] && a.bal);
+  return finParents(per).filter(a=> !finSegOf(a.code) && Math.round(a.bal));
+}
+/* شاشة توزيع القطاعات: كل حساب أب بسطر وقدامه القطاع بتاعه */
+function renderFinSegments(m){
+  const per=finCur();
+  if(!per){ m.innerHTML=`<div class="empty">ارفع ميزان مراجعة الأول</div>`; return; }
+  const list=finParents(per);
+  const cnt={'':0,pvc:0,fac:0}; list.forEach(a=> cnt[finSegOf(a.code)||'']++);
+  m.innerHTML = `
+    <div class="warn">القطاع بيتحدد على الحساب الأب، وكل الحسابات اللي تحته بترثه.
+      قوائم PVC والمصنع بتحسب حساباتها بس، وقائمة الشركة بتحسب الكل.</div>
+    <div class="morow">
+      <button class="mochip on" onclick="finAutoRun()">✨ توزيع تلقائي لفروع PVC</button>
+      <button class="mochip" onclick="finClearSeg()">↩️ تصفير التوزيع</button>
+      <span class="mosep">PVC ${cnt.pvc} · المصنع ${cnt.fac} · من غير قطاع ${cnt['']}</span>
+    </div>
+    ${list.map(a=>`<div class="card" style="flex-wrap:wrap">
+      <div class="info" style="flex-basis:100%">
+        <div class="name" style="font-size:13px">${esc(a.name)}</div>
+        <div class="sub">${esc(a.code)} · ${a.n} حساب</div></div>
+      <div style="font-weight:800;color:var(--blue);font-variant-numeric:tabular-nums">${fmtN(Math.round(Math.abs(a.bal)))}</div>
+      <div class="clsrow" style="flex-basis:100%">${FIN_SEGS.map(([sk,sn])=>
+        `<button class="clschip${finSegOf(a.code)===sk?' on':''}"
+          onclick="segPick('${esc(a.code)}','${sk}')">${sn}</button>`).join('')}</div>
+    </div>`).join('')}`;
+}
+function segPick(code, seg){
+  if(seg) finSeg[code]=seg; else delete finSeg[code];
+  save('finSeg_v1', finSeg); render();
+}
+function finAutoRun(){
+  const n=finAutoSeg(finCur()); render();
+  toast(n? ('اتخصّص '+n+' حساب لـPVC') : 'كله متخصّص خلاص');
+}
+function finClearSeg(){
+  if(!confirm('تصفير توزيع القطاعات كله؟')) return;
+  finSeg={}; save('finSeg_v1', finSeg); render(); toast('اتصفّر');
 }
 function renderFinStatement(m, id){
   const per=finCur();
@@ -3875,8 +3951,9 @@ function renderFinStatement(m, id){
   let bars='';
   if(!R.isBS && R.seg){
     const u=finUnassigned(per);
-    if(u.length) bars += `<div class="warn">⚠️ ${u.length} حساب لسه مش متخصّص لقطاع، فمش داخل في القائمة دي.
-      دوس على أي بند تحت وحدّد قطاع كل حساب.</div>`;
+    if(u.length) bars += `<div class="warn">⚠️ ${u.length} حساب لسه من غير قطاع فمش داخل في القائمة دي:
+      ${u.slice(0,5).map(a=>esc(a.name)).join('، ')}${u.length>5?' …':''}
+      <div class="morow" style="margin-top:6px"><button class="mochip on" onclick="setFinView('seg')">🏷️ افتح توزيع القطاعات</button></div></div>`;
   }
   if(R.isBS){
     const d=R.V.assets - R.V.total;
