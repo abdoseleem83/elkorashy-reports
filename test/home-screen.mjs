@@ -64,7 +64,7 @@ for(const mo of ['items','warehouses','sales','gv','payroll']){
 }
 // التبويبات الداخلية كمان (تقارير المبيعات والمقارنات)
 await pg.evaluate(()=>{ module='sales'; save('_salesTab_',2); render(true); }); await pg.waitForTimeout(300);
-ck('تقارير المبيعات نفس الشريط', (await pg.locator('#st_content > .stabs > .stab').count())===6);
+ck('تقارير المبيعات نفس الشريط', (await pg.locator('#st_content > .stabs > .stab').count())===7);
 await pg.evaluate(()=>{ module='warehouses'; save('_whTab_','cmpx'); render(true); }); await pg.waitForTimeout(300);
 ck('المقارنات نفس الشريط', (await pg.locator('#wh_content > .stabs > .stab').count())===3);
 // مفيش أزرار تبويب بستايل قديم متحطوط بالإيد
