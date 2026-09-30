@@ -210,7 +210,7 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.1</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -5086,15 +5086,23 @@ function bonusParse(wb, fk){
     for(let h=0; h<Math.min(rows.length,15); h++){
       const hdr=(rows[h]||[]).map(c=>String(c||'').trim());
       const ni=hdr.findIndex(c=> nameRe.test(c)); if(ni<0) continue;
-      let vi=-1; for(const re of valRes){ vi=hdr.findIndex((c,i)=> i!==ni && re.test(c)); if(vi>=0) break; }
-      if(vi<0) continue;
-      const ti=hdr.findIndex(c=> /^النوع$|^القطاع$|^المجموعه$|^المجموعة$/.test(c));
-      let list=[];
+      /* تصدير حركة الصنف من برنامج المحاسبة (Item_Name · tvin · tvout):
+         الوارد من اكسا tvin والمرتجع ليهم tvout، فالصافي = الوارد − المرتجع */
+      const inI=hdr.findIndex(c=> /^t?v_?in$/i.test(c)), outI=hdr.findIndex(c=> /^t?v_?out$/i.test(c));
+      let vi=-1;
+      if(inI<0){ for(const re of valRes){ vi=hdr.findIndex((c,i)=> i!==ni && re.test(c)); if(vi>=0) break; }
+        if(vi<0) continue; }
+      const valOf = r=> inI>=0 ? nz(r[inI]) - (outI>=0? nz(r[outI]) : 0) : nz(r[vi]);
+      const ti=hdr.findIndex(c=> /^النوع$|^القطاع$|^المجموعه$|^المجموعة$|^category_?name$/i.test(c));
+      let list=[], cat='';
       for(let i=h+1;i<rows.length;i++){
         const r=rows[i]||[], name=String(r[ni]||'').trim();
-        if(!name || /^#/.test(name) || /^(total|grand total|الإجمالي|الاجمالي|إجمالي|اجمالي)/i.test(name)) continue;
-        const val=nz(r[vi]); if(!val) continue;
-        list.push({name, val, type: ti>=0? String(r[ti]||'').trim() : ''});
+        const t = ti>=0? String(r[ti]||'').trim() : '';
+        // المجموعة ممكن تكون سطر لوحدها فوق أصنافها (Category_Name) — بتتشال للأصناف اللي تحتها
+        if(!name){ if(t) cat=t; continue; }
+        if(/^#/.test(name) || /^(total|grand total|الإجمالي|الاجمالي|إجمالي|اجمالي)/i.test(name)) continue;
+        const val=valOf(r); if(!val) continue;
+        list.push({name, val, type: t || cat});
       }
       if(ti>=0 && list.some(x=> slotOk(x.type))) list=list.filter(x=> slotOk(x.type));
       if(list.length && (!best || list.length>best.list.length)) best={list, sheet:sn};
@@ -5211,8 +5219,8 @@ function renderBonus(m){
       <button onclick="setBonusTab('rep')" style="background:var(--blue);color:#fff;border-color:var(--blue)">🎁 التقرير${n?' ('+n+' ملف)':''}</button>
       ${n? `<button onclick="bonusNewPeriod()">🧹 فترة جديدة</button>`:''}</div>
     <div style="font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:6px">
-      الملف لازم يكون فيه عمود «الصنف» وعمود «صافي قيمة المشتريات» (أو القيمة). لو فيه عمود «النوع»
-      بيتاخد منه صفوف القطاع ده بس. النِسَب: القطاعات 2% والاكسسوارات 5% — وتتعدّل من التقرير.</div>`;
+      ارفع تقرير حركة الأصناف من البرنامج (Item_Name · tvin · tvout): الصافي = الوارد − المرتجع.
+      أو أي ملف فيه «الصنف» و«صافي قيمة المشتريات». لو فيه عمود «النوع» بيتاخد منه صفوف القطاع ده بس. النِسَب: القطاعات 2% والاكسسوارات 5% — وتتعدّل من التقرير.</div>`;
 }
 function renderBonusReport(c){
   const md=bonusModel();
