@@ -205,7 +205,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.9</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.0</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -358,6 +358,7 @@ function secAllCols(){
   const keys=secAllKeys(), cols={};
   Object.keys(keys).forEach(k=> cols[secColOf(k)]=1);
   SECTOR_ORDER.forEach(c=> cols[c]=1);
+  secCustomCols().forEach(c=> cols[c]=1);
   return Object.keys(cols).sort(secSort);
 }
 function secGroups(k){
@@ -365,25 +366,90 @@ function secGroups(k){
   return Object.keys(keys).filter(g=> secColOf(g)===k).map(g=>({name:g, val:keys[g]}))
     .sort((a,b)=> b.val-a.val);
 }
-function secMoveTo(group, col){
+/* أعمدة إنت عملتها (زي «الومنيوم») — بتتخزّن في secCfg بعلامة custom */
+function secCustomCols(){ return Object.keys(secCfg).filter(c=> (secCfg[c]||{}).custom); }
+const secNat = g => SECTOR_MAP[g] ? SECTOR_MAP[g] : secName(g);
+function secMoveTo(group, col, reopen){
   if(col===secColOf(group)) return;
-  const nat = SECTOR_MAP[group] ? SECTOR_MAP[group] : secName(group);
-  if(col===nat) delete secMove[group]; else secMove[group]=col;
+  if(col===secNat(group)) delete secMove[group]; else secMove[group]=col;
   save('secMove_v1', secMove); render(); toast('اتنقل لعمود «'+secLabel(col)+'»');
+  if(reopen) secSheet(reopen);
+}
+function secNewCol(from){
+  const v=(prompt('اسم العمود الجديد (مثلاً: الومنيوم)')||'').trim();
+  if(!v) return;
+  if(secAllCols().indexOf(v)>=0){ toast('في عمود بالاسم ده'); return; }
+  secCfg[v]={custom:1}; save('secCfg_v1',secCfg);
+  toast('اتعمل عمود «'+v+'» — انقل له البنود من الأزرار'); secSheet(from);
+}
+function secDelCol(k){
+  if(!confirm('حذف عمود «'+secLabel(k)+'»؟ البنود اللي فيه هترجع لأعمدتها الأصلية.')) return;
+  Object.keys(secMove).forEach(g=>{ if(secMove[g]===k) delete secMove[g]; });
+  delete secCfg[k]; save('secMove_v1',secMove); save('secCfg_v1',secCfg);
+  closeSheet(); render(true); toast('اتحذف العمود');
+}
+/* الصنف بالاسم بالظبط، ولو مفيش بالبصمة (مسافة، أ/ا، ة/ه) */
+let _itNorm=null, _itNormFor=null;
+function itemFind(n){
+  if(itemsByName[n]) return itemsByName[n];
+  if(_itNormFor!==items){ _itNorm={}; items.forEach(i=>{ const f=ordNorm(i.name); if(f && !_itNorm[f]) _itNorm[f]=i; }); _itNormFor=items; }
+  return _itNorm[ordNorm(n)] || null;
+}
+/* الأصناف اللي جوه بند في جدول القطاعات، من تفصيل الأصناف الشهري.
+   البند ممكن يكون مجموعة رئيسية (شهور اترفعت من v6.4) أو اسم قطاع
+   متجمّع زي «أخرى» (شهور اترفعت قبل كده — ساعتها كل المجموعات اللي
+   مش ليها عمود كانت بتتحط فيه). بنحسب بس الشهور اللي البند موجود فيها. */
+function secGroupItems(key){
+  const isMG = items.some(i=> i.mainGroup===key);
+  const match = it=> key==='غير معروف' ? !it
+    : !!it && (isMG ? it.mainGroup===key : (SECTOR_MAP[it.mainGroup]||'أخرى')===key);
+  const agg={}, mos=[], noDetail=[];
+  salesMonths().forEach(mo=>{
+    const has = Object.values(monthlySector[mo]||{}).some(o=> o && key in o);
+    if(!has) return;
+    mos.push(mo);
+    if(!monthlyItems[mo]){ noDetail.push(mo); return; }
+    Object.entries(monthlyItems[mo]).forEach(([n,d])=>{
+      if(!match(itemFind(n))) return;
+      agg[n]=(agg[n]||0)+(d.val||0); });
+  });
+  return { list:Object.keys(agg).map(n=>({name:n, val:agg[n], grp:(itemFind(n)||{}).mainGroup||''}))
+             .filter(r=> Math.round(r.val)).sort((a,b)=> b.val-a.val),
+           mos, noDetail, legacy: !isMG && key!=='غير معروف' };
+}
+function secItemsHtml(key){
+  const r=secGroupItems(key);
+  const note = r.legacy && r.list.length
+    ? `<div style="font-size:11.5px;color:var(--muted);line-height:1.6;margin:4px 0 6px">البند ده متجمّع من شهور اترفعت بنسخة قديمة
+        (${r.mos.map(moName).join('، ')}). عشان يتفصل لمجموعاته وتقدر تنقل كل مجموعة لعمود لوحدها — ارفع شيت الشهور دي تاني.</div>` : '';
+  const nod = r.noDetail.length ? `<div style="font-size:11.5px;color:var(--muted)">شهور مفيهاش تفصيل أصناف: ${r.noDetail.map(moName).join('، ')}</div>` : '';
+  if(!r.list.length) return nod || `<div class="empty" style="padding:10px">مفيش تفصيل أصناف للبند ده</div>`;
+  return note + `<div style="max-height:40vh;overflow:auto">${r.list.slice(0,150).map(x=>
+    `<div style="display:flex;gap:8px;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="min-width:0">${esc(x.name)}${r.legacy&&x.grp?`<span style="color:var(--muted);font-size:11px"> · ${esc(x.grp)}</span>`:''}</span>
+      <b style="color:var(--blue);white-space:nowrap;font-variant-numeric:tabular-nums">${repFmt(x.val)}</b></div>`).join('')}
+    ${r.list.length>150?`<div style="font-size:11.5px;color:var(--muted);padding:6px">+${r.list.length-150} صنف تاني</div>`:''}</div>` + nod;
 }
 function secSheet(k){
   const gs=secGroups(k), cols=secAllCols(), unk = k==='غير معروف' ? unknownItems() : [];
   const cfg=secCfg[k]||{};
+  const cntOf = g=> secGroupItems(g).list.length;
   openSheet(`<h3>عمود «${esc(secLabel(k))}»</h3>
     <div class="f-row"><label>اسم العمود</label>
       <input id="sc_name" value="${esc(cfg.name||k)}" placeholder="${esc(k)}"></div>
-    ${gs.length? `<div class="t3lbl">البنود اللي تحته — دوس على عمود تنقله له</div>
-      ${gs.map(g=>`<div class="card" style="flex-wrap:wrap">
-        <div class="info" style="flex-basis:100%"><div class="name" style="font-size:12.5px">${esc(g.name)}</div></div>
-        <div style="font-weight:800;color:var(--blue);font-variant-numeric:tabular-nums">${repFmt(g.val)}</div>
+    ${gs.length? `<div class="t3lbl">البنود اللي تحته — دوس على البند تشوف أصنافه، ودوس على عمود تنقله له</div>
+      ${gs.map(g=>{ const n=cntOf(g.name); return `<div class="card" style="flex-wrap:wrap">
+        <details style="flex-basis:100%">
+          <summary style="list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <span class="name" style="font-size:12.5px;font-weight:800">${esc(g.name)}
+              <span style="color:var(--blue);font-size:11.5px;font-weight:700">▾ ${n? n+' صنف' : 'الأصناف'}</span></span>
+            <b style="color:var(--blue);font-variant-numeric:tabular-nums">${repFmt(g.val)}</b></summary>
+          <div style="margin-top:6px">${secItemsHtml(g.name)}</div>
+        </details>
         <div class="clsrow" style="flex-basis:100%">${cols.map(c=>
-          `<button class="clschip${c===k?' on':''}" onclick="secMoveTo(${jsArg(g.name)},${jsArg(c)})">${esc(secLabel(c))}</button>`).join('')}</div>
-      </div>`).join('')}`:''}
+          `<button class="clschip${c===k?' on':''}" onclick="secMoveTo(${jsArg(g.name)},${jsArg(c)},${jsArg(k)})">${esc(secLabel(c))}</button>`).join('')}
+          <button class="clschip" onclick="secNewCol(${jsArg(k)})">➕ عمود جديد</button></div>
+      </div>`; }).join('')}`:`<div class="empty" style="padding:12px">مفيش بنود في العمود ده لسه — انقل له من عمود تاني</div>`}
     ${k==='غير معروف'? `<div class="t3lbl">أصناف مش موجودة في «الأصناف» (${unk.length})</div>
       ${unk.length? `<div style="max-height:32vh;overflow:auto">${unk.slice(0,60).map(r=>
         `<div class="card"><div class="info"><div class="name" style="font-size:12.5px">${esc(r.name)}</div></div>
@@ -391,8 +457,10 @@ function secSheet(k){
       : `<div class="empty">مفيش — أو الشيت المرفوع قديم ومفيهوش تفصيل الأصناف</div>`}`:''}
     <div class="f-actions" style="flex-wrap:wrap;gap:6px">
       <button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
-      <button onclick="secHide(${jsArg(k)})" style="padding:10px 12px;border-radius:9px;border:1px solid var(--danger);
-        background:transparent;color:var(--danger);font-weight:700">🙈 إخفاء العمود</button>
+      ${cfg.custom? `<button onclick="secDelCol(${jsArg(k)})" style="padding:10px 12px;border-radius:9px;border:1px solid var(--danger);
+        background:transparent;color:var(--danger);font-weight:700">🗑️ حذف العمود</button>`
+      : `<button onclick="secHide(${jsArg(k)})" style="padding:10px 12px;border-radius:9px;border:1px solid var(--danger);
+        background:transparent;color:var(--danger);font-weight:700">🙈 إخفاء العمود</button>`}
       <button class="btn-save" onclick="secSave(${jsArg(k)})">حفظ</button></div>`);
 }
 function secSave(k){
@@ -418,8 +486,9 @@ function hiddenSecBar(){
     `<button class="mochip" onclick="secShow(${jsArg(k)})">${esc(secLabel(k))} ✕</button>`).join('')}</div>`;
 }
 const secSort = (a,b)=>{
-  const ia=SECTOR_ORDER.indexOf(a), ib=SECTOR_ORDER.indexOf(b);
-  return (ia<0?99:ia) - (ib<0?99:ib) || a.localeCompare(b,'ar');
+  // الأعمدة الجديدة (زي «الومنيوم») بعد الأبواب وقبل «أخرى» و«غير معروف»
+  const at=c=>{ const i=SECTOR_ORDER.indexOf(c); return i>=0? i : ((secCfg[c]||{}).custom? 5.5 : 99); };
+  return at(a) - at(b) || a.localeCompare(b,'ar');
 };
 /* أسماء الشهور بالعربي — المفتاح بيفضل YYYY-MM في التخزين */
 const AR_MONTHS=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -1873,7 +1942,7 @@ function renderRepTable(m, id, md, opt){
 function unknownItems(){
   const agg={};
   salesMonths().forEach(mo=> Object.entries(monthlyItems[mo]||{}).forEach(([n,d])=>{
-    if(itemsByName[n]) return;
+    if(itemFind(n)) return;
     agg[n]=(agg[n]||0)+(d.val||0); }));
   return Object.keys(agg).map(n=>({name:n, val:agg[n]})).sort((a,b)=> b.val-a.val);
 }
