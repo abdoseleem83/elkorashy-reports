@@ -199,7 +199,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -3578,6 +3578,23 @@ function styleSheet(ws, o){
 }
 /* رأس التقرير جوه الإكسل: سطر اسم الشركة وسطر عنوان التقرير والتاريخ،
    وبعدين العناوين. نفس شكل الـPDF. */
+/* عرض العمود بيتحسب من أطول محتوى فيه (والعرض المطلوب حد أدنى)،
+   عشان مفيش خانة تطلع #### ولا اسم يتقص في أي ملف إكسل. */
+function xlsxColWidths(aoa, widths, ncol){
+  ncol = ncol || Math.max(1, ...aoa.map(r=> (r||[]).length));
+  const out=[];
+  for(let c=0;c<ncol;c++){
+    let mx=0;
+    aoa.forEach(r=>{ const v=(r||[])[c];
+      if(v===undefined || v===null || v==='') return;
+      const t = typeof v==='number' ? Math.round(v).toLocaleString('en-US') : String(v);
+      String(t).split('\n').forEach(line=>{ if(line.length>mx) mx=line.length; });
+    });
+    const base = (widths && widths[c]) ? widths[c] : 12;
+    out.push(Math.max(9, Math.min(48, Math.max(base, mx + 2))));
+  }
+  return out;
+}
 function saveAoaXlsx(aoa, sheetName, fileName, widths, opt){
   opt = opt || {};
   const ncol = Math.max(1, ...aoa.map(r=> (r||[]).length));
@@ -3589,7 +3606,7 @@ function saveAoaXlsx(aoa, sheetName, fileName, widths, opt){
   ];
   const full = head.concat(aoa.map(pad));
   const ws = XLSX.utils.aoa_to_sheet(full);
-  if(widths) ws['!cols'] = widths.map(w=>({wch:w}));
+  ws['!cols'] = xlsxColWidths(aoa, widths, ncol).map(w=>({wch:w}));
   // دمج سطري الرأس على عرض الجدول كله
   ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:ncol-1}}, {s:{r:1,c:0}, e:{r:1,c:ncol-1}}];
   styleSheet(ws, {titleRows: 2, headRow: 2, sign: opt.sign || [], colFill: opt.colFill || [],
