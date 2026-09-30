@@ -260,7 +260,7 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.4</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.5</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -2946,27 +2946,49 @@ async function doExportDocPdf(bodyHtml, filename, landscape){
       if(end<=y) end=Math.min(y+cap, lim); return end; };
     let first=true;
     const newPage=()=>{ if(!first) pdf.addPage(); first=false; };
-    const availH = pageH - headH - footH;
-    if(!T || !footH || !headH || availH < pageH*0.25){
+    /* مكان رقم الصفحة تحت كل ورقة */
+    const numH = 16/sc;
+    const pageB = pageH - numH;
+    /* «أعلى ٣» (.dxtop) في أول ورقة بس: الرأس في باقي الورق = اللي فوقهم
+       (اللوجو والعنوان) + صف عناوين الجدول، من غير المربعات */
+    const boxes=[...el.querySelectorAll('.dxtop')];
+    let bTop=0, bBot=0;
+    if(boxes.length && headH){ bTop=Math.min(...boxes.map(b=>Y(b,'top'))); bBot=Math.max(...boxes.map(b=>Y(b,'bottom')));
+      if(!(bTop>0 && bBot<=headH)) bTop=bBot=0; }
+    const head2H = headH - (bBot-bTop);
+    if(!T || !headH || pageB - Math.max(headH, head2H) - footH < pageB*0.25){
       // مستند من غير جدول واضح — تقطيع عادي على حدود الصفوف
       let y=0;
-      while(y < canvas.height-2){ const end=cut(y,pageH,canvas.height); newPage();
+      while(y < canvas.height-2){ const end=cut(y,pageB,canvas.height); newPage();
         pdf.addImage(band(y,end-y),'JPEG',mg,mg,canvas.width*sc,(end-y)*sc); y=end; }
     } else {
-      const headImg=band(0,headH), footImg=band(footTop,footH);
-      let y=headH, cur=mg;
-      while(y < footTop-2){
-        const end=cut(y,availH,footTop), last = end>=footTop-2;
+      const headImg=band(0,headH);
+      const topImg = bBot? band(0,bTop) : null, thImg = bBot? band(bBot, headH-bBot) : null;
+      const footImg = footH? band(footTop,footH) : null;
+      const bodyEnd = footH? footTop : Y(ttrs[ttrs.length-1],'bottom');
+      let y=headH, cur=mg, pg=0;
+      while(y < bodyEnd-2){
         newPage(); cur=mg;
-        pdf.addImage(headImg,'JPEG',mg,cur,canvas.width*sc,headH*sc); cur+=headH*sc;
+        const hH = pg===0 ? headH : head2H;
+        if(pg===0 || !bBot){ pdf.addImage(headImg,'JPEG',mg,cur,canvas.width*sc,headH*sc); cur+=headH*sc; }
+        else { if(bTop){ pdf.addImage(topImg,'JPEG',mg,cur,canvas.width*sc,bTop*sc); cur+=bTop*sc; }
+               pdf.addImage(thImg,'JPEG',mg,cur,canvas.width*sc,(headH-bBot)*sc); cur+=(headH-bBot)*sc; }
+        const avail = pageB - hH;
+        let end = cut(y, avail, bodyEnd);
+        // الإجمالي في آخر ورقة بس — ولو مش هيكفي مكانه، ناخد صفوف معاه للورقة الجاية
+        if(end>=bodyEnd-2 && footH && (end-y)+footH > avail){
+          end = cut(y, avail-footH, bodyEnd);
+          if(end>=bodyEnd-2) end = cut(y, Math.max(avail-footH-1, 20), bodyEnd-1);
+        }
         pdf.addImage(band(y,end-y),'JPEG',mg,cur,canvas.width*sc,(end-y)*sc); cur+=(end-y)*sc;
-        if(last){ pdf.addImage(footImg,'JPEG',mg,cur,canvas.width*sc,footH*sc); cur+=footH*sc; }
-        else pdf.addImage(footImg,'JPEG',mg,ph-mg-footH*sc,canvas.width*sc,footH*sc);   // الإجمالي تحت في كل ورقة
-        y=end;
+        if(end>=bodyEnd-2 && footImg){ pdf.addImage(footImg,'JPEG',mg,cur,canvas.width*sc,footH*sc); cur+=footH*sc; }
+        y=end; pg++;
       }
+      if(footImg && y>=bodyEnd-2 && pg===0){ newPage(); pdf.addImage(footImg,'JPEG',mg,mg,canvas.width*sc,footH*sc); cur=mg+footH*sc; }
       // اللي بعد الجدول الرئيسي (جدول الحاويات مثلاً)
-      let t=footBot;
-      const room=()=> (ph-mg-cur)/sc;
+      let t=footH? footBot : bodyEnd;
+      const room=()=> (ph-mg-16-cur)/sc;
+      if(canvas.height - t < 40*k) t=canvas.height;      // مجرد هامش المستند — مفيش حاجة بعد الجدول
       while(t < canvas.height-2){
         if(room() < 40){ newPage(); cur=mg; }
         const end=cut(t, room(), canvas.height);
@@ -2974,6 +2996,17 @@ async function doExportDocPdf(bodyHtml, filename, landscape){
         cur+=(end-t)*sc; t=end;
         if(t < canvas.height-2){ newPage(); cur=mg; }
       }
+    }
+    // «صفحة ١ من ٣» تحت كل ورقة — بالعربي كصورة لأن خطوط jsPDF مفيهاش عربي
+    const N=pdf.internal.getNumberOfPages();
+    for(let i=1;i<=N;i++){
+      const c=document.createElement('canvas'); c.width=360; c.height=40;
+      const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height);
+      x.fillStyle='#555'; x.font='bold 22px Tahoma, Arial, sans-serif'; x.textAlign='center'; x.textBaseline='middle';
+      x.direction='rtl'; x.fillText('صفحة '+i+' من '+N, c.width/2, c.height/2);
+      pdf.setPage(i);
+      const w=126, h=14;
+      pdf.addImage(c.toDataURL('image/png'),'PNG',(pw-w)/2,ph-mg+2-h,w,h);
     }
     pdf.save(filename+'.pdf'); toast('تم تنزيل ملف PDF');
   }catch(e){ console.error(e); toast('تعذر إنشاء PDF — تأكد من الاتصال بالإنترنت'); }

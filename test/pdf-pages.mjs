@@ -1,4 +1,5 @@
-// الـPDF الحقيقي: عناوين الجدول والإجمالي بيتكرروا في كل ورقة حتى لو في جدول تاني تحته
+// الـPDF الحقيقي: عناوين الجدول بتتكرر في كل ورقة، والإجمالي في آخر ورقة بس،
+// و«أعلى ٣» في أول ورقة بس، ورقم الصفحة تحت كل ورقة
 import {chromium} from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import {existsSync} from 'fs';
 let bad=0; const ck=(n,ok,x='')=>{ console.log((ok?'✅':'❌')+' '+n+(x?'  — '+x:'')); if(!ok) bad++; };
@@ -37,13 +38,38 @@ const r=await pg.evaluate(async ()=>{
   const perPageDo=streams.map(t=>(t.match(/ Do/g)||[]).length);
   // أول صورة (الرأس) لازم تتكرر في كل صفحة
   const heads=streams.map(t=>(t.match(/\/(I\d+) Do/)||[])[1]);
-  return {pages, title, perPageDo, heads};
+  const imgs=streams.map(t=>[...t.matchAll(/\/(I\d+) Do/g)].map(m=>m[1]));
+  return {pages, title, perPageDo, heads, imgs};
 });
 ck('العنوان من غير تاريخ متكرر', r.title==='طلبية جيفز 30/08/2026', r.title);
 ck('٧٠ صنف = أكتر من صفحة', r.pages>=2, 'صفحات='+r.pages);
-ck('كل صفحة فيها رأس + شريحة + إجمالي',
+ck('كل صفحة فيها رأس + شريحة + رقم الصفحة',
   r.perPageDo.length===r.pages && r.perPageDo.every(n=>n>=3), JSON.stringify(r.perPageDo));
+ck('الإجمالي في آخر صفحة بس (صورة زيادة في الأخيرة)',
+  r.perPageDo.slice(0,-1).every(n=>n===3) && r.perPageDo[r.pages-1]>=4, JSON.stringify(r.perPageDo));
 ck('نفس صورة الرأس في كل الصفحات', r.heads.every(h=>h===r.heads[0]), JSON.stringify(r.heads));
+
+
+// ── تقرير مبيعات فيه «أعلى ٣»: المربعات في أول صفحة بس
+const r2=await pg.evaluate(async ()=>{
+  const cs=[]; for(let i=0;i<90;i++) cs.push({id:'c'+i,name:'موزع رقم '+i,cls:'موزع'});
+  customers=cs; monthlySales={'2026-08':{}}; cs.forEach((c,i)=> monthlySales['2026-08'][c.name]=(100-i)*1000);
+  let saved=null; const J=window.jspdf.jsPDF;
+  window.jspdf.jsPDF=function(o){ const d=new J(o); d.save=()=>{ saved=d; }; return d; };
+  window.exportDocPdf=(body,fn,land)=> doExportDocPdf(body,fn,land);
+  const md=repModel('dist'); md.hiLo=modelHiLo(md);
+  const body=`<div class="dx"><h2>${md.title}</h2><div class="sub">x</div>${docBoxesHtml(md)}${docTableHtml(md)}</div>`;
+  await doExportDocPdf(body,'x',false);
+  const raw=saved.output();
+  const streams=[...raw.matchAll(/stream\r?\n([\s\S]*?)endstream/g)].map(m=>m[1]).filter(t=>/ Do/.test(t) && t.length<3000);
+  return {pages:saved.getNumberOfPages(), hasBoxes:/dxtop/.test(body), imgs:streams.map(t=>[...t.matchAll(/\/(I\d+) Do/g)].map(m=>m[1]))};
+});
+ck('تقرير المبيعات فيه «أعلى ٣» وأكتر من صفحتين', r2.hasBoxes && r2.pages>=3, JSON.stringify(r2));
+const first=r2.imgs[0][0], later=r2.imgs.slice(1).map(a=>a[0]);
+ck('صورة الرأس اللي فيها المربعات في أول صفحة بس', later.every(x=>x!==first), JSON.stringify(r2.imgs));
+ck('باقي الصفحات: فوق + عناوين الجدول + شريحة + رقم', r2.imgs.slice(1,-1).every(a=>a.length===4), JSON.stringify(r2.imgs));
+ck('آخر صفحة فيها الإجمالي', r2.imgs[r2.pages-1].length===5, JSON.stringify(r2.imgs));
+ck('أرقام الصفحات مختلفة لكل صفحة', new Set(r2.imgs.map(a=>a[a.length-1])).size===r2.pages, JSON.stringify(r2.imgs));
 
 // عمود الاسم عريض كفاية
 const w=await pg.evaluate(()=>{
