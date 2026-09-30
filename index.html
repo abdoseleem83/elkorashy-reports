@@ -193,7 +193,7 @@ table.rep.stk th:first-child{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v5.9</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v6.0</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -3691,6 +3691,22 @@ function finAskPass(){
     el.onkeydown=e=>{ if(e.key==='Enter') finUnlock(); }; } }, 60);
 }
 /* ── ميزان المراجعة: رفع من إكسل ── */
+/* الحساب الأب = في حساب تاني كوده بيبدأ بكوده. الطرفي بس هو اللي
+   بيتحسب، عشان الرصيد ما يتعدّش مرتين. */
+function tbPrefixSet(list){
+  const set={}; list.forEach(a=>{ const c=String(a.code||'');
+    for(let i=1;i<c.length;i++) set[c.slice(0,i)]=1; });
+  return set;
+}
+function tbLeaves(list){
+  const pre=tbPrefixSet(list);
+  return list.filter(a=>{ const c=String(a.code||''); return !c || !pre[c]; });
+}
+function tbDepth(code, codes){
+  const c=String(code||''); let d=0;
+  for(let i=1;i<c.length;i++) if(codes[c.slice(0,i)]) d++;
+  return d;
+}
 function finPeriods(){ return Object.keys(trialBal).sort(); }
 function finCur(){ const p=load('_finPer_',null), ps=finPeriods(); return ps.indexOf(p)>=0? p : ps[ps.length-1]||null; }
 function setFinPeriod(p){ save('_finPer_',p); render(true); }
@@ -3724,10 +3740,13 @@ function importTrialBalance(file){
       }
 
       if(!list.length){ toast('مفيش صفوف فيها أرقام'); return; }
-      const td=list.reduce((a,x)=>a+x.debit,0), tc=list.reduce((a,x)=>a+x.credit,0);
+      /* الحساب الأب رصيده مجموع اللي تحته، فلو جمعنا الكل الرقم
+         بيتعدّ مرتين والميزان يبان مش متوازن. الطرفية بس. */
+      const lf=tbLeaves(list);
+      const td=lf.reduce((a,x)=>a+x.debit,0), tc=lf.reduce((a,x)=>a+x.credit,0);
       pendingImport={type:'tb', list};
       openSheet(`<h3>تأكيد ميزان المراجعة</h3>
-        <p style="font-size:13px;line-height:1.8">${list.length} حساب —
+        <p style="font-size:13px;line-height:1.8">${list.length} حساب (${lf.length} طرفي) —
           مدين ${fmtN(Math.round(td))} · دائن ${fmtN(Math.round(tc))}
           ${Math.abs(td-tc)>1? `<br><b style="color:var(--danger)">⚠️ الميزان مش متوازن — الفرق ${fmtN(Math.round(td-tc))}</b>`:'<br>✅ متوازن'}</p>
         <div class="f-row"><label>الفترة *</label>
@@ -3755,11 +3774,19 @@ function delTrialBalance(per){
   delete trialBal[per]; save('trialBal_v1',trialBal); render(true); toast('اتحذف');
 }
 function trialBalModel(per){
-  const list=trialBal[per]||[], body=[];
-  list.forEach(r=> body.push({type:'row', cells:[r.name, r.code||'—', Math.round(r.debit), Math.round(r.credit)]}));
-  const td=list.reduce((a,x)=>a+x.debit,0), tc=list.reduce((a,x)=>a+x.credit,0);
-  body.push({type:'tot', cells:['الإجمالي','', Math.round(td), Math.round(tc)]});
-  return {title:'ميزان المراجعة — '+moName(per), header:['الحساب','الكود','مدين','دائن'], body};
+  const list=(trialBal[per]||[]).slice().sort((a,b)=> String(a.code).localeCompare(String(b.code)));
+  const pre=tbPrefixSet(list), codes={}; list.forEach(a=> codes[String(a.code)]=1);
+  const body=[];
+  list.forEach(r=>{
+    const c=String(r.code||''), parent=!!pre[c];
+    const ind='  '.repeat(tbDepth(c, codes));
+    body.push({type: parent? 'sub':'row',
+      cells:[ind+r.name, c||'—', Math.round(r.debit), Math.round(r.credit)]});
+  });
+  const lf=tbLeaves(list);
+  const td=lf.reduce((a,x)=>a+x.debit,0), tc=lf.reduce((a,x)=>a+x.credit,0);
+  body.push({type:'tot', cells:['الإجمالي (الحسابات الطرفية)','', Math.round(td), Math.round(tc)]});
+  return {title:'ميزان المراجعة — '+moName(per), header:['الحساب','الكود','مدين','دائن'], body, lf};
 }
 function renderTrialBalance(m){
   const ps=finPeriods(), per=finCur();
@@ -3771,13 +3798,18 @@ function renderTrialBalance(m){
   const md=trialBalModel(per);
   const tot=md.body[md.body.length-1].cells;
   const diff=tot[2]-tot[3];
+  const nAll=(trialBal[per]||[]).length;
   m.innerHTML = bar
     + (ps.length>1? `<div class="morow">${ps.map(p=>
         `<button class="mochip${p===per?' on':''}" onclick="setFinPeriod('${p}')">${moName(p)}</button>`).join('')}
         <button class="mochip" onclick="delTrialBalance('${per}')">🗑 حذف</button></div>`
       : `<div class="morow"><button class="mochip on">${moName(per)}</button>
         <button class="mochip" onclick="delTrialBalance('${per}')">🗑 حذف</button></div>`)
-    + (Math.abs(diff)>1? `<div class="warn">⚠️ الميزان مش متوازن — الفرق ${fmtN(Math.round(diff))}</div>`:'')
+    + (Math.abs(diff)>1
+        ? `<div class="warn">⚠️ الميزان مش متوازن — الفرق ${fmtN(Math.round(diff))}</div>`
+        : `<div class="hnote" style="--ac:var(--ok)"><span class="dot"></span>
+            <span>✅ متوازن — ${md.lf.length} حساب طرفي من ${nAll}
+            (الحساب الأب سطره رمادي ومش داخل في الإجمالي)</span></div>`)
     + `<div id="tb_t"></div>`;
   $('#impTB').onchange=e=>{ if(e.target.files[0]) importTrialBalance(e.target.files[0]); };
   renderRepTable($('#tb_t'), 'tb', md, {noMedal:true});
@@ -3813,11 +3845,8 @@ const BS_LINES=[
 ];
 /* الحسابات الطرفية بس (اللي مالهاش حسابات تحتها) */
 function finLeaves(per){
-  const list=trialBal[per]||[];
-  const codes=list.map(a=>String(a.code||'')).filter(Boolean);
-  const pre={}; codes.forEach(c=>{ for(let i=1;i<c.length;i++) pre[c.slice(0,i)]=1; });
-  return list.filter(a=>{ const c=String(a.code||''); return c && !pre[c]; })
-             .map(a=>({code:String(a.code), name:a.name, bal:(a.debit||0)-(a.credit||0)}));
+  return tbLeaves(trialBal[per]||[]).filter(a=> String(a.code||''))
+    .map(a=>({code:String(a.code), name:a.name, bal:(a.debit||0)-(a.credit||0)}));
 }
 /* القطاع بيتحدّد على الحساب الأب (٤ أرقام) وكل اللي تحته بيرثه،
    وتقدر تخصّص حساب طرفي بعينه لو عايز تخالف الأب. */

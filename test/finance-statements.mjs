@@ -14,7 +14,12 @@ if(await pg.evaluate(()=> typeof XLSX === 'undefined')){
 await pg.evaluate(()=>{ switchModule('fin'); finUnlocked=true; setFinView('tb'); }); await pg.waitForTimeout(400);
 await pg.setInputFiles('#impTB', join(here,'fixtures','trial-balance.xls'));
 await pg.waitForTimeout(1500);
-ck('شاشة التأكيد ظهرت', /تأكيد ميزان المراجعة/.test(await pg.evaluate(()=>document.body.innerText)));
+const conf=await pg.evaluate(()=>document.body.innerText);
+ck('شاشة التأكيد ظهرت', /تأكيد ميزان المراجعة/.test(conf));
+ck('التأكيد بيقول متوازن — الحساب الأب مش بيتعدّ مرتين',
+  /متوازن/.test(conf) && !/مش متوازن/.test(conf),
+  (conf.match(/\d[\d,]*\s*(مدين|دائن)|الفرق [^\n]*/g)||[]).join(' · '));
+ck('وبيقول عدد الطرفي', /٢٣٩|239 طرفي/.test(conf) || /\(239 طرفي\)/.test(conf), '');
 await pg.selectOption('#tb_mo','01'); await pg.selectOption('#tb_yr','2026');
 await pg.evaluate(()=> commitTrialBalance()); await pg.waitForTimeout(800);
 
@@ -22,6 +27,17 @@ const n=await pg.evaluate(()=> (trialBal['2026-01']||[]).length);
 ck('اتحمّل ٢٧٢ حساب (اللي رصيده صفر مش بيتخزّن)', n===272, 'عدد='+n);
 const leaves=await pg.evaluate(()=> finLeaves('2026-01').length);
 ck('٢٣٩ حساب طرفي — الحساب الأب مش بيتحسب مرتين', leaves===239, 'عدد='+leaves);
+
+// إجمالي الميزان نفسه لازم يتوازن على الحسابات الطرفية
+const T=await pg.evaluate(()=>{
+  const md=trialBalModel('2026-01'); const t=md.body[md.body.length-1].cells;
+  return {d:t[2], c:t[3], leaves:md.lf.length}; });
+ck('إجمالي الميزان متوازن ٩٩,٩٥٧,٧٦٢', T.d===99957762 && T.c===99957762, JSON.stringify(T));
+ck('محسوب على ٢٣٩ حساب طرفي', T.leaves===239, String(T.leaves));
+const scr=await pg.evaluate(()=>document.body.innerText);
+ck('الشاشة بتقول متوازن مش العكس', /✅ متوازن/.test(scr) && !/مش متوازن/.test(scr), '');
+const parents=await pg.evaluate(()=> trialBalModel('2026-01').body.filter(r=>r.type==='sub').length);
+ck('الحسابات الأب سطورها رمادية (٣٣ حساب)', parents===33, String(parents));
 
 const V=await pg.evaluate(()=> finStatement('2026-01','isco').V);
 const r=x=>Math.round(x);
