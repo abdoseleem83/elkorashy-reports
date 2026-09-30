@@ -18,9 +18,9 @@ await pg.waitForTimeout(400);
 
 let d=await pg.evaluate(()=> repModel('doorcode'));
 ck('صف «بدون كود» فيه الباب اللي من غير كود بس',
-  d.body.some(r=> r.cells[1]==='بدون كود'),
-  d.body.filter(r=>r.type==='row').map(r=>r.cells[1]).join('|'));
-ck('خلايا الكود قابلة للضغط', d.tapCol===1 && (d.rowTap||[]).length===d.body.filter(r=>r.type==='row').length,
+  d.body.some(r=> r.cells[0]==='بدون كود'),
+  d.body.filter(r=>r.type==='row').map(r=>r.cells[0]).join('|'));
+ck('خلايا الكود قابلة للضغط', d.tapCol===0 && (d.rowTap||[]).length===d.body.filter(r=>r.type==='row').length,
   JSON.stringify(d.rowTap));
 ck('العلامة ⚙️ ظاهرة في عمود الكود',
   (await pg.evaluate(()=> document.querySelector('table.rep').innerText)).includes('⚙️'));
@@ -49,12 +49,12 @@ await pg.evaluate(n=> doorCodeSave(n), names); await pg.waitForTimeout(400);
 const map=await pg.evaluate(()=> JSON.parse(localStorage.getItem('doorCodeMap_v1')));
 ck('الكود اتحفظ بحروف كبيرة', map['باب رشدي 80 سم']==='A11', JSON.stringify(map));
 d=await pg.evaluate(()=> repModel('doorcode'));
-const a11=d.body.find(r=> r.cells[1]==='A11');
+const a11=d.body.find(r=> r.cells[0]==='A11');
 ck('الصنف اتنقل لكود A11 بقيمته',
   a11 && a11.cells[a11.cells.length-1]===9000, JSON.stringify(a11&&a11.cells));
 ck('مبقاش فيه «بدون كود» خالص',
-  !d.body.some(r=> r.cells[1]==='بدون كود'),
-  d.body.filter(r=>r.type==='row').map(r=>r.cells[1]).join('|'));
+  !d.body.some(r=> r.cells[0]==='بدون كود'),
+  d.body.filter(r=>r.type==='row').map(r=>r.cells[0]).join('|'));
 
 // الشيل: خانة فاضية = يرجع من غير كود
 await pg.evaluate(()=> doorCodeSheet('A11')); await pg.waitForTimeout(250);

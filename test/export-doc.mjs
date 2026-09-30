@@ -25,8 +25,8 @@ const [a,c]=await pg.evaluate(()=>[repModel('dist'),repModel('distsec')]);
 const gt=r=>r.body.filter(x=>x.type==='tot')[0].cells.slice(-1)[0];
 ck('إجمالي القطاعات = إجمالي موزعين إجمالي', gt(a)===gt(c), gt(a)+' / '+gt(c));
 ck('مبيعات الجملة في تقرير القطاعات',
-  c.body.some(r=> r.cells[1]==='مبيعات جملة'),
-  c.body.filter(r=>r.type==='row').map(r=>r.cells[1]).join('|'));
+  c.body.some(r=> r.cells[0]==='مبيعات جملة'),
+  c.body.filter(r=>r.type==='row').map(r=>r.cells[0]).join('|'));
 
 // المستند: ألوان وميداليات
 const html=await pg.evaluate(()=>{
