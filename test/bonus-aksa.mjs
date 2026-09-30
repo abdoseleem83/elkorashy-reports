@@ -87,6 +87,14 @@ ck('تقرير الحركة: 3 أصناف والصافي = الوارد − ال
   && st.rows.reduce((a,r)=>a+r.val,0)===110502, JSON.stringify(st&&st.rows));
 md=await pg.evaluate(()=> bonusModel());
 ck('البليسيه راح لسطر بلسيه والباقي عام', row('اكسسوارات ( بلسيه )')[1]===45122 && row('اكسسوارات عام')[1]===65380, JSON.stringify(md.body.map(r=>r.cells)));
+
+// ── ✏️ جنب صنف الاكسسوار: من عام لبلسيه
+await pg.evaluate(()=>{ setBonusTab('rep'); bonusLineSheet('اكسسوارات عام'); }); await pg.waitForTimeout(150);
+await pg.locator('#sheet .card', {hasText:'تجميع سقاس سلك'}).locator('button[title="تعديل السطر"]').click(); await pg.waitForTimeout(150);
+ck('شيت ✏️ اتفتح بالسطور الأربعة', /سطر الصنف/.test(await pg.locator('#sheet').innerText()) && (await pg.locator('#sheet .stab').count())===4);
+await pg.locator('#sheet .stab', {hasText:'بلسيه'}).click(); await pg.waitForTimeout(150);
+md=await pg.evaluate(()=> bonusModel());
+ck('الصنف اتنقل لبلسيه ورجع لشيت عام', row('اكسسوارات ( بلسيه )')[1]===45122+880 && /اكسسوارات عام/.test(await pg.locator('#sheet h3').innerText()), JSON.stringify(md.body.map(r=>r.cells)));
 const REAL2=process.env.BONUS_FILE2;
 if(REAL2 && existsSync(REAL2)){
   const b64=readFileSync(REAL2).toString('base64');

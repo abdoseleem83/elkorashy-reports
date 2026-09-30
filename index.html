@@ -210,7 +210,7 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
 </style>
 </head>
 <body>
-<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"> تقارير القرشي</h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -5171,15 +5171,24 @@ function bonusLineSheet(line){
         · بونص <b style="color:var(--ok)">${fmtN(Math.round(o.bonus))}</b></div></div>
     <div class="f-row"><label>نسبة البونص %</label>
       <input id="bn_rate" type="number" inputmode="decimal" step="0.01" value="${Math.round(o.rate*10000)/100}"></div>
-    ${acc? `<div class="t3lbl">دوس على سطر تاني عشان تنقل الصنف له</div>`:''}
+    ${acc? `<div class="t3lbl">دوس ✏️ جنب الصنف عشان تنقله لسطر تاني (عام · بلسيه · سيلكون وفوم · خارج البونص)</div>`:''}
     <div style="max-height:46vh;overflow:auto">${o.items.slice().sort((a,b)=>b.val-a.val).map(r=>
       `<div class="card" style="flex-wrap:wrap"><div class="info"><div class="name" style="font-size:12.5px">${esc(r.name)}</div></div>
         <div style="font-weight:800;color:var(--blue);font-variant-numeric:tabular-nums">${fmtN(Math.round(r.val))}</div>
-        ${acc? `<div class="clsrow" style="flex-basis:100%">${BONUS_ACC.map(l=>
-          `<button class="clschip${l===line?' on':''}" onclick="bonusMoveItem(${jsArg(r.name)},${jsArg(l)},${jsArg(line)})">${esc(l.replace(/^اكسسوارات\s*/,'').replace(/[()]/g,'').trim()||l)}</button>`).join('')}</div>`:''}
+        ${acc? `<div class="act"><button title="تعديل السطر" onclick="bonusItemSheet(${jsArg(r.name)},${jsArg(line)})">✏️</button></div>`:''}
       </div>`).join('')}</div>
     <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إغلاق</button>
       <button class="btn-save" onclick="bonusSaveRate(${jsArg(line)})">حفظ النسبة</button></div>`);
+}
+const bonusShort = l=> l.replace(/^اكسسوارات\s*/,'').replace(/[()]/g,'').trim() || l;
+function bonusItemSheet(name, line){
+  openSheet(`<h3>✏️ سطر الصنف</h3>
+    <div style="font-weight:800;font-size:14px;margin-bottom:4px">${esc(name)}</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">دلوقتي في: <b style="color:var(--text)">${esc(line)}</b></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${BONUS_ACC.map(l=>
+      `<button class="stab${l===line?' on':''}" style="padding:12px 6px" onclick="bonusMoveItem(${jsArg(name)},${jsArg(l)},${jsArg(line)})">${esc(bonusShort(l))}
+        <div style="font-size:11px;opacity:.8">${bonusPct(bonusRate(l))}</div></button>`).join('')}</div>
+    <div class="f-actions"><button class="btn-cancel" onclick="bonusLineSheet(${jsArg(line)})">رجوع</button></div>`);
 }
 function bonusSaveRate(line){
   const v=$('#bn_rate').value;
