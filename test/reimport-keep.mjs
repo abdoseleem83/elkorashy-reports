@@ -31,5 +31,17 @@ const d=await pg.evaluate(()=>{ items=[{id:'i1',name:'صنف للحذف',mainGro
   const before=!!itemFind('صنف  للحذف'); window.confirm=()=>true; delItem('i1');
   return {before, after: !!itemsByName['صنف للحذف'] || !!itemFind('صنف للحذف')}; });
 ck('الصنف المحذوف ما بقاش بيتلقى', d.before && !d.after, JSON.stringify(d));
+
+// تغيير اسم عميل بينقل مبيعاته، والاسم المكرر مرفوض
+const rn=await pg.evaluate(()=>{
+  customers=[{id:'k1',name:'قديم',cls:'موزع'},{id:'k2',name:'تاني',cls:'موزع'}];
+  monthlySales={'2026-08':{'قديم':700}}; monthlySector={'2026-08':{'قديم':{'كومبن':700}}}; monthlyDoors={};
+  editCustomer('k1'); document.querySelector('#c_name').value='جديد'; saveCustomer('k1');
+  const a={sales:monthlySales['2026-08'], sec:monthlySector['2026-08'], alias:custAlias['قديم']};
+  editCustomer('k2'); document.querySelector('#c_name').value='جديد'; saveCustomer('k2');
+  return Object.assign(a,{k2:customers.find(c=>c.id==='k2').name});
+});
+ck('تغيير الاسم نقل المبيعات والقطاعات والاسم القديم بيتحوّل', JSON.stringify(rn.sales)==='{"جديد":700}' && rn.sec['جديد'] && rn.alias==='جديد', JSON.stringify(rn));
+ck('اسم مكرر مرفوض', rn.k2==='تاني', JSON.stringify(rn));
 ck('مفيش أخطاء', !errs.length, errs.join('|'));
 await b.close(); process.exit(fail?1:0);
