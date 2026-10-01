@@ -269,7 +269,7 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
 </style>
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px">☰</button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.7</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px">☰</button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v7.8</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
 <button class="fab" id="fab">+</button>
@@ -456,6 +456,9 @@ function secDelCol(k){
 }
 /* الصنف بالاسم بالظبط، ولو مفيش بالبصمة (مسافة، أ/ا، ة/ه) */
 let _itNorm=null, _itNormFor=null;
+/* بعد أي تغيير في قايمة الأصناف: فهرس الاسم بالظبط + كاش البصمة. الحذف
+   كان بيسيب الصنف في itemsByName فيفضل يتلقى في المقارنات والاستيراد */
+function reindexItems(){ itemsByName={}; items.forEach(i=> itemsByName[i.name]=i); _itNormFor=null; }
 function itemFind(n){
   if(itemsByName[n]) return itemsByName[n];
   // الكاش بيتجدد لو القايمة اتبدلت أو اتضاف/اتشال منها صنف
@@ -600,7 +603,7 @@ function itemSetGroup(name, g, back){
   let it=itemFind(name);
   if(it) it.mainGroup=g;
   else { it={id:uid(), name, mainGroup:g, subGroup:'', baseName:name, color:'', unit:''}; items.push(it); }
-  itemsByName={}; items.forEach(i=> itemsByName[i.name]=i); _itNormFor=null;
+  reindexItems();
   save('items_v1', items); render();
   toast('«'+name+'» بقى في مجموعة «'+g+'»');
   if(back) secSheet(back); else closeSheet();
@@ -760,7 +763,7 @@ function syncStatus(txt, cls){
   el.style.background = cls === 'err' ? 'rgba(220,38,38,.9)' : (cls === 'ok' ? 'rgba(22,163,74,.9)' : 'rgba(255,255,255,.18)');
 }
 const SYNC_VARS = {
-  items_v1: v=>{ items = v; itemsByName = {}; items.forEach(i=> itemsByName[i.name] = i); },
+  items_v1: v=>{ items = v; reindexItems(); },
   gvcodes_v1: v=>{ gvcodes = v; }, units_v1: v=>{ units = v; },
   warehouses_v1: v=>{ warehouses = v; }, whStock_v1: v=>{ whStock = v; },
   whShortage_v1: v=>{ whShortage = v; }, customers_v1: v=>{ customers = v; },
@@ -1148,10 +1151,10 @@ function saveItem(id){
   const obj={id:id||uid(), name, mainGroup:main, subGroup:$('#f_sub').value.trim(), baseName:$('#f_base').value.trim(),
     color:$('#f_color').value.trim(), unit, rollQty:$('#f_roll').value};
   if(id){ const i=items.findIndex(x=>x.id===id); items[i]=obj; } else items.unshift(obj);
-  itemsByName={}; items.forEach(it=>itemsByName[it.name]=it);
+  reindexItems();
   save('items_v1',items); closeSheet(); render(); toast('تم الحفظ');
 }
-function delItem(id){ if(!confirm('حذف الصنف؟')) return; items=items.filter(x=>x.id!==id); save('items_v1',items); render(); }
+function delItem(id){ if(!confirm('حذف الصنف؟')) return; items=items.filter(x=>x.id!==id); reindexItems(); save('items_v1',items); render(); }
 
 function renderItems(m){
   const tabs=['الأصناف','أكواد جيفز','الوحدات'];
@@ -2629,7 +2632,7 @@ function importCustomers(file){
       if(!list.length){ toast('لا توجد بيانات'); return; }
       pendingImport={type:'customers', list};
       openSheet(`<h3>تأكيد</h3><p style="font-size:13.5px;color:var(--muted)">
-        ${list.length} عميل هيتم استيرادهم بدون تصنيف — لازم تصنّفهم بنفسك بعد الحفظ من مجموعة "غير مصنف".</p>
+        ${list.length} عميل في الملف — العملاء الموجودين بيفضلوا بتصنيفهم، والجداد بس بيتضافوا في مجموعة "غير مصنف".</p>
         <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
         <button class="btn-save" onclick="commitImport()">💾 حفظ</button></div>`);
     }catch(err){ toast('خطأ في الملف'); }
@@ -2742,10 +2745,25 @@ function commitSalesImport(){
 // ========== MAIN RENDER ==========
 function commitImport(){
   if(!pendingImport) return;
-  if(pendingImport.type==='items'){ items=pendingImport.list; itemsByName={}; items.forEach(i=>itemsByName[i.name]=i); save('items_v1',items); }
-  else if(pendingImport.type==='gvcodes'){ gvcodes=pendingImport.list; save('gvcodes_v1',gvcodes); }
-  else if(pendingImport.type==='customers'){ customers=pendingImport.list; save('customers_v1',customers); }
-  else if(pendingImport.type==='employees'){ employees=pendingImport.list; save('employees_v1',employees); }
+  if(pendingImport.type==='items'){ items=pendingImport.list; reindexItems(); save('items_v1',items); }
+  /* الاستيراد كان بيدّي كل حاجة id جديد: الطلبيات كانت بتفقد أوزانها
+     وأسعارها (مربوطة بـid الكود)، والعملاء بيرجعوا كلهم غير مصنفين،
+     والحضور والخصومات (مربوطة بـid الموظف) بتضيع. دلوقتي اللي موجود
+     بالاسم بيفضل بنفس الـid وبياناته. */
+  else if(pendingImport.type==='gvcodes'){
+    const byName={}, byCode={}; gvcodes.forEach(g=>{ byName[ordNorm(g.name)]=g; if(g.code) byCode[ordNorm(g.code)]=g; });
+    gvcodes=pendingImport.list.map(g=>{ const old=byName[ordNorm(g.name)] || (g.code && byCode[ordNorm(g.code)]); return old? Object.assign(g,{id:old.id}) : g; });
+    save('gvcodes_v1',gvcodes); }
+  else if(pendingImport.type==='customers'){
+    // دمج: العميل الموجود بيفضل بتصنيفه، والجديد بيتضاف غير مصنّف، ومحدش بيتمسح (ليه مبيعات)
+    const have={}; customers.forEach(c=> have[ordNorm(c.name)]=1);
+    const add=pendingImport.list.filter(c=> !have[ordNorm(c.name)] && (have[ordNorm(c.name)]=1));
+    customers=customers.concat(add); save('customers_v1',customers);
+    pendingImport=null; closeSheet(); render(); toast(add.length? 'اتضاف '+add.length+' عميل جديد' : 'مفيش عملاء جداد'); return; }
+  else if(pendingImport.type==='employees'){
+    const byName={}; employees.forEach(e=> byName[ordNorm(e.name)]=e);
+    employees=pendingImport.list.map(e=>{ const old=byName[ordNorm(e.name)]; return old? Object.assign(e,{id:old.id}) : e; });
+    save('employees_v1',employees); }
   else if(pendingImport.type==='gvrows'){ const o=gvGet(); if(o){ o.rows=pendingImport.rows; gvSave(); } }
   else if(pendingImport.type==='stock'){ Object.entries(pendingImport.perWh).forEach(([whId,map])=>{ whStock[whId]=map; }); save('whStock_v1',whStock); }
   pendingImport=null; closeSheet(); render(); toast('تم الحفظ');
@@ -4675,10 +4693,17 @@ function gvArchive(){
 }
 function gvDelete(){ const o=gvGet(); if(!o||!confirm('حذف الطلبية نهائيًا؟')) return; gvOrders=gvOrders.filter(x=>x.id!==o.id); gvCur=null; save('_gvCur_',null); gvSave(); render(true); }
 function gvField(f,v){ const o=gvGet(); if(!o) return; o[f]=(f==='name'||f==='date')? v : nz(v); gvSave(); if(f==='containers'||f==='cap') render(); }
+/* كود جيفز بتاع سطر في الطلبية — بالـid، ولو الـid ضاع من استيراد قديم بالاسم */
+function gvCodeOf(r){
+  const g=gvcodes.find(x=>x.id===r.gid); if(g) return g;
+  const byName = r.name && gvcodes.find(x=> ordNorm(x.name)===ordNorm(r.name));
+  if(byName){ r.gid=byName.id; return byName; }     // بنصلّح الربط عشان الإضافة ما تعملش سطر مكرر
+  return {};
+}
 function gvCalc(o){
   // طلبية جاية من مزامنة قديمة ممكن تكون من غير rows — ما تكسرش الشاشة كلها
   const rows=((o&&o.rows)||[]).map((r,i)=>{
-    const g=gvcodes.find(x=>x.id===r.gid)||{}, pc=nz(g.perCarton), w=nz(g.weight), p=nz(g.price), qty=nz(r.qty);
+    const g=gvCodeOf(r), pc=nz(g.perCarton), w=nz(g.weight), p=nz(g.price), qty=nz(r.qty);
     return {i,gid:r.gid,name:g.name||r.name||'صنف محذوف',code:g.code||r.code||'',pc,w,p,qty,cartons:pc? qty/pc : 0,weight:qty*w,value:qty*p,noPrice:!p};
   });
   const tot={cartons:0,weight:0,value:0}; rows.forEach(r=>{ tot.cartons+=r.cartons; tot.weight+=r.weight; tot.value+=r.value; });
@@ -4687,7 +4712,7 @@ function gvCalc(o){
   return {rows,tot,cap,diff,status};
 }
 function gvQty(i,kind,v){
-  const o=gvGet(); if(!o) return; const r=o.rows[i]; const g=gvcodes.find(x=>x.id===r.gid)||{};
+  const o=gvGet(); if(!o) return; const r=o.rows[i]; const g=gvCodeOf(r);
   if(kind==='q') r.qty=nz(v);
   else { const pc=nz(g.perCarton); if(!pc){ toast('الصنف ده مفيهوش عدد قطع بالكرتونة'); return; } r.qty=Math.round(nz(v)*pc*1000)/1000; }
   gvSave(); render();
@@ -4711,7 +4736,7 @@ function gvFilter(){
   }).join('') : `<div class="empty">${gvcodes.length?'لا توجد نتائج':'لسه مفيش أكواد جيفز — استوردها من الأصناف ← أكواد جيفز'}</div>`;
 }
 function gvSetQtyDirect(gid,val){
-  const o=gvGet(); if(!o) return; const qty=Number(val)||0, g=gvcodes.find(x=>x.id===gid); if(!g) return;
+  const o=gvGet(); if(!o) return; const qty=nz(val), g=gvcodes.find(x=>x.id===gid); if(!g) return;
   const ex=o.rows.find(r=>r.gid===gid);
   if(!qty){ if(ex) o.rows=o.rows.filter(r=>r.gid!==gid); }
   else if(ex) ex.qty=qty;
@@ -4775,7 +4800,7 @@ const GV_COST = [
 function gvCostSet(f, v){ const o=gvGet(); if(!o) return; o.cost=o.cost||{}; o.cost[f]=nz(v); gvSave(); render(); }
 function gvRecvSet(i, kind, v){
   const o=gvGet(); if(!o) return; const r=o.rows[i]; if(!r) return;
-  const g=gvcodes.find(x=>x.id===r.gid)||{}, pc=nz(g.perCarton);
+  const g=gvCodeOf(r), pc=nz(g.perCarton);
   if(kind==='c'){ if(!pc){ toast('الصنف ده مفيهوش عدد قطع بالكرتونة'); return; } r.recv=Math.round(nz(v)*pc*1000)/1000; }
   else r.recv=nz(v);
   gvSave();
