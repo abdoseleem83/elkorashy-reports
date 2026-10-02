@@ -2023,7 +2023,7 @@ function docBoxesHtml(md){
 }
 const repCell = v => typeof v==='number'
   ? (v===0 ? '—' : (Number.isInteger(v) ? v.toLocaleString('en-US') : fmt1(v)))
-  : esc(v);
+  : esc(v).replace(/\n/g,'<br>');
 /* جدول واحد لكل التقارير: ميداليات لأول تلاتة، وفي كل عمود رقمي
    أكبر قيمة خلفيتها خضرا وأصغر قيمة (غير الصفر) خلفيتها حمرا،
    وشريط تصدير عائم تحت. */
@@ -2034,14 +2034,14 @@ function renderRepTable(m, id, md, opt){
   const td=(v,c)=>{
     const e=hiLo[c]; let k='';
     if(e && typeof v==='number' && v!==0) k = v===e.mx?'hi':(v===e.mn?'lo':'');
+    const sg = (md.signText && typeof v==='string') ? signOf(v) : '';
+    if(sg) return `<td class="${k}" style="color:${sg==='plus'?'var(--green,#0a7d3c)':'var(--red,#c0202f)'};font-weight:700;line-height:1.35">${repCell(v)}</td>`;
     return `<td class="${k}">${repCell(v)}</td>`;
   };
   let n=0;
   const bodyHtml = md.body.map(r=>{
     if(r.type==='sub')
-      return `<tr class="qsub">${r.cells.map(v=>{
-        const sg = (md.signText && typeof v==='string') ? signOf(v) : '';
-        return `<td${sg? ` style="color:${sg==='plus'?'var(--green,#0a7d3c)':'var(--red,#c0202f)'};direction:ltr;unicode-bidi:isolate"` : ''}>${v===''?'':repCell(v)}</td>`; }).join('')}</tr>`;
+      return `<tr class="qsub">${r.cells.map(v=>`<td>${v===''?'':repCell(v)}</td>`).join('')}</tr>`;
     if(r.type==='tot')
       return `<tr class="m">${r.cells.map(v=>`<td><b>${repCell(v)}</b></td>`).join('')}</tr>`;
     const i=n++;
@@ -2565,28 +2565,38 @@ function repCustCmpModel(){
   md.hiLo = modelHiLo(md, [md.header.length-1]);
   return md;
 }
-/* حركة قطاع بين شهرين: «+50,000 · +12%» (الشرطة العادية عشان التلوين) */
+/* خانة الحركة: سطر أول «▲ 48,425» (الفرق بالجنيه) وسطر تاني «+28%».
+   السهم واللون بيقولوا زاد ولا نقص، والصفر بيطلع شرطة. */
 function ccMove(cur, prev){
-  const d=cur-prev; if(!d) return '—';
-  const sg=d>0?'+':'-', pct = prev? ' · '+sg+Math.abs(Math.round(d/prev*100))+'%' : '';
-  return sg+Math.abs(d).toLocaleString('en-US')+pct;
+  const d=Math.round(cur-prev); if(!d) return '—';
+  const up=d>0, arrow=up?'▲':'▼', amt=Math.abs(d).toLocaleString('en-US');
+  const pct = prev>0 ? Math.round(Math.abs(d)/prev*100)+'%' : 'جديد';
+  return arrow+' '+amt+'\n'+pct;
 }
 function repCustCmpSecModel(){
   const d=buildCustCompare(), body=[], multi=d.months.length>1;
   d.srows.forEach(r=>{
-    r.mrows.forEach((m2,i)=>{
-      body.push({type:'row', cells:[i===0? r.name : '', moName(m2.mo), ...m2.cells, m2.total]});
-      if(i>0){ const pv=r.mrows[i-1];
-        body.push({type:'sub', cells:['', 'حركة عن '+moName(pv.mo),
-          ...m2.cells.map((v,k)=> ccMove(v, pv.cells[k])), ccMove(m2.total, pv.total)]}); }
-    });
+    r.mrows.forEach((m2,i)=>
+      body.push({type:'row', cells:[i===0? r.name : '', moName(m2.mo), ...m2.cells, m2.total]}));
     if(multi) body.push({type:'tot', cells:[r.name, 'إجمالي الفترة', ...r.cells, r.total]});
   });
   if(d.srows.length>1) body.push({type:'tot', cells:['الإجمالي الكلي', 'الفترة كلها', ...d.stot, d.stotal]});
   if(d.cols.length) body.push({type:'sub', cells:['', 'نسبة القطاع', ...d.stot.map(v=> ccPct(v,d.stotal)), d.stotal? '100%' : '—']});
   return {title: ccTitle(d, d.rows.length===1? 'تقرير عميل — قطاعات' : 'مقارنة عملاء — قطاعات'),
     header:['العميل', 'الشهر', ...d.cols.map(secLabel), 'الإجمالي'], body: d.cols.length? body : [],
-    signText:true, hiLo:{}, d};
+    hiLo:{}, d};
+}
+/* جدول مستقل: كل شهر مقارنة بالشهر اللي قبله، قطاع بقطاع */
+function repCustCmpMoveModel(){
+  const d=buildCustCompare(), body=[];
+  if(d.months.length>1 && d.cols.length) d.srows.forEach(r=>{
+    r.mrows.forEach((m2,i)=>{ if(!i) return; const pv=r.mrows[i-1];
+      body.push({type:'row', cells:[i===1? r.name : '', moName(m2.mo)+'  مقابل  '+moName(pv.mo),
+        ...m2.cells.map((v,k)=> ccMove(v, pv.cells[k])), ccMove(m2.total, pv.total)]}); });
+  });
+  return {title: ccTitle(d, 'حركة القطاعات شهر بشهر'),
+    header:['العميل', 'الشهر مقابل اللي قبله', ...d.cols.map(secLabel), 'الإجمالي'],
+    body, signText:true, hiLo:{}, d};
 }
 function renderRepCustCompare(m){
   const all=ccAllCustomers();
@@ -2608,15 +2618,22 @@ function renderRepCustCompare(m){
   }
   const md1=repCustCmpModel(), md2=repCustCmpSecModel();
   m.innerHTML = head + `<div id="cc_t1"></div>
-    <div class="t3lbl" style="margin:16px 0 6px">🧩 حسب القطاعات</div><div id="cc_t2"></div>`
+    <div class="t3lbl" style="margin:16px 0 6px">🧩 حسب القطاعات</div><div id="cc_t2"></div>
+    <div id="cc_t3h"></div><div id="cc_t3"></div>`
     + floatBar(`<button onclick="exportCustCmp('p')">📄 PDF</button><button onclick="exportCustCmp('i')">🖼️ صورة</button>`);
   const xbar=id=>`<div class="morow" style="margin-top:6px"><button class="mochip" onclick="exportRep('${id}','x')">📊 إكسل</button></div>`;
   renderRepTable($('#cc_t1'), 'custcmp', md1, {boxes: modelBoxesHtml(md1), bar: xbar('custcmp')});
   if(md2.body.length) renderRepTable($('#cc_t2'), 'custcmpsec', md2, {bar: xbar('custcmpsec'), noMedal:true});
   else $('#cc_t2').innerHTML=`<div class="empty">مفيش تفصيل قطاعات للعملاء دول في الفترة دي</div>`;
+  const md3=repCustCmpMoveModel();
+  if(md3.body.length){
+    $('#cc_t3h').innerHTML=`<div class="t3lbl" style="margin:16px 0 2px">🔄 حركة القطاعات شهر بشهر</div>
+      <div style="font-size:12px;color:var(--muted);margin:0 0 6px;line-height:1.6">كل شهر مقارنة بالشهر اللي قبله: ▲ زيادة ▼ نقص — الرقم الفرق بالجنيه، وتحته النسبة.</div>`;
+    renderRepTable($('#cc_t3'), 'custcmpmove', md3, {bar: xbar('custcmpmove'), noMedal:true});
+  }
 }
 function exportCustCmp(kind){
-  const m1=repCustCmpModel(), m2=repCustCmpSecModel();
+  const m1=repCustCmpModel(), m2=repCustCmpSecModel(), m3=repCustCmpMoveModel();
   if(!m1.body.length){ toast('لا توجد بيانات'); return; }
   const prep=md=>{ md.hiLo = md.hiLo || modelHiLo(md); let i=0;       // ميداليات زي الشاشة
     md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]+' '+r.cells[0]; i++; } }); };
@@ -2626,7 +2643,8 @@ function exportCustCmp(kind){
   const h3=t=>`<h3 style="margin:14px 0 6px;font-size:15px">${t}</h3>`;
   const body=`<div class="dx"><h2>${esc(title)}</h2><div class="sub">${todayStr()}</div>
     ${docBoxesHtml(m1)}${h3('📅 إجمالي المبيعات بالشهور')}${docTableHtml(m1)}
-    ${hasSec? h3('🧩 حسب القطاعات')+docTableHtml(m2) : ''}</div>`;
+    ${hasSec? h3('🧩 حسب القطاعات')+docTableHtml(m2) : ''}
+    ${m3.body.length? h3('🔄 حركة القطاعات شهر بشهر')+`<div style="font-size:11px;color:#555;margin:0 0 6px">كل شهر مقارنة بالشهر اللي قبله: ▲ زيادة ▼ نقص — الرقم الفرق بالجنيه وتحته النسبة</div>`+docTableHtml(m3) : ''}</div>`;
   if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
 }
 
@@ -2641,6 +2659,7 @@ function repModel(id){
   if(id==='cmpmo')    return repMonthCompareModel();
   if(id==='custcmp')  return repCustCmpModel();
   if(id==='custcmpsec') return repCustCmpSecModel();
+  if(id==='custcmpmove') return repCustCmpMoveModel();
   if(id==='tb')       return trialBalModel(finCur());
   if(id==='bonus')    return bonusModel();
   if(id.indexOf('fin_')===0) return finModel(finCur(), id.slice(4), finDetailOn());
@@ -2657,7 +2676,7 @@ function exportRep(id, kind){
       {title: md.title, sign: md.sign||[], hiLo: md.hiLo});
     return;
   }
-  if(!/^(tb|fin_|bonus|custcmpsec)/.test(id)){ let i=0;              // ميداليات في المستند زي الشاشة
+  if(!/^(tb|fin_|bonus|custcmp(sec|move))/.test(id)){ let i=0;              // ميداليات في المستند زي الشاشة
     md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]+' '+r.cells[0]; i++; } }); }
   const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docBoxesHtml(md)}${docTableHtml(md)}</div>`;
   if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
@@ -4006,8 +4025,8 @@ const fmt2=n=>Number(n).toLocaleString('en-US',{maximumFractionDigits:2});
 function signOf(c){
   if(typeof c === 'number') return c<0 ? 'minus' : (c>0 ? 'plus' : '');
   const t = String(c||'');
-  if(/^-/.test(t) || /عجز/.test(t)) return 'minus';
-  if(/^\+/.test(t) || /زياد/.test(t)) return 'plus';
+  if(/^-/.test(t) || /^▼/.test(t) || /عجز/.test(t)) return 'minus';
+  if(/^\+/.test(t) || /^▲/.test(t) || /زياد/.test(t)) return 'plus';
   return '';
 }
 /* عمود الاسم كان بيتعصر على ٣ سطور والأرقام واخدة المساحة كلها.
@@ -4025,7 +4044,7 @@ function docTableHtml(model, extraCss){
           const sg = ((model.sign||[])[i]==='auto' || (model.signText && typeof c==='string')) ? signOf(c) : '';
           const e = r.type==='row' ? (model.hiLo||{})[i] : null;
           const hl = (e && typeof c==='number' && c!==0) ? (c===e.mx?'hi':(c===e.mn?'lo':'')) : '';
-          return `<td class="${[cc[i],sg,hl].filter(Boolean).join(' ')}"${(model.signText && sg)? ' style="direction:ltr;unicode-bidi:isolate"' : ''}>${typeof c==='number'?fmt2(c):esc(c)}</td>`;
+          return `<td class="${[cc[i],sg,hl].filter(Boolean).join(' ')}">${typeof c==='number'?fmt2(c):esc(c).replace(/\n/g,'<br>')}</td>`;
         }).join('')}</tr>`).join('')+`</table>`;
 }
 /* الكشف اللي بيتبعت: كل عمود ليه دوره — الراتب والصافي بخلفية خضرا،
@@ -4105,8 +4124,8 @@ function styleSheet(ws, o){
         if(sg === 'auto'){
           if(numeric) sg = cell.v < 0 ? 'minus' : (cell.v > 0 ? 'plus' : '');
           else { const t=String(cell.v || '');
-                 sg = (/^-/.test(t) || /عجز/.test(t)) ? 'minus'
-                    : ((/^\+/.test(t) || /زياد/.test(t)) ? 'plus' : ''); }
+                 sg = (/^-/.test(t) || /^▼/.test(t) || /عجز/.test(t)) ? 'minus'
+                    : ((/^\+/.test(t) || /^▲/.test(t) || /زياد/.test(t)) ? 'plus' : ''); }
         }
         // صف الإجمالي في الإكسل خلفيته فاتحة (D9E1F5) فالأحمر والأخضر
         // الغامقين بيتقروا عليه عادي
@@ -4122,7 +4141,7 @@ function styleSheet(ws, o){
         cell.s = {font:{bold: isTot || !!paint, sz:10.5,
                         color: paint ? {rgb: sg === 'minus' ? XS_RED : XS_GREEN} : undefined},
                   fill:{fgColor:{rgb: isTot ? XS_TOT : (hlFill || cf || (o.plain ? 'FFFFFF' : ((r - headRow) % 2 === 0 ? XS_BAND : 'FFFFFF')))}},
-                  alignment:{horizontal: numeric ? 'center' : 'right', vertical:'center'},
+                  alignment:{horizontal: numeric ? 'center' : 'right', vertical:'center', wrapText: /\n/.test(String(cell.v||''))},
                   border: xsAll()};
       }
     }
@@ -4132,7 +4151,8 @@ function styleSheet(ws, o){
   ws['!autofilter'] = {ref: XLSX.utils.encode_range(
     {s:{r:headRow, c:R.s.c}, e:{r:R.e.r, c:R.e.c}})};
   const rows = [];
-  for(let r = R.s.r; r <= R.e.r; r++) rows.push({hpt: r < titleRows ? (r === 0 ? 24 : 17) : (r === headRow ? 30 : 17)});
+  for(let r = R.s.r; r <= R.e.r; r++) { let two=false; for(let c = R.s.c; c <= R.e.c; c++){ const v=at(r,c); if(v && /\n/.test(String(v.v||''))) two=true; }
+    rows.push({hpt: r < titleRows ? (r === 0 ? 24 : 17) : (r === headRow ? 30 : (two ? 32 : 17))}); }
   ws['!rows'] = rows;
   return ws;
 }
