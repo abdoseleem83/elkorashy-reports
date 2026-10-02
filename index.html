@@ -1899,12 +1899,13 @@ const SALES_REPORTS = [
   {id:'special',   name:'🏷️ مبيعات خاصة'},
   {id:'buys',      name:'🛒 مشتريات'},
   {id:'cmpmo',     name:'⚖️ مقارنة شهور'},
+  {id:'custcmp',   name:'🔍 مقارنة عميل'},
 ];
 function setSalesReport(id){ const cur=load('_salesRep_',null); save('_salesRep_', cur===id?null:id); render(true); }
 function renderSalesReportsHub(m){
   const v = load('_salesRep_', null);
   m.innerHTML = tabStrip(SALES_REPORTS.map(x=>({k:x.id,name:x.name})), v, k=>`setSalesReport('${k}')`)
-    + periodBar() + `<div id="srep_c"></div>`;
+    + (v==='custcmp' ? '' : periodBar()) + `<div id="srep_c"></div>`;
   const c = $('#srep_c');
   if(v==='dist') renderSalesReport(c);
   else if(v==='distsec') renderRepDistSectors(c);
@@ -1913,6 +1914,7 @@ function renderSalesReportsHub(m){
   else if(v==='special') renderRepSpecial(c);
   else if(v==='buys') renderRepBuys(c);
   else if(v==='cmpmo') renderRepMonthCompare(c);
+  else if(v==='custcmp') renderRepCustCompare(c);
   else c.innerHTML = `<div class="empty">اختار التقرير من فوق</div>`;
 }
 // الموزعين بس (العملاء المصنّفين «موزع»)
@@ -2059,7 +2061,7 @@ function renderRepTable(m, id, md, opt){
                    : `<th>${esc(h)}</th>`; }).join('')}</tr>
       ${bodyHtml}
     </table></div>
-    ${floatBar(`<button onclick="exportRep('${id}','x')">📊 إكسل</button><button onclick="exportRep('${id}','p')">📄 PDF</button><button onclick="exportRep('${id}','i')">🖼️ صورة</button>`)}`;
+    ${opt.bar!==undefined ? opt.bar : floatBar(`<button onclick="exportRep('${id}','x')">📊 إكسل</button><button onclick="exportRep('${id}','p')">📄 PDF</button><button onclick="exportRep('${id}','i')">🖼️ صورة</button>`)}`;
 }
 /* «غير معروف» = أصناف مش موجودة في قايمة الأصناف، فمش عارفين قطاعها */
 function unknownItems(){
@@ -2462,6 +2464,149 @@ function renderRepMonthCompare(m){
     ${floatBar(`<button onclick="exportRep('cmpmo','x')">📊 إكسل</button><button onclick="exportRep('cmpmo','p')">📄 PDF</button><button onclick="exportRep('cmpmo','i')">🖼️ صورة</button>`)}`;
 }
 
+/* ═══ ٧) مقارنة عميل — عميل أو أكتر × فترة بتحددها ═══
+   جدول إجمالي (الشهور + إجمالي + متوسط شهري + نسبة) وجدول قطاعات.
+   بتشتغل على أي عميل (موزع/جملة/خاصة/أبواب) من غير ما يهم تصنيفه. */
+function ccAllCustomers(){
+  const cnt={};
+  monthsLive().forEach(mo=> Object.entries(monthlySales[mo]||{}).forEach(([n,v])=>{ cnt[n]=(cnt[n]||0)+(v||0); }));
+  return Object.keys(cnt).map(n=>({name:n, val:cnt[n]})).sort((a,b)=> b.val-a.val);
+}
+function ccPeriod(){
+  const live=monthsLive();
+  let f=load('_ccFrom_',null), t=load('_ccTo_',null);
+  if(!live.includes(f)) f=live[0]||null;
+  if(!live.includes(t)) t=live[live.length-1]||null;
+  if(f && t && moNum(f)>moNum(t)){ const x=f; f=t; t=x; }
+  const months=(f&&t)? live.filter(mo=> moNum(mo)>=moNum(f) && moNum(mo)<=moNum(t)) : [];
+  return {live, f, t, months};
+}
+function ccSelected(){
+  const have=new Set(ccAllCustomers().map(c=>c.name));
+  return (load('_ccSel_',[])||[]).filter(n=> have.has(n));
+}
+function setCcPeriod(which, mo){ save(which==='f'?'_ccFrom_':'_ccTo_', mo); render(true); }
+function ccToggle(name){
+  const sel=ccSelected(); const i=sel.indexOf(name);
+  if(i>=0) sel.splice(i,1); else sel.push(name);
+  save('_ccSel_', sel); render(true);
+}
+function ccClear(){ save('_ccSel_', []); render(true); }
+function ccPickSheet(){
+  const all=ccAllCustomers(), sel=new Set(ccSelected());
+  openSheet(`<h3>🔍 اختار العملاء</h3>
+    <input id="cc_q" placeholder="ابحث بالاسم" oninput="ccFilter()"
+      style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:14px">
+    <div id="cc_list" style="max-height:50vh;overflow:auto;margin-top:8px">${all.map(c=>
+      `<label data-n="${esc(c.name)}" style="display:flex;gap:10px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--border)">
+        <input type="checkbox" value="${esc(c.name)}" ${sel.has(c.name)?'checked':''}>
+        <span style="flex:1">${esc(c.name)}</span>
+        <span style="font-size:11.5px;color:var(--muted)">${repFmt(c.val)}</span></label>`).join('')}</div>
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
+      <button class="btn-save" onclick="ccPickSave()">✔ تطبيق</button></div>`);
+}
+function ccFilter(){
+  const q=($('#cc_q').value||'').trim().toLowerCase();
+  document.querySelectorAll('#cc_list label').forEach(l=>{
+    l.style.display = (!q || (l.dataset.n||'').toLowerCase().includes(q)) ? 'flex' : 'none'; });
+}
+function ccPickSave(){
+  const v=[...document.querySelectorAll('#cc_list input:checked')].map(i=>i.value);
+  save('_ccSel_', v); closeSheet(); render(true);
+}
+function buildCustCompare(){
+  const {months,f,t}=ccPeriod(), sel=ccSelected();
+  const custByName={}; customers.forEach(c=>custByName[c.name]=c);
+  const rows=sel.map(name=>{
+    const cells=months.map(mo=> Math.round((monthlySales[mo]||{})[name]||0));
+    const total=cells.reduce((a,b)=>a+b,0);
+    return {name, cls:(custByName[name]||{}).cls||'', cells, total,
+      avg: months.length? Math.round(total/months.length) : 0};
+  }).sort((a,b)=> b.total-a.total);
+  const tot=months.map((mo,i)=> rows.reduce((a,r)=> a+r.cells[i], 0));
+  const total=tot.reduce((a,b)=>a+b,0);
+  // القطاعات: نفس منطق «موزعين قطاعات» (نقل المجموعات + الأعمدة المخفية)
+  const secSet=new Set(), bySec={};
+  sel.forEach(name=>{ bySec[name]={};
+    months.forEach(mo=> Object.entries((monthlySector[mo]||{})[name]||{}).forEach(([k,v])=>{
+      const s2=secColOf(k); secSet.add(s2); bySec[name][s2]=(bySec[name][s2]||0)+v; })); });
+  const cols=[...secSet].filter(s2=> !secHidden(s2) && sel.some(n=> Math.round(bySec[n][s2]||0))).sort(secSort);
+  const srows=rows.map(r=>{
+    const cells=cols.map(s2=> Math.round(bySec[r.name][s2]||0));
+    return {name:r.name, cells, total:cells.reduce((a,b)=>a+b,0)};
+  });
+  const stot=cols.map((s2,i)=> srows.reduce((a,r)=> a+r.cells[i], 0));
+  const stotal=stot.reduce((a,b)=>a+b,0);
+  return {months, f, t, rows, tot, total, cols, srows, stot, stotal};
+}
+const ccPct=(v,t)=> t? (Math.round(v/t*1000)/10)+'%' : '—';
+function ccTitle(d, what){
+  const names=d.rows.map(r=>r.name);
+  const who = names.length<=3 ? names.join(' + ') : names.length+' عملاء';
+  return `${what} — ${who} — ${moName(d.f)}${d.f!==d.t? ' إلى '+moName(d.t) : ''}`;
+}
+function repCustCmpModel(){
+  const d=buildCustCompare(), body=[];
+  d.rows.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells, r.total, r.avg, ccPct(r.total,d.total)]}));
+  if(d.rows.length>1)
+    body.push({type:'tot', cells:['الإجمالي', ...d.tot, d.total,
+      d.months.length? Math.round(d.total/d.months.length) : 0, d.total? '100%' : '—']});
+  const md={title: ccTitle(d, d.rows.length===1? 'تقرير عميل — إجمالي' : 'مقارنة عملاء — إجمالي'),
+    header:['العميل', ...d.months.map(moName), 'الإجمالي', 'المتوسط الشهري', 'النسبة'], body, d,
+    boxes: d.rows.length>1 ? [{l:'أعلى ٣ عملاء', rows:d.rows.map(r=>({name:r.name, val:r.total}))}] : []};
+  md.hiLo = modelHiLo(md, [md.header.length-1]);
+  return md;
+}
+function repCustCmpSecModel(){
+  const d=buildCustCompare(), body=[];
+  d.srows.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells, r.total]}));
+  if(d.srows.length>1) body.push({type:'tot', cells:['الإجمالي', ...d.stot, d.stotal]});
+  if(d.cols.length) body.push({type:'sub', cells:['نسبة القطاع', ...d.stot.map(v=> ccPct(v,d.stotal)), d.stotal? '100%' : '—']});
+  return {title: ccTitle(d, d.rows.length===1? 'تقرير عميل — قطاعات' : 'مقارنة عملاء — قطاعات'),
+    header:['العميل', ...d.cols.map(secLabel), 'الإجمالي'], body: d.cols.length? body : [], d};
+}
+function renderRepCustCompare(m){
+  const all=ccAllCustomers();
+  if(!all.length){ m.innerHTML=`<div class="empty">لسه مفيش مبيعات مرفوعة — ارفع شيت من «رفع شيت المبيعات»</div>`; return; }
+  const p=ccPeriod(), sel=ccSelected();
+  const pick=(which,cur)=>`<select onchange="setCcPeriod('${which}',this.value)"
+    style="padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:var(--panel);
+    color:var(--text);font-weight:700;font-size:13.5px">
+    ${p.live.map(mo=>`<option value="${mo}" ${mo===cur?'selected':''}>${moName(mo)}</option>`).join('')}</select>`;
+  const head=`<div class="toolbar" style="align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:13px;color:var(--muted)">الفترة من</span>${pick('f',p.f)}
+      <span style="font-size:13px;color:var(--muted)">إلى</span>${pick('t',p.t)}</div>
+    <div class="morow"><button class="mochip on" onclick="ccPickSheet()">➕ اختار عملاء</button>
+      ${sel.map(n=>`<button class="mochip on" onclick="ccToggle(${jsArg(n)})">${esc(n)} ✕</button>`).join('')}
+      ${sel.length? `<button class="mochip" onclick="ccClear()">مسح الكل</button>` : ''}</div>`;
+  if(!sel.length){
+    m.innerHTML = head + `<div class="empty">اختار عميل أو أكتر من «➕ اختار عملاء» وحدد الفترة،<br>وهيطلعلك إجمالي بالشهور وتفصيل بالقطاعات</div>`;
+    return;
+  }
+  const md1=repCustCmpModel(), md2=repCustCmpSecModel();
+  m.innerHTML = head + `<div id="cc_t1"></div>
+    <div class="t3lbl" style="margin:16px 0 6px">🧩 حسب القطاعات</div><div id="cc_t2"></div>`
+    + floatBar(`<button onclick="exportCustCmp('p')">📄 PDF</button><button onclick="exportCustCmp('i')">🖼️ صورة</button>`);
+  const xbar=id=>`<div class="morow" style="margin-top:6px"><button class="mochip" onclick="exportRep('${id}','x')">📊 إكسل</button></div>`;
+  renderRepTable($('#cc_t1'), 'custcmp', md1, {boxes: modelBoxesHtml(md1), bar: xbar('custcmp')});
+  if(md2.body.length) renderRepTable($('#cc_t2'), 'custcmpsec', md2, {bar: xbar('custcmpsec')});
+  else $('#cc_t2').innerHTML=`<div class="empty">مفيش تفصيل قطاعات للعملاء دول في الفترة دي</div>`;
+}
+function exportCustCmp(kind){
+  const m1=repCustCmpModel(), m2=repCustCmpSecModel();
+  if(!m1.body.length){ toast('لا توجد بيانات'); return; }
+  const prep=md=>{ md.hiLo = md.hiLo || modelHiLo(md); let i=0;       // ميداليات زي الشاشة
+    md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]+' '+r.cells[0]; i++; } }); };
+  prep(m1); const hasSec=m2.body.length; if(hasSec) prep(m2);
+  const title=ccTitle(m1.d, m1.d.rows.length===1? 'تقرير عميل' : 'مقارنة عملاء');
+  const file=title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_');
+  const h3=t=>`<h3 style="margin:14px 0 6px;font-size:15px">${t}</h3>`;
+  const body=`<div class="dx"><h2>${esc(title)}</h2><div class="sub">${todayStr()}</div>
+    ${docBoxesHtml(m1)}${h3('📅 إجمالي المبيعات بالشهور')}${docTableHtml(m1)}
+    ${hasSec? h3('🧩 حسب القطاعات')+docTableHtml(m2) : ''}</div>`;
+  if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
+}
+
 /* تصدير موحّد للتقارير التلاتة الجداد */
 function repModel(id){
   if(id==='dist')     return repDistTotalModel();
@@ -2471,6 +2616,8 @@ function repModel(id){
   if(id==='special')  return repSpecialModel();
   if(id==='buys')     return repBuysModel();
   if(id==='cmpmo')    return repMonthCompareModel();
+  if(id==='custcmp')  return repCustCmpModel();
+  if(id==='custcmpsec') return repCustCmpSecModel();
   if(id==='tb')       return trialBalModel(finCur());
   if(id==='bonus')    return bonusModel();
   if(id.indexOf('fin_')===0) return finModel(finCur(), id.slice(4), finDetailOn());
