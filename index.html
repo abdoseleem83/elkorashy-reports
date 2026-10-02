@@ -2039,7 +2039,9 @@ function renderRepTable(m, id, md, opt){
   let n=0;
   const bodyHtml = md.body.map(r=>{
     if(r.type==='sub')
-      return `<tr class="qsub">${r.cells.map(v=>`<td>${v===''?'':repCell(v)}</td>`).join('')}</tr>`;
+      return `<tr class="qsub">${r.cells.map(v=>{
+        const sg = (md.signText && typeof v==='string') ? signOf(v) : '';
+        return `<td${sg? ` style="color:${sg==='plus'?'var(--green,#0a7d3c)':'var(--red,#c0202f)'};direction:ltr;unicode-bidi:isolate"` : ''}>${v===''?'':repCell(v)}</td>`; }).join('')}</tr>`;
     if(r.type==='tot')
       return `<tr class="m">${r.cells.map(v=>`<td><b>${repCell(v)}</b></td>`).join('')}</tr>`;
     const i=n++;
@@ -2526,14 +2528,20 @@ function buildCustCompare(){
   const tot=months.map((mo,i)=> rows.reduce((a,r)=> a+r.cells[i], 0));
   const total=tot.reduce((a,b)=>a+b,0);
   // القطاعات: نفس منطق «موزعين قطاعات» (نقل المجموعات + الأعمدة المخفية)
-  const secSet=new Set(), bySec={};
-  sel.forEach(name=>{ bySec[name]={};
-    months.forEach(mo=> Object.entries((monthlySector[mo]||{})[name]||{}).forEach(([k,v])=>{
-      const s2=secColOf(k); secSet.add(s2); bySec[name][s2]=(bySec[name][s2]||0)+v; })); });
+  const secSet=new Set(), bySec={}, bySecMo={};
+  sel.forEach(name=>{ bySec[name]={}; bySecMo[name]={};
+    months.forEach(mo=>{ bySecMo[name][mo]={};
+      Object.entries((monthlySector[mo]||{})[name]||{}).forEach(([k,v])=>{
+        const s2=secColOf(k); secSet.add(s2); bySec[name][s2]=(bySec[name][s2]||0)+v;
+        bySecMo[name][mo][s2]=(bySecMo[name][mo][s2]||0)+v; }); }); });
   const cols=[...secSet].filter(s2=> !secHidden(s2) && sel.some(n=> Math.round(bySec[n][s2]||0))).sort(secSort);
   const srows=rows.map(r=>{
     const cells=cols.map(s2=> Math.round(bySec[r.name][s2]||0));
-    return {name:r.name, cells, total:cells.reduce((a,b)=>a+b,0)};
+    const mrows=months.map(mo=>{
+      const c2=cols.map(s2=> Math.round(bySecMo[r.name][mo][s2]||0));
+      return {mo, cells:c2, total:c2.reduce((a,b)=>a+b,0)};
+    });
+    return {name:r.name, cells, total:cells.reduce((a,b)=>a+b,0), mrows};
   });
   const stot=cols.map((s2,i)=> srows.reduce((a,r)=> a+r.cells[i], 0));
   const stotal=stot.reduce((a,b)=>a+b,0);
@@ -2557,13 +2565,28 @@ function repCustCmpModel(){
   md.hiLo = modelHiLo(md, [md.header.length-1]);
   return md;
 }
+/* حركة قطاع بين شهرين: «+50,000 · +12%» (الشرطة العادية عشان التلوين) */
+function ccMove(cur, prev){
+  const d=cur-prev; if(!d) return '—';
+  const sg=d>0?'+':'-', pct = prev? ' · '+sg+Math.abs(Math.round(d/prev*100))+'%' : '';
+  return sg+Math.abs(d).toLocaleString('en-US')+pct;
+}
 function repCustCmpSecModel(){
-  const d=buildCustCompare(), body=[];
-  d.srows.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells, r.total]}));
-  if(d.srows.length>1) body.push({type:'tot', cells:['الإجمالي', ...d.stot, d.stotal]});
-  if(d.cols.length) body.push({type:'sub', cells:['نسبة القطاع', ...d.stot.map(v=> ccPct(v,d.stotal)), d.stotal? '100%' : '—']});
+  const d=buildCustCompare(), body=[], multi=d.months.length>1;
+  d.srows.forEach(r=>{
+    r.mrows.forEach((m2,i)=>{
+      body.push({type:'row', cells:[i===0? r.name : '', moName(m2.mo), ...m2.cells, m2.total]});
+      if(i>0){ const pv=r.mrows[i-1];
+        body.push({type:'sub', cells:['', 'حركة عن '+moName(pv.mo),
+          ...m2.cells.map((v,k)=> ccMove(v, pv.cells[k])), ccMove(m2.total, pv.total)]}); }
+    });
+    if(multi) body.push({type:'tot', cells:[r.name, 'إجمالي الفترة', ...r.cells, r.total]});
+  });
+  if(d.srows.length>1) body.push({type:'tot', cells:['الإجمالي الكلي', 'الفترة كلها', ...d.stot, d.stotal]});
+  if(d.cols.length) body.push({type:'sub', cells:['', 'نسبة القطاع', ...d.stot.map(v=> ccPct(v,d.stotal)), d.stotal? '100%' : '—']});
   return {title: ccTitle(d, d.rows.length===1? 'تقرير عميل — قطاعات' : 'مقارنة عملاء — قطاعات'),
-    header:['العميل', ...d.cols.map(secLabel), 'الإجمالي'], body: d.cols.length? body : [], d};
+    header:['العميل', 'الشهر', ...d.cols.map(secLabel), 'الإجمالي'], body: d.cols.length? body : [],
+    signText:true, hiLo:{}, d};
 }
 function renderRepCustCompare(m){
   const all=ccAllCustomers();
@@ -2589,7 +2612,7 @@ function renderRepCustCompare(m){
     + floatBar(`<button onclick="exportCustCmp('p')">📄 PDF</button><button onclick="exportCustCmp('i')">🖼️ صورة</button>`);
   const xbar=id=>`<div class="morow" style="margin-top:6px"><button class="mochip" onclick="exportRep('${id}','x')">📊 إكسل</button></div>`;
   renderRepTable($('#cc_t1'), 'custcmp', md1, {boxes: modelBoxesHtml(md1), bar: xbar('custcmp')});
-  if(md2.body.length) renderRepTable($('#cc_t2'), 'custcmpsec', md2, {bar: xbar('custcmpsec')});
+  if(md2.body.length) renderRepTable($('#cc_t2'), 'custcmpsec', md2, {bar: xbar('custcmpsec'), noMedal:true});
   else $('#cc_t2').innerHTML=`<div class="empty">مفيش تفصيل قطاعات للعملاء دول في الفترة دي</div>`;
 }
 function exportCustCmp(kind){
@@ -2597,7 +2620,7 @@ function exportCustCmp(kind){
   if(!m1.body.length){ toast('لا توجد بيانات'); return; }
   const prep=md=>{ md.hiLo = md.hiLo || modelHiLo(md); let i=0;       // ميداليات زي الشاشة
     md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]+' '+r.cells[0]; i++; } }); };
-  prep(m1); const hasSec=m2.body.length; if(hasSec) prep(m2);
+  prep(m1); const hasSec=m2.body.length; if(hasSec) m2.hiLo={};
   const title=ccTitle(m1.d, m1.d.rows.length===1? 'تقرير عميل' : 'مقارنة عملاء');
   const file=title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_');
   const h3=t=>`<h3 style="margin:14px 0 6px;font-size:15px">${t}</h3>`;
@@ -2634,7 +2657,7 @@ function exportRep(id, kind){
       {title: md.title, sign: md.sign||[], hiLo: md.hiLo});
     return;
   }
-  if(!/^(tb|fin_|bonus)/.test(id)){ let i=0;              // ميداليات في المستند زي الشاشة
+  if(!/^(tb|fin_|bonus|custcmpsec)/.test(id)){ let i=0;              // ميداليات في المستند زي الشاشة
     md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]+' '+r.cells[0]; i++; } }); }
   const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docBoxesHtml(md)}${docTableHtml(md)}</div>`;
   if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
@@ -3999,10 +4022,10 @@ function docTableHtml(model, extraCss){
     model.body.map(r=> r.type==='branch'
       ? `<tr class="m"><td colspan="${n}">◆ ${esc(r.label)}</td></tr>`
       : `<tr class="${cls[r.type]}">${r.cells.map((c,i)=>{
-          const sg = (model.sign||[])[i]==='auto' ? signOf(c) : '';
+          const sg = ((model.sign||[])[i]==='auto' || (model.signText && typeof c==='string')) ? signOf(c) : '';
           const e = r.type==='row' ? (model.hiLo||{})[i] : null;
           const hl = (e && typeof c==='number' && c!==0) ? (c===e.mx?'hi':(c===e.mn?'lo':'')) : '';
-          return `<td class="${[cc[i],sg,hl].filter(Boolean).join(' ')}">${typeof c==='number'?fmt2(c):esc(c)}</td>`;
+          return `<td class="${[cc[i],sg,hl].filter(Boolean).join(' ')}"${(model.signText && sg)? ' style="direction:ltr;unicode-bidi:isolate"' : ''}>${typeof c==='number'?fmt2(c):esc(c)}</td>`;
         }).join('')}</tr>`).join('')+`</table>`;
 }
 /* الكشف اللي بيتبعت: كل عمود ليه دوره — الراتب والصافي بخلفية خضرا،
