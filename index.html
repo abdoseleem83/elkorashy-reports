@@ -4200,7 +4200,7 @@ let payMonth=load('_payMonth_', todayStr().slice(0,7));
 let payHalf=load('_payHalf_',1);
 let payKind=load('_payKind_','send');
 const MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-const PAY_FIELDS=[['abP','غياب بإذن (أيام)'],['abN','غياب بدون إذن (أيام)'],['late','تأخيرات (ساعات)'],['ot','إضافي (ساعات)'],['pen','جزاءات (أيام)'],['adv','سلف (جنيه)'],['ins','تأمينات (جنيه)'],['bonus','حوافز (جنيه)']];
+const PAY_FIELDS=[['abP','غياب بإذن (أيام)'],['abN','غياب بدون إذن (أيام)'],['late','تأخيرات (ساعات)'],['ot','إضافي (ساعات)'],['otD','إضافي (أيام)'],['pen','جزاءات (أيام)'],['adv','سلف (جنيه)'],['ins','تأمينات (جنيه)'],['bonus','حوافز (جنيه)']];
 function payLabel(month,half){
   const p=String(month).split('-'); const mn=MONTHS_AR[(+p[1]||1)-1]+' '+p[0];
   return (half==='m'?'الشهر كامل':(half===2?'النصف الثاني (16 – 30)':'النصف الأول (1 – 15)'))+' — '+mn;
@@ -4212,11 +4212,11 @@ function calcPay(emp, half, e){
   const due=both? rnd0(monthly/2) : monthly;
   const day=both? rnd2(due/15) : rnd2(monthly/30);
   const hour=rnd2(day/9);
-  const dAbP=rnd0(nz(e.abP)*day), dAbN=rnd0(nz(e.abN)*day), dLate=rnd0(nz(e.late)*hour), otAmt=rnd0(nz(e.ot)*hour*1.5), dPen=rnd0(nz(e.pen)*day);
+  const dAbP=rnd0(nz(e.abP)*day), dAbN=rnd0(nz(e.abN)*day), dLate=rnd0(nz(e.late)*hour), otAmt=rnd0(nz(e.ot)*hour*1.5)+rnd0(nz(e.otD)*day*2), dPen=rnd0(nz(e.pen)*day);
   const adv=nz(e.adv), ins=nz(e.ins), bonus=nz(e.bonus);
   const ded=dAbP+dAbN+dLate+dPen+adv+ins;
   const net=mr5(due-ded+otAmt+bonus);
-  return {emp,half,monthly,due,day,hour,abP:nz(e.abP),abN:nz(e.abN),late:nz(e.late),ot:nz(e.ot),pen:nz(e.pen),dAbP,dAbN,dLate,otAmt,dPen,adv,ins,bonus,ded,net,note:e.note||''};
+  return {emp,half,monthly,due,day,hour,abP:nz(e.abP),abN:nz(e.abN),late:nz(e.late),ot:nz(e.ot),otD:nz(e.otD),pen:nz(e.pen),dAbP,dAbN,dLate,otAmt,dPen,adv,ins,bonus,ded,net,note:e.note||''};
 }
 function payEntry(month,half,id){ return ((payData[month]||{})['h'+half]||{})[id]||{}; }
 function payRows(month, half){
@@ -4226,7 +4226,7 @@ function payRows(month, half){
       if(!empIn(emp,h)) return;
       const r=calcPay(emp,h,payEntry(month,h,emp.id)), a=map[emp.id];
       if(!a) map[emp.id]=Object.assign({},r,{half:'m'});
-      else ['due','abP','abN','late','ot','pen','dAbP','dAbN','dLate','otAmt','dPen','adv','ins','bonus','ded','net'].forEach(k=>{ a[k]+=r[k]; });
+      else ['due','abP','abN','late','ot','otD','pen','dAbP','dAbN','dLate','otAmt','dPen','adv','ins','bonus','ded','net'].forEach(k=>{ a[k]+=r[k]; });
     }));
     return employees.filter(e=>map[e.id]).map(e=>map[e.id]);
   }
@@ -4740,14 +4740,20 @@ const PAY_COLS={
   /* كشف الإرسال = الورقة اللي بتتبعت للحسابات: الأيام والساعات زي ما
      اتسجّلت (مش مبالغ محسوبة)، والسلف والتأمينات والحوافز بالجنيه، وراتب
      النصف والصافي على الطرفين، وملاحظة في الآخر. */
-  send:[['due','راتب النصف',r=>r.due],['abP','غياب بإذن (أيام)',r=>r.abP],['abN','غياب بدون إذن (أيام)',r=>r.abN],['late','تأخيرات (ساعات)',r=>r.late],['ot','إضافي (ساعات)',r=>r.ot],['pen','جزاءات (أيام)',r=>r.pen],['adv','سلف (جنيه)',r=>r.adv],['ins','تأمينات',r=>r.ins],['bonus','حوافز (جنيه)',r=>r.bonus],['net','صافي الراتب',r=>r.net]],
-  full:[['monthly','الراتب الشهري',r=>r.monthly],['due','المستحق',r=>r.due],['abP','غياب بإذن (أيام)',r=>r.abP],['abN','غياب بدون إذن (أيام)',r=>r.abN],['late','تأخير (ساعات)',r=>r.late],['ot','إضافي (ساعات)',r=>r.ot],['pen','جزاءات (أيام)',r=>r.pen],['dAb','خصم غياب',r=>r.dAbP+r.dAbN],['dLate','خصم تأخير',r=>r.dLate],['otAmt','مبلغ إضافي',r=>r.otAmt],['dPen','خصم جزاءات',r=>r.dPen],['adv','سلف',r=>r.adv],['ins','تأمينات',r=>r.ins],['bonus','حوافز',r=>r.bonus],['net','الصافي',r=>r.net]]
+  send:[['due','راتب النصف',r=>r.due],['abP','غياب بإذن (أيام)',r=>r.abP],['abN','غياب بدون إذن (أيام)',r=>r.abN],['late','تأخيرات (ساعات)',r=>r.late],['ot','إضافي (ساعات)',r=>r.ot],['otD','إضافي (أيام)',r=>r.otD],['pen','جزاءات (أيام)',r=>r.pen],['adv','سلف (جنيه)',r=>r.adv],['ins','تأمينات',r=>r.ins],['bonus','حوافز (جنيه)',r=>r.bonus],['net','صافي الراتب',r=>r.net]],
+  full:[['monthly','الراتب الشهري',r=>r.monthly],['due','المستحق',r=>r.due],['abP','غياب بإذن (أيام)',r=>r.abP],['abN','غياب بدون إذن (أيام)',r=>r.abN],['late','تأخير (ساعات)',r=>r.late],['ot','إضافي (ساعات)',r=>r.ot],['otD','إضافي (أيام)',r=>r.otD],['pen','جزاءات (أيام)',r=>r.pen],['dAb','خصم غياب',r=>r.dAbP+r.dAbN],['dLate','خصم تأخير',r=>r.dLate],['otAmt','مبلغ إضافي',r=>r.otAmt],['dPen','خصم جزاءات',r=>r.dPen],['adv','سلف',r=>r.adv],['ins','تأمينات',r=>r.ins],['bonus','حوافز',r=>r.bonus],['net','الصافي',r=>r.net]]
 };
-const PAY_SEND_DEFAULT = ['due','abP','abN','late','ot','adv','ins','bonus','net'];
+const PAY_SEND_DEFAULT = ['due','abP','abN','late','ot','otD','adv','ins','bonus','net'];
 let paySendVisible = new Set(load('paySendCols_v1', PAY_SEND_DEFAULT));
 /* الكشف الكامل ١٥ عمود — كان مفيش طريقة تختار منهم. دلوقتي زي كشف الإرسال */
 const PAY_FULL_DEFAULT = PAY_COLS.full.map(c=>c[0]);
 let payFullVisible = new Set(load('payFullCols_v1', PAY_FULL_DEFAULT));
+/* العمود الجديد «إضافي (أيام)»: اللي كان حافظ اختيار أعمدة قديم يظهرله مرة واحدة */
+if(!load('payOtD_mig_',false)){
+  [[paySendVisible,'paySendCols_v1'],[payFullVisible,'payFullCols_v1']].forEach(([set,key])=>{
+    if(set.has('ot') && !set.has('otD')){ set.add('otD'); save(key,[...set]); } });
+  save('payOtD_mig_',true);
+}
 function payVisible(){ return payKind==='send'? paySendVisible : payFullVisible; }
 function payColToggle(key){
   const set=payVisible();
