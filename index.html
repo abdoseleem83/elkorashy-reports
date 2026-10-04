@@ -1443,15 +1443,22 @@ function importStock(file, whId){
       const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
       const sn = wb.SheetNames.find(n=>n.includes('ارصدة')||n.includes('رصيد')) || wb.SheetNames[0];
       const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
-      const hdr = rows[0].map(h=>String(h||'').trim());
-      const ni = hdr.findIndex(h=>h.includes('صنف'));
-      const bi = hdr.findIndex(h=>h.includes('رصيد')||h.includes('كمية'));
+      /* شيت الأرصدة ممكن يكون بعناوين عربي (صنف / رصيد) أو تصدير خام من برنامج
+         الحسابات (Item_Name / cur) وفي أوله صفوف فاضية — فبندوّر على صف العناوين
+         في أول 15 صف بدل ما نفترض إنه الأول. */
+      const isHdr = r=>{ const h=r.map(x=>String(x||'').trim().toLowerCase());
+        return h.some(x=>x.includes('صنف')||x==='item_name') && h.some(x=>x.includes('رصيد')||x.includes('كمية')||x==='cur'); };
+      let hi = rows.slice(0,15).findIndex(isHdr); if(hi<0) hi = 0;
+      const hdr = (rows[hi]||[]).map(h=>String(h||'').trim());
+      const hl = hdr.map(h=>h.toLowerCase());
+      let ni = hl.findIndex(h=>h.includes('صنف')||h==='item_name');
+      let bi = hl.findIndex(h=>h.includes('رصيد')||h.includes('كمية')||h==='cur');
       const wi = hdr.findIndex(h=>h==='مخزن'||h.includes('فرع'));
       const bigI = hdr.findIndex(h=>h.includes('لفه')||h.includes('لفة')||h.includes('كرتونه'));
       const smallI = hdr.findIndex(h=>h.includes('عود')||h.includes('قطعه')||h.includes('قطعة'));
       if(ni<0 || bi<0){ toast('لم يتم التعرف على أعمدة الصنف/الرصيد — تأكد من العناوين'); return; }
       const perWh={};
-      for(let i=1;i<rows.length;i++){ const row=rows[i]; if(!row[ni]) continue;
+      for(let i=hi+1;i<rows.length;i++){ const row=rows[i]; if(!row[ni]) continue;
         const targetWh = wi>=0 ? String(row[wi]||'').trim() : null;
         // لو الشيت فيه عمود مخزن، وزّع كل مخزن مذكور على المخزن المطابق بالاسم؛ غير كده كله للمخزن المفتوح حاليًا
         let destId = whId;
@@ -1463,7 +1470,7 @@ function importStock(file, whId){
       pendingImport={type:'stock', perWh};
       const whNames = Object.keys(perWh).map(id=>(warehouses.find(w=>w.id===id)||{}).name).join('، ');
       openSheet(`<h3>تأكيد استيراد الأرصدة</h3><p style="font-size:13.5px;color:var(--muted)">
-        ${totalRows} صنف${whNames?' — للمخازن: '+esc(whNames):''} — هيتم استبدال بيانات الأرصدة الحالية لهذا المخزن/المخازن.</p>
+        ${esc(file.name)}<br>${totalRows} صنف${whNames?' — للمخازن: '+esc(whNames):''} — هيتم استبدال بيانات الأرصدة الحالية لهذا المخزن/المخازن.</p>
         <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
         <button class="btn-save" onclick="commitImport()">💾 حفظ</button></div>`);
     }catch(err){ toast('خطأ في الملف'); }
@@ -5057,6 +5064,7 @@ let gvTab = 0;
 function setGvTab(n){ gvTab = n; render(true); }
 const GV_COST = [
   ['invoice',  'إجمالي الفاتورة $'],
+  ['discount', 'خصم الفاتورة $'],
   ['bankUsd',  'مصاريف بنكية $'],
   ['bankEgp',  'مصاريف بنكية جنيه'],
   ['customs',  'مصاريف تخليص جمركي'],
@@ -5113,9 +5121,11 @@ function gvPricing(o){
   const c = o.cost || {};
   const rate = nz(c.rate) || 0;
   const invoice = nz(c.invoice) || t.value;          // لو ما كتبتش الفاتورة بنحسبها من المستلم
+  const discount = nz(c.discount);                    // خصم على الفاتورة بالدولار
+  const netInvoice = Math.max(0, invoice - discount);
   const baseUsd = t.value || invoice;                 // أساس التوزيع
   const extrasEgp = nz(c.bankUsd)*rate + nz(c.bankEgp) + nz(c.customs) + nz(c.shipUsd)*rate;
-  const goodsEgp  = invoice * rate;
+  const goodsEgp  = netInvoice * rate;
   const totalEgp  = goodsEgp + extrasEgp;
   /* التكلفة الكاملة (فاتورة + مصاريف) بتتوزّع على الأصناف بنسبة قيمتها.
      مهم: بنوزّع **الإجمالي كله** مش قيمة كل صنف + نصيبه من المصاريف —
@@ -5129,7 +5139,7 @@ function gvPricing(o){
   });
   // فرق الفاتورة عن قيمة المستلم — بنقوله للمستخدم بدل ما يعدّي في صمت
   const gap = nz(c.invoice) ? (t.value - nz(c.invoice)) : 0;
-  return {rows: priced, rate, invoice, extrasEgp, goodsEgp, totalEgp, t, gap};
+  return {rows: priced, rate, invoice, discount, netInvoice, extrasEgp, goodsEgp, totalEgp, t, gap};
 }
 function gvDateGroups(){
   const list = gvOrders.filter(o=> gvShowArch || !o.archived);
@@ -5231,8 +5241,9 @@ function renderGvPricing(m){
     <div class="panelbox"><b style="font-size:14px">مصاريف الطلبية</b>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
         ${GV_COST.map(([f,l])=>`<div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:3px">${l}</label>
-          <input type="number" inputmode="decimal" value="${c[f]??''}" style="${inp}" onchange="gvCostSet('${f}',this.value)"></div>`).join('')}
+          <input type="number" inputmode="decimal" value="${c[f]??''}" ${f==='invoice'?`placeholder="${fmt2(P.t.value)}"`:''} style="${inp}" onchange="gvCostSet('${f}',this.value)"></div>`).join('')}
       </div>
+      <div style="font-size:12.5px;margin-top:8px;color:var(--muted)">صافي الفاتورة: <b style="color:var(--text)">${fmt2(P.netInvoice)} $</b>${P.discount? ` (${fmt2(P.invoice)} − خصم ${fmt2(P.discount)})`:''}${!nz(c.invoice)? ' — الفاتورة محسوبة من قيمة المستلم':''}</div>
       ${!nz(c.rate)? `<div style="color:var(--danger);font-size:12.5px;margin-top:8px;font-weight:700">اكتب سعر الصرف عشان التكلفة تتحسب بالجنيه.</div>`:''}
       ${Math.abs(P.gap)>0.5? `<div style="font-size:12.5px;margin-top:8px;color:#b45309;font-weight:700">
         قيمة اللي وصل فعلاً <b>${fmt2(P.t.value)} $</b> — ${P.gap>0?'أكبر':'أقل'} من الفاتورة بـ <b>${fmt2(Math.abs(P.gap))} $</b>.
@@ -5344,7 +5355,7 @@ function gvPriceDocBody(){
   const md=gvPriceModel(), P=md.P, c=md.o.cost||{};
   return `<div class="dx" style="font-size:12px"><h2>تسعير طلبية جيفيز</h2><div class="sub">${esc(md.title)}</div>
     <table><tr>${GV_COST.map(([f,l])=>`<th>${esc(l)}</th>`).join('')}</tr>
-      <tr class="z">${GV_COST.map(([f])=>`<td>${fmtN(nz(c[f]))}</td>`).join('')}</tr></table>
+      <tr class="z">${GV_COST.map(([f])=>`<td>${f==='invoice'?fmt2(P.invoice):fmtN(nz(c[f]))}</td>`).join('')}</tr></table>
     ${docTableHtml(md)}
     <h3>الإجمالي بالجنيه</h3><table><tr><th>قيمة البضاعة</th><th>المصاريف</th><th>الإجمالي</th></tr>
       <tr class="z"><td>${fmtN(Math.round(P.goodsEgp))}</td><td>${fmtN(Math.round(P.extrasEgp))}</td><td><b>${fmtN(Math.round(P.totalEgp))}</b></td></tr></table></div>`;
@@ -5359,7 +5370,8 @@ function exportGvPricePdf(){ if(gvPriceOk()) exportDocPdf(gvPriceDocBody(), gvPr
 function exportGvPriceImage(){ if(gvPriceOk()) exportDocImage(gvPriceDocBody(), gvPriceFile(), true); }
 function exportGvPriceExcel(){
   if(!gvPriceOk()) return; const md=gvPriceModel(), c=md.o.cost||{}, aoa=modelToAoa(md);
-  aoa.push([], ['المصاريف'], ...GV_COST.map(([f,l])=> ['', l, '', nz(c[f])]));
+  aoa.push([], ['المصاريف'], ...GV_COST.map(([f,l])=> ['', l, '', f==='invoice'? rnd2(md.P.invoice) : nz(c[f])]),
+               ['', 'صافي الفاتورة $', '', rnd2(md.P.netInvoice)]);
   aoa.push([], ['','قيمة البضاعة بالجنيه','', Math.round(md.P.goodsEgp)],
                ['','المصاريف بالجنيه','', Math.round(md.P.extrasEgp)],
                ['','الإجمالي بالجنيه','', Math.round(md.P.totalEgp)]);
