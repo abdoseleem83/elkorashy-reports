@@ -1135,7 +1135,7 @@ function toggleMenu(on){ document.body.classList.toggle('menu-open', on===undefi
 function switchModule(m){ toggleMenu(false); module=(module===m)?null:m; q=''; openGroups=new Set(); render(true); }
 function goHome(){ toggleMenu(false); module=null; q=''; openGroups=new Set(); render(true); }
 $('#fab').addEventListener('click', ()=>{
-  if(module==='items') editItem(null);
+  if(module==='items'){ const t=load('_itemsTab_',null); if(t===1) editGvCode(''); else if(t===2) promptAddUnit(); else editItem(null); }
   else if(module==='warehouses') editWarehouse(null);
   else if(module==='sales') editCustomer(null);
   else if(module==='payroll') editEmployee(null);
@@ -1238,6 +1238,8 @@ function delUnit(u){ if(!confirm('حذف الوحدة "'+u+'"؟')) return; units
 function editGvCode(id){
   const it = id ? gvcodes.find(x=>x.id===id) : {id:'',name:'',code:'',perCarton:'',weight:'',price:''};
   openSheet(`<h3>${id?'تعديل كود جيفز':'إضافة كود جيفز'}</h3>
+    ${id?'':`<div class="f-row"><label>🔍 هات الصنف من الأصناف المرفوعة</label><input id="g_find" placeholder="ابحث بالاسم أو المجموعة أو اللون..." autocomplete="off" oninput="gvItemFind()"></div>
+    <div id="g_find_res" style="max-height:190px;overflow:auto"></div>`}
     <div class="f-row"><label>اسم الصنف *</label><input id="g_name" value="${esc(it.name)}"></div>
     <div class="f-row"><label>الكود</label><input id="g_code" value="${esc(it.code)}"></div>
     <div class="f-row"><label>عدد القطع بالكرتونة</label><input id="g_pc" type="number" value="${esc(it.perCarton)}"></div>
@@ -1245,6 +1247,27 @@ function editGvCode(id){
     <div class="f-row"><label>سعر القطعة ($)</label><input id="g_p" type="number" step="0.001" value="${esc(it.price)}"></div>
     <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
     <button class="btn-save" onclick="saveGvCode('${id}')">حفظ</button></div>`);
+}
+/* بحث في الأصناف المرفوعة: اختيار صنف بيملّي الاسم، ولو الصنف ده متضاف قبل كده
+   في أكواد جيفز بيفتح بياناته (الكود/القطع/الوزن/السعر) للتعديل بدل ما يتكرر. */
+function gvItemFind(){
+  const box=document.getElementById('g_find_res'), inp=document.getElementById('g_find'); if(!box||!inp) return;
+  const words=ordNorm(inp.value).split(/\s+/).filter(Boolean);
+  if(!words.length){ box.innerHTML=''; return; }
+  const hit=items.filter(i=>{ const t=ordNorm([i.name,i.mainGroup,i.subGroup,i.baseName,i.color].join(' ')); return words.every(w=>t.includes(w)); }).slice(0,8);
+  box.innerHTML = hit.length? hit.map(i=>{
+    const ex=gvcodes.some(g=>ordNorm(g.name)===ordNorm(i.name));
+    return `<div class="card" style="cursor:pointer" onclick="gvPickItem('${i.id}')"><div class="info"><div class="name" style="font-size:13px">${esc(i.name)}</div>
+      <div class="sub">${esc(i.mainGroup||'—')}${i.color?' · '+esc(i.color):''}${ex?' · <span style="color:var(--ok)">✔ متضاف في أكواد جيفز</span>':''}</div></div></div>`;
+  }).join('') : `<div class="empty" style="padding:8px">مفيش صنف بالاسم ده في الأصناف — اكتب الاسم يدوي تحت</div>`;
+}
+function gvPickItem(itemId){
+  const it=items.find(x=>x.id===itemId); if(!it) return;
+  const ex=gvcodes.find(g=>ordNorm(g.name)===ordNorm(it.name));
+  if(ex){ editGvCode(ex.id); toast('الصنف ده متضاف قبل كده — فتحت بياناته للتعديل'); return; }
+  $('#g_name').value=it.name; $('#g_find').value=''; $('#g_find_res').innerHTML='';
+  toast('اتاخد الاسم من الأصناف — كمّل الكود والكرتونة والوزن والسعر');
+  const c=$('#g_code'); if(c) c.focus();
 }
 function saveGvCode(id){
   const name=$('#g_name').value.trim();
