@@ -5321,9 +5321,9 @@ function gvTitle(o){
 }
 function gvModel(){
   const o=gvGet(), c=gvCalc(o), body=[];
-  c.rows.forEach((r,i)=>body.push({type:'row',cells:[i+1,gvShortName(r.name,r.code),r.code,r.qty,r.pc,rnd2(r.cartons),r.w,rnd2(r.weight),r.p,rnd2(r.value)]}));
-  body.push({type:'tot',cells:['','الإجمالي','','','',rnd2(c.tot.cartons),'',rnd2(c.tot.weight),'',rnd2(c.tot.value)]});
-  return {title:gvTitle(o), header:['م','اسم الصنف','الكود','الكمية','قطع/كرتونة','الكراتين','وزن القطعة','إجمالي الوزن','سعر القطعة $','إجمالي القيمة $'], body, c, o};
+  c.rows.forEach((r,i)=>body.push({type:'row',cells:[i+1,gvShortName(r.name,r.code),r.code,r.qty,r.pc,rnd2(r.cartons),r.w,rnd2(r.weight)]}));   // من غير أسعار — الورقة بتتبعت للمورّد
+  body.push({type:'tot',cells:['','الإجمالي','','','',rnd2(c.tot.cartons),'',rnd2(c.tot.weight)]});
+  return {title:gvTitle(o), header:['م','اسم الصنف','الكود','الكمية','قطع/كرتونة','الكراتين','وزن القطعة','إجمالي الوزن'], body, c, o};
 }
 function gvDocBody(){
   const md=gvModel(), c=md.c, o=md.o;
@@ -5394,7 +5394,7 @@ function exportGvPriceExcel(){
 function exportGvExcel(){
   if(!gvHasRows()) return; const md=gvModel(), c=md.c, o=md.o, aoa=modelToAoa(md);
   aoa.push([],['','وزن الحاوية (كجم)','',nz(o.cap)],['','عدد الحاويات','',nz(o.containers)],['','إجمالي وزن الحاويات','',c.cap],['','الفرق في الميزان','',rnd2(c.diff)],['','الحالة','',c.status]);
-  saveAoaXlsx(aoa,'الطلبية',gvFile()+'.xlsx',[5,40,16,10,12,10,11,13,13,15]);
+  saveAoaXlsx(aoa,'الطلبية',gvFile()+'.xlsx',[5,40,16,10,12,10,11,13]);
 }
 
 function fabVisible(){
