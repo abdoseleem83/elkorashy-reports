@@ -664,7 +664,7 @@ let shortMain=new Set(), shortSub=new Set();
    البيانات كلها صغيرة (كيلوبايتات) فكل مفتاح بيترفع رفعة واحدة — مفيش تقطيع
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
-  'whOrderDate_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
+  'whOrderDate_v1','whStockAt_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
   'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','bonusAksa_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
@@ -793,6 +793,7 @@ const SYNC_VARS = {
   paySendCols_v1: v=>{ paySendVisible = new Set(v || []); },
   payFullCols_v1: v=>{ payFullVisible = new Set(v || []); },
   whOrderDate_v1: ()=>{},   // بتتقرا من التخزين مباشرة وقت العرض
+  whStockAt_v1: ()=>{},     // تاريخ ووقت آخر رفعة رصيد لكل مخزن — برضو بيتقرا وقت العرض
 };
 /* ═══ الدمج الثلاثي على مستوى البند ═══
    قبل كده لو الجهازين لمسوا نفس الملف (whShortage مثلاً) كانت المزامنة تقول
@@ -1434,6 +1435,14 @@ function balText(name, s){
   if(parts.length) return bal+' ('+parts.join(' + ')+')';
   return bal+' '+(b.unit==='—'?'':b.unit);
 }
+/* آخر رفعة رصيد: «٤ أكتوبر ٢٠٢٦ في ٣:٤٥ م — من ٣ يوم — رصيد_طنطا.xls (٢٣٤ صنف)» */
+function whStockAtText(whId){
+  const a=(load('whStockAt_v1',{})||{})[whId];
+  if(!a||!a.t) return 'مفيش تاريخ مسجّل — بيتسجّل من أول رفعة رصيد جاية';
+  const d=new Date(a.t), days=Math.floor((Date.now()-a.t)/864e5);
+  const when=d.toLocaleString('ar-EG',{day:'numeric',month:'long',year:'numeric',hour:'numeric',minute:'2-digit'});
+  return when+' — '+(days<=0?'النهارده':'من '+days+' يوم')+(a.f?' — '+a.f:'')+(a.n?' ('+a.n+' صنف)':'');
+}
 function renderWhStock(m, whId){
   const stock = whStock[whId] || {};
   let list = Object.entries(stock).filter(([name])=>!q || name.includes(q));
@@ -1444,6 +1453,7 @@ function renderWhStock(m, whId){
   if(q) groups.forEach(g=>openGroups.add(g));
   m.innerHTML = `
     <div class="impbar"><label>📥 استيراد شيت الأرصدة<input type="file" id="impStock" accept=".xlsx,.xls" style="display:none"></label></div>
+    <div id="stockAt" style="font-size:12.5px;color:var(--muted);margin:2px 0 8px">🕒 آخر رفعة رصيد: <b style="color:var(--text)">${esc(whStockAtText(whId))}</b></div>
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
     ${ddRow('st',allMain,whFilterMain,[...new Set(items.filter(i=>whFilterMain.has(i.mainGroup)).map(i=>i.subGroup).filter(Boolean))],whFilterSub)}
     ${groups.length? groups.map(g=>{
@@ -1490,7 +1500,7 @@ function importStock(file, whId){
         perWh[destId][String(row[ni]).trim()] = {balance:nz(row[bi]), big:bigI>=0? nz(row[bigI]) : 0, small:smallI>=0? nz(row[smallI]) : 0};
       }
       const totalRows = Object.values(perWh).reduce((a,m2)=>a+Object.keys(m2).length,0);
-      pendingImport={type:'stock', perWh};
+      pendingImport={type:'stock', perWh, file:file.name};
       const whNames = Object.keys(perWh).map(id=>(warehouses.find(w=>w.id===id)||{}).name).join('، ');
       openSheet(`<h3>تأكيد استيراد الأرصدة</h3><p style="font-size:13.5px;color:var(--muted)">
         ${esc(file.name)}<br>${totalRows} صنف${whNames?' — للمخازن: '+esc(whNames):''} — هيتم استبدال بيانات الأرصدة الحالية لهذا المخزن/المخازن.</p>
@@ -1787,6 +1797,7 @@ function renderWhCompare(m){
   const allSub=cmpMain.size? [...new Set(items.filter(i=>cmpMain.has(i.mainGroup)).map(i=>i.subGroup).filter(Boolean))] : [];
   const tree=buildCompareTree();
   m.innerHTML = stockWarnHtml() + `
+    <div id="stockAtAll" style="font-size:12.5px;color:var(--muted);margin:2px 0 8px;line-height:1.8">${warehouses.map(w=>`🕒 ${esc(w.name)}: <b style="color:var(--text)">${esc(whStockAtText(w.id))}</b>`).join('<br>')}</div>
     ${ddRow('cmp',allMain,cmpMain,allSub,cmpSub)}
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${cmpZero?'checked':''} onchange="cmpZero=this.checked;render()"> إظهار الأصناف الصفرية</label>
     ${tree.length? tree.map(t=>{
@@ -2986,7 +2997,10 @@ function commitImport(){
     employees=pendingImport.list.map(e=>{ const old=byName[ordNorm(e.name)]; return old? Object.assign(e,{id:old.id}) : e; });
     save('employees_v1',employees); }
   else if(pendingImport.type==='gvrows'){ const o=gvGet(); if(o){ o.rows=pendingImport.rows; gvSave(); } }
-  else if(pendingImport.type==='stock'){ Object.entries(pendingImport.perWh).forEach(([whId,map])=>{ whStock[whId]=map; }); save('whStock_v1',whStock); }
+  else if(pendingImport.type==='stock'){
+    const at=load('whStockAt_v1',{}), now=Date.now();
+    Object.entries(pendingImport.perWh).forEach(([whId,map])=>{ whStock[whId]=map; at[whId]={t:now, f:pendingImport.file||'', n:Object.keys(map).length}; });
+    save('whStock_v1',whStock); save('whStockAt_v1',at); }
   pendingImport=null; closeSheet(); render(); toast('تم الحفظ');
 }
 
