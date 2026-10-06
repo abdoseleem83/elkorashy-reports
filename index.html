@@ -3719,9 +3719,15 @@ function renderInvDone(m, whId, head){
   const inv=invGet(whId);
   let names=Object.keys(inv.counts).reverse();            // آخر اللي اتجرد يظهر الأول
   if(q) names=names.filter(n=>rsMatch(n,q));
+  if(invFltOn()){ const stk=whStock[whId]||{};
+    names=names.filter(n=>{ const it=itemsByName[n]||{}, d=nz(inv.counts[n].actual)-nz(stk[n]?.balance);
+      if(invFlt.kind==='def' && !(d<0)) return false;
+      if(invFlt.kind==='exc' && !(d>0)) return false;
+      return !invFlt.secs.size || invFlt.secs.has(it.mainGroup||'غير مصنف'); }); }
   rsCtx={k:'inv', whId}; rsInfo = q? names.length+' نتيجة' : '';
   m.innerHTML = head+`
     <div class="toolbar"><input class="search" id="q" placeholder="بحث في اللي اتجرد..." value="${esc(q)}"></div>
+    ${Object.keys(inv.counts).length? invFltBar(whId) : ''}
     <div id="invDoneList">${names.map(n=>invDoneCard(whId,n)).join('')}
       <div id="invDoneEmpty" class="empty" style="display:${names.length?'none':''}">${Object.keys(inv.counts).length?'لا توجد نتائج':'لسه ماتجردش أي صنف'}</div></div>
     <div style="height:20px"></div>`;
@@ -3818,8 +3824,13 @@ function invGroupHtml(g){
     ${g.def.map(x=>row(x,true)).join('')}${g.exc.map(x=>row(x,false)).join('')}</div>`;
 }
 const invFltText = () => invFltOn()? [invFlt.kind==='def'?'عجز فقط':invFlt.kind==='exc'?'زيادة فقط':'', invFlt.secs.size? 'القطاعات: '+[...invFlt.secs].join('، ') : ''].filter(Boolean).join(' · ') : '';
+const invFltBar = whId => `<div style="display:flex;align-items:center;gap:8px;margin:0 0 10px">
+      <button onclick="invFltSheet('${whId}')" style="border:1px solid ${invFltOn()?'var(--blue)':'var(--border)'};background:${invFltOn()?'var(--blue)':'var(--panel)'};color:${invFltOn()?'#fff':'var(--text)'};border-radius:10px;padding:8px 14px;font-weight:700;font-size:13.5px;cursor:pointer">🔽 فلتر${invFltOn()?' ●':''}</button>
+      ${invFltOn()? `<span style="font-size:12.5px;color:var(--muted);flex:1">${esc(invFltText())}</span><button onclick="invFltClear('${whId}')" style="border:none;background:none;color:var(--danger);font-size:12.5px;cursor:pointer">✖ مسح</button>` : ''}</div>`;
 function invFltSheet(whId){
-  invFltNames = invByGroup(whId,true).map(g=>g.mg);
+  /* في «تم الجرد» القطاعات = كل مجموعات الأصناف المجرودة، وفي «النتيجة» = المجموعات اللي فيها فروق */
+  invFltNames = invView===2? [...new Set(invResult(whId).rows.map(x=>x.mg))].sort((a,b)=> ((a==='غير مصنف')-(b==='غير مصنف')) || a.localeCompare(b,'ar'))
+                           : invByGroup(whId,true).map(g=>g.mg);
   const kb=(v,t)=>`<button class="mochip${invFlt.kind===v?' on':''}" onclick="invFlt.kind='${v}';invFltSheet('${whId}');render(true)">${t}</button>`;
   openSheet(`<h3>🔽 فلتر نتيجة الجرد</h3>
     <div style="font-size:12.5px;color:var(--muted);margin:6px 0 4px">النوع</div>
@@ -3835,9 +3846,7 @@ function invFltClear(whId){ invFlt={kind:'all', secs:new Set()}; closeSheet(); r
 function renderInvResult(m, whId, head){
   const r=invResult(whId);
   const groups=invByGroup(whId);
-  const fbar = r.counted? `<div style="display:flex;align-items:center;gap:8px;margin:0 0 10px">
-      <button onclick="invFltSheet('${whId}')" style="border:1px solid ${invFltOn()?'var(--blue)':'var(--border)'};background:${invFltOn()?'var(--blue)':'var(--panel)'};color:${invFltOn()?'#fff':'var(--text)'};border-radius:10px;padding:8px 14px;font-weight:700;font-size:13.5px;cursor:pointer">🔽 فلتر${invFltOn()?' ●':''}</button>
-      ${invFltOn()? `<span style="font-size:12.5px;color:var(--muted);flex:1">${esc(invFltText())}</span><button onclick="invFltClear('${whId}')" style="border:none;background:none;color:var(--danger);font-size:12.5px;cursor:pointer">✖ مسح</button>` : ''}</div>` : '';
+  const fbar = r.counted? invFltBar(whId) : '';
   m.innerHTML = head + (r.counted? `${invStatsHtml(r)}${fbar}
     ${groups.length? groups.map(invGroupHtml).join('') : `<div class="empty">${invFltOn()? 'مفيش نتايج بالفلتر ده' : 'كل الأصناف المجرودة مطابقة ✔'}</div>`}` : `<div class="empty">لسه ماتجردش أي صنف — روح إدخال الجرد واكتب الكميات الفعلية</div>`)
     + floatBar(`<button onclick="exportInvExcel('${whId}')">📊 إكسل</button><button onclick="exportInvPdf('${whId}')">📄 PDF</button><button onclick="exportInvImage('${whId}')">🖼️ صورة</button>`);
