@@ -3190,7 +3190,30 @@ async function doExportDocPdf(bodyHtml, filename, landscape){
     if(boxes.length && headH){ bTop=Math.min(...boxes.map(b=>Y(b,'top'))); bBot=Math.max(...boxes.map(b=>Y(b,'bottom')));
       if(!(bTop>0 && bBot<=headH)) bTop=bBot=0; }
     const head2H = headH - (bBot-bTop);
-    if(!T || !headH || pageB - Math.max(headH, head2H) - footH < pageB*0.25){
+    /* مستند فيه أقسام .dxgrp (نتيجة الجرد): الملخص في أول ورقة، وكل مجموعة تبدأ
+       في ورقة لوحدها بلوجو فوق وعناوين الجدول؛ والمجموعة الطويلة بتكمّل على ورقة
+       تانية بنفس العناوين. */
+    const gEls=[...el.querySelectorAll('.dxgrp')], hdEl=el.querySelector('.dxhead');
+    if(gEls.length && hdEl){
+      const hdTop=Y(hdEl,'top'), hdH=Y(hdEl,'bottom')-hdTop, gap=10*k, hdImg=band(hdTop,hdH);
+      const g0=Y(gEls[0],'top');
+      newPage(); pdf.addImage(band(0,g0),'JPEG',mg,mg,canvas.width*sc,g0*sc);
+      gEls.forEach(g=>{
+        const gt=Y(g,'top'), gb=Y(g,'bottom'), thr=g.querySelector('tr');
+        const thTop=Y(thr,'top'), thBot=Y(thr,'bottom');
+        let y=thBot, firstP=true;
+        while(firstP || y<gb-2){
+          newPage(); let cur=mg;
+          pdf.addImage(hdImg,'JPEG',mg,cur,canvas.width*sc,hdH*sc); cur+=(hdH+gap)*sc;
+          const t0 = firstP? gt : thTop, tH = thBot-t0;
+          pdf.addImage(band(t0,tH),'JPEG',mg,cur,canvas.width*sc,tH*sc); cur+=tH*sc;
+          const avail = pageB - hdH - gap - tH;
+          const end = cut(y, avail, gb);
+          pdf.addImage(band(y,end-y),'JPEG',mg,cur,canvas.width*sc,(end-y)*sc);
+          y=end; firstP=false;
+        }
+      });
+    } else if(!T || !headH || pageB - Math.max(headH, head2H) - footH < pageB*0.25){
       // مستند من غير جدول واضح — تقطيع عادي على حدود الصفوف
       let y=0;
       while(y < canvas.height-2){ const end=cut(y,pageB,canvas.height); newPage();
@@ -3799,8 +3822,8 @@ function renderInvResult(m, whId, head){
 function invDocBody(whId){
   const w=warehouses.find(x=>x.id===whId), inv=invGet(whId), r=invResult(whId), groups=invByGroup(whId);
   const tr=(x,neg)=>`<tr class="z"><td>${esc(x.name)}</td><td>${fmtN(x.prog)}</td><td>${fmtN(x.act)}</td><td class="${neg?'neg':'pos'}">${neg?'-':'+'}${fmtN(Math.abs(x.diff))}</td></tr>`;
-  const grp=g=>`<h3>${esc(invGroupTitle(g))}</h3><table><tr><th>الصنف</th><th>الرصيد (برنامج)</th><th>الجرد الفعلي</th><th>الفرق</th></tr>
-    ${g.def.map(x=>tr(x,true)).join('')}${g.exc.map(x=>tr(x,false)).join('')}</table>`;
+  const grp=g=>`<div class="dxgrp"><h3>${esc(invGroupTitle(g))}</h3><table><tr><th>الصنف</th><th>الرصيد (برنامج)</th><th>الجرد الفعلي</th><th>الفرق</th></tr>
+    ${g.def.map(x=>tr(x,true)).join('')}${g.exc.map(x=>tr(x,false)).join('')}</table></div>`;
   return `<div class="dx"><h2>نتيجة جرد مخزن ${esc(w.name)}</h2><div class="sub">بتاريخ ${inv.date}</div>
     <table><tr><th>الأصناف المجرودة</th><th>أصناف عجز</th><th>أصناف زيادة</th><th>إجمالي العجز</th><th>إجمالي الزيادة</th><th>نسبة المطابقة</th></tr>
     <tr class="z"><td>${fmtN(r.counted)}</td><td class="neg">${fmtN(r.def.length)}</td><td class="pos">${fmtN(r.exc.length)}</td><td class="neg">${fmtN(r.defTotal)}</td><td class="pos">${fmtN(r.excTotal)}</td><td><b>${Math.round(r.pct*100)}%</b></td></tr></table>
