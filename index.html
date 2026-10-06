@@ -1484,8 +1484,10 @@ function importStock(file, whId){
       let hi = rows.slice(0,15).findIndex(isHdr); if(hi<0) hi = 0;
       const hdr = (rows[hi]||[]).map(h=>String(h||'').trim());
       const hl = hdr.map(h=>h.toLowerCase());
-      let ni = hl.findIndex(h=>h.includes('صنف')||h==='item_name');
-      let bi = hl.findIndex(h=>h.includes('رصيد')||h.includes('كمية')||h==='cur');
+      /* عمود cur / Item_Name ليهم الأولوية لو موجودين — عشان لو الشيت فيه كمان عمود
+         بعنوان فيه «رصيد» أو «كمية» (رصيد سابق مثلاً) ما ياخدش الرقم الغلط. */
+      let ni = hl.indexOf('item_name'); if(ni<0) ni = hl.findIndex(h=>h.includes('صنف'));
+      let bi = hl.indexOf('cur');       if(bi<0) bi = hl.findIndex(h=>h.includes('رصيد')||h.includes('كمية'));
       const wi = hdr.findIndex(h=>h==='مخزن'||h.includes('فرع'));
       const bigI = hdr.findIndex(h=>h.includes('لفه')||h.includes('لفة')||h.includes('كرتونه'));
       const smallI = hdr.findIndex(h=>h.includes('عود')||h.includes('قطعه')||h.includes('قطعة'));
