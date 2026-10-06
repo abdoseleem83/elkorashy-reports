@@ -3792,14 +3792,19 @@ function invListHtml(list, kind){
     <b style="color:${kind==='def'?'var(--danger)':'var(--ok)'}">${kind==='def'?'-':'+'}${fmtN(Math.abs(x.diff))}</b></div>`).join('');
 }
 /* النتيجة متجمّعة بالمجموعة: كل مجموعة (كرافت / نيو / …) فيها عجزها وزيادتها مع بعض */
-function invByGroup(whId){
+let invFlt={kind:'all', secs:new Set()}, invFltNames=[];      // فلتر النتيجة: النوع (الكل/عجز/زيادة) + القطاعات
+const invFltOn = () => invFlt.kind!=='all' || invFlt.secs.size>0;
+function invByGroup(whId, raw){
   const r=invResult(whId), map=new Map();
   r.rows.forEach(x=>{ if(!x.diff) return;
     if(!map.has(x.mg)) map.set(x.mg,{mg:x.mg,def:[],exc:[]});
     (x.diff<0? map.get(x.mg).def : map.get(x.mg).exc).push(x); });
   const byName=(a,b)=>a.name.localeCompare(b.name,'ar');
-  return [...map.values()].map(g=>{ g.def.sort(byName); g.exc.sort(byName);
+  return [...map.values()].filter(g=> raw || !invFlt.secs.size || invFlt.secs.has(g.mg)).map(g=>{
+      if(!raw){ if(invFlt.kind==='def') g.exc=[]; else if(invFlt.kind==='exc') g.def=[]; }
+      g.def.sort(byName); g.exc.sort(byName);
       g.defTotal=g.def.reduce((a,x)=>a-x.diff,0); g.excTotal=g.exc.reduce((a,x)=>a+x.diff,0); return g; })
+    .filter(g=> g.def.length||g.exc.length)
     .sort((a,b)=> ((a.mg==='غير مصنف')-(b.mg==='غير مصنف')) || a.mg.localeCompare(b.mg,'ar'));
 }
 const invGroupTitle = g => g.mg+' — '+[g.def.length? 'عجز '+fmtN(g.defTotal)+' ('+g.def.length+' صنف)':'', g.exc.length? 'زيادة '+fmtN(g.excTotal)+' ('+g.exc.length+' صنف)':''].filter(Boolean).join(' · ');
@@ -3812,11 +3817,29 @@ function invGroupHtml(g){
       <span style="font-size:12.5px">${g.def.length?`<span style="color:var(--danger)">🔻 عجز ${g.def.length} · -${fmtN(g.defTotal)}</span>`:''}${g.def.length&&g.exc.length?' &nbsp; ':''}${g.exc.length?`<span style="color:var(--ok)">🔺 زيادة ${g.exc.length} · +${fmtN(g.excTotal)}</span>`:''}</span></div>
     ${g.def.map(x=>row(x,true)).join('')}${g.exc.map(x=>row(x,false)).join('')}</div>`;
 }
+const invFltText = () => invFltOn()? [invFlt.kind==='def'?'عجز فقط':invFlt.kind==='exc'?'زيادة فقط':'', invFlt.secs.size? 'القطاعات: '+[...invFlt.secs].join('، ') : ''].filter(Boolean).join(' · ') : '';
+function invFltSheet(whId){
+  invFltNames = invByGroup(whId,true).map(g=>g.mg);
+  const kb=(v,t)=>`<button class="mochip${invFlt.kind===v?' on':''}" onclick="invFlt.kind='${v}';invFltSheet('${whId}');render(true)">${t}</button>`;
+  openSheet(`<h3>🔽 فلتر نتيجة الجرد</h3>
+    <div style="font-size:12.5px;color:var(--muted);margin:6px 0 4px">النوع</div>
+    <div class="morow">${kb('all','الكل')}${kb('def','🔻 عجز')}${kb('exc','🔺 زيادة')}</div>
+    <div style="font-size:12.5px;color:var(--muted);margin:10px 0 4px">القطاعات <span style="font-size:11.5px">(من غير اختيار = كلها)</span></div>
+    <div class="morow">${invFltNames.map((n,i)=>`<button class="mochip${invFlt.secs.has(n)?' on':''}" onclick="invFltTog(${i},'${whId}')">${esc(n)}</button>`).join('')||'<span style="font-size:12.5px">لا توجد قطاعات</span>'}</div>
+    <div class="f-actions"><button class="btn-cancel" onclick="invFltClear('${whId}')">مسح الفلتر</button><button class="btn-save" onclick="closeSheet()">تطبيق</button></div>`);
+}
+function invFltTog(i, whId){ const n=invFltNames[i]; if(n===undefined) return;
+  if(invFlt.secs.has(n)) invFlt.secs.delete(n); else invFlt.secs.add(n);
+  invFltSheet(whId); render(true); }
+function invFltClear(whId){ invFlt={kind:'all', secs:new Set()}; closeSheet(); render(true); }
 function renderInvResult(m, whId, head){
   const r=invResult(whId);
   const groups=invByGroup(whId);
-  m.innerHTML = head + (r.counted? `${invStatsHtml(r)}
-    ${groups.length? groups.map(invGroupHtml).join('') : `<div class="empty">كل الأصناف المجرودة مطابقة ✔</div>`}` : `<div class="empty">لسه ماتجردش أي صنف — روح إدخال الجرد واكتب الكميات الفعلية</div>`)
+  const fbar = r.counted? `<div style="display:flex;align-items:center;gap:8px;margin:0 0 10px">
+      <button onclick="invFltSheet('${whId}')" style="border:1px solid ${invFltOn()?'var(--blue)':'var(--border)'};background:${invFltOn()?'var(--blue)':'var(--panel)'};color:${invFltOn()?'#fff':'var(--text)'};border-radius:10px;padding:8px 14px;font-weight:700;font-size:13.5px;cursor:pointer">🔽 فلتر${invFltOn()?' ●':''}</button>
+      ${invFltOn()? `<span style="font-size:12.5px;color:var(--muted);flex:1">${esc(invFltText())}</span><button onclick="invFltClear('${whId}')" style="border:none;background:none;color:var(--danger);font-size:12.5px;cursor:pointer">✖ مسح</button>` : ''}</div>` : '';
+  m.innerHTML = head + (r.counted? `${invStatsHtml(r)}${fbar}
+    ${groups.length? groups.map(invGroupHtml).join('') : `<div class="empty">${invFltOn()? 'مفيش نتايج بالفلتر ده' : 'كل الأصناف المجرودة مطابقة ✔'}</div>`}` : `<div class="empty">لسه ماتجردش أي صنف — روح إدخال الجرد واكتب الكميات الفعلية</div>`)
     + floatBar(`<button onclick="exportInvExcel('${whId}')">📊 إكسل</button><button onclick="exportInvPdf('${whId}')">📄 PDF</button><button onclick="exportInvImage('${whId}')">🖼️ صورة</button>`);
 }
 function invDocBody(whId){
@@ -3824,7 +3847,7 @@ function invDocBody(whId){
   const tr=(x,neg)=>`<tr class="z"><td>${esc(x.name)}</td><td>${fmtN(x.prog)}</td><td>${fmtN(x.act)}</td><td class="${neg?'neg':'pos'}">${neg?'-':'+'}${fmtN(Math.abs(x.diff))}</td></tr>`;
   const grp=g=>`<div class="dxgrp"><h3>${esc(invGroupTitle(g))}</h3><table><tr><th>الصنف</th><th>الرصيد (برنامج)</th><th>الجرد الفعلي</th><th>الفرق</th></tr>
     ${g.def.map(x=>tr(x,true)).join('')}${g.exc.map(x=>tr(x,false)).join('')}</table></div>`;
-  return `<div class="dx"><h2>نتيجة جرد مخزن ${esc(w.name)}</h2><div class="sub">بتاريخ ${inv.date}</div>
+  return `<div class="dx"><h2>نتيجة جرد مخزن ${esc(w.name)}</h2><div class="sub">بتاريخ ${inv.date}${invFltOn()? ' — فلتر: '+esc(invFltText()) : ''}</div>
     <table><tr><th>الأصناف المجرودة</th><th>أصناف عجز</th><th>أصناف زيادة</th><th>إجمالي العجز</th><th>إجمالي الزيادة</th><th>نسبة المطابقة</th></tr>
     <tr class="z"><td>${fmtN(r.counted)}</td><td class="neg">${fmtN(r.def.length)}</td><td class="pos">${fmtN(r.exc.length)}</td><td class="neg">${fmtN(r.defTotal)}</td><td class="pos">${fmtN(r.excTotal)}</td><td><b>${Math.round(r.pct*100)}%</b></td></tr></table>
     ${groups.length? groups.map(grp).join('') : `<div style="color:#666;padding:6px">لا يوجد عجز ولا زيادة</div>`}</div>`;
