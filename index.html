@@ -3624,7 +3624,7 @@ function setInvCount(whId,itemId,kind,val){
     else { c.actual=(c.big||0)*rq+(c.small||0); inv.counts[it.name]=c; }
   }
   save('invCounts_v1',invCounts);
-  const el=document.getElementById('invCnt'); if(el) el.textContent=Object.keys(inv.counts).length;
+  invRefresh(whId);
 }
 function invResult(whId){
   const inv=invGet(whId), stock=whStock[whId]||{}, rows=[];
@@ -3637,6 +3637,74 @@ function invResult(whId){
   const pct=rows.length? (rows.length-def.length-exc.length)/rows.length : 0;
   return {rows,def,exc,counted:rows.length,defTotal,excTotal,pct};
 }
+/* خانات إدخال الجرد: خانتين (لفة/عود) لو الصنف ليه محتوى لفة، وإلا خانة واحدة. fn = دالة الحفظ */
+function invInputsHtml(whId, it, c, fn){
+  const inp='width:62px;padding:8px 4px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;text-align:center';
+  const rq=Number(it.rollQty)||0, b=pieceBreakdown(it.name,{balance:0});
+  const call=k=>`${fn}('${whId}','${it.id}','${k}',this.value,this)`;
+  return rq>1
+    ? `<input type="number" inputmode="numeric" placeholder="${b.bigLbl}" value="${c.big??''}" style="${inp}" onchange="${call('big')}">
+       <input type="number" inputmode="numeric" placeholder="${b.smallLbl}" value="${c.small??''}" style="${inp}" onchange="${call('small')}">`
+    : `<input type="number" inputmode="numeric" placeholder="الفعلي" value="${c.actual??''}" style="${inp};width:84px" onchange="${call('q')}">`;
+}
+/* العدّادات: «مجرود» فوق + رقم تبويب «تم الجرد» + المتبقي في الاختيار الحالي */
+function invRefresh(whId){
+  const n=Object.keys(invGet(whId).counts).length;
+  const a=document.getElementById('invCnt'); if(a) a.textContent=n;
+  const bd=document.getElementById('invDoneBadge'); if(bd) bd.textContent=n;
+  const L=document.getElementById('invList');
+  if(L){
+    const left=L.querySelectorAll('.invc[data-move="1"]').length;
+    const p=document.getElementById('invProg'); if(p) p.textContent='متبقي في الاختيار ده: '+left+' صنف';
+    const d=document.getElementById('invAllDone'); if(d) d.style.display = (!left && L.dataset.sel==='1' && Number(L.dataset.tot)>0)? '' : 'none';
+  }
+  const D=document.getElementById('invDoneList');
+  if(D){ const e=document.getElementById('invDoneEmpty'); if(e) e.style.display = D.querySelector('.invc')? 'none' : ''; }
+}
+/* في تبويب «تم الجرد»: تعديل الكمية بيحدّث السطر، ولو اتمسحت الكمية الصنف يرجع لقايمة الإدخال */
+function setInvCountDone(whId,itemId,kind,val,el){
+  const it=items.find(x=>x.id===itemId); if(!it) return;
+  setInvCount(whId,itemId,kind,val);
+  const card=el&&el.closest?el.closest('.invc'):null, c=invGet(whId).counts[it.name];
+  if(card){
+    if(!c) card.remove();
+    else{
+      const prog=nz((whStock[whId]||{})[it.name]?.balance), d=nz(c.actual)-prog;
+      const ia=card.querySelector('.ia'), idf=card.querySelector('.id');
+      if(ia) ia.textContent=fmtN(nz(c.actual));
+      if(idf) idf.innerHTML = invDiffHtml(d);
+    }
+  }
+  invRefresh(whId);
+}
+function invUncount(whId, btn){
+  const card=btn.closest('.invc'); if(!card) return;
+  delete invGet(whId).counts[card.dataset.nm]; save('invCounts_v1',invCounts);
+  card.remove(); invRefresh(whId);
+  toast('رجع لقايمة الجرد');
+}
+const invDiffHtml = d => d===0? '<span style="color:var(--ok)">مطابق ✔</span>' : `<b style="color:${d<0?'var(--danger)':'var(--ok)'}">${d<0?'-':'+'}${fmtN(Math.abs(d))}</b>`;
+function invDoneCard(whId, name){
+  const c=invGet(whId).counts[name]; if(!c) return '';
+  const it=itemsByName[name], prog=nz((whStock[whId]||{})[name]?.balance), act=nz(c.actual);
+  return `<div class="card invc" data-nm="${esc(name)}"><div class="info"><div class="name" style="font-size:13px">${esc(name)}</div>
+    <div class="sub">برنامج: ${fmtN(prog)} · فعلي: <span class="ia">${fmtN(act)}</span> · <span class="id">${invDiffHtml(act-prog)}</span></div></div>
+    ${it? invInputsHtml(whId,it,c,'setInvCountDone') : ''}
+    <button title="رجّعه لقايمة الجرد" onclick="invUncount('${whId}',this)" style="border:1px solid var(--border);background:var(--panel2);border-radius:8px;padding:8px 10px;font-size:15px;cursor:pointer">↩️</button></div>`;
+}
+function renderInvDone(m, whId, head){
+  const inv=invGet(whId);
+  let names=Object.keys(inv.counts).reverse();            // آخر اللي اتجرد يظهر الأول
+  if(q) names=names.filter(n=>rsMatch(n,q));
+  rsCtx={k:'inv', whId}; rsInfo = q? names.length+' نتيجة' : '';
+  m.innerHTML = head+`
+    <div class="toolbar"><input class="search" id="q" placeholder="بحث في اللي اتجرد..." value="${esc(q)}"></div>
+    <div id="invDoneList">${names.map(n=>invDoneCard(whId,n)).join('')}
+      <div id="invDoneEmpty" class="empty" style="display:${names.length?'none':''}">${Object.keys(inv.counts).length?'لا توجد نتائج':'لسه ماتجردش أي صنف'}</div></div>
+    <div style="height:20px"></div>`;
+  const qi=$('#q'); if(qi) qi.oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderWhInventory(m, whId)); };
+  rsSync();
+}
 function renderWhInventory(m, whId){
   const inv=invGet(whId), w=warehouses.find(x=>x.id===whId), stock=whStock[whId]||{};
   const segBtn=(i,t)=>`<button class="stab${invView===i?' on':''}" style="flex:1 1 0" onclick="invView=${i};render()">${t}</button>`;
@@ -3644,8 +3712,9 @@ function renderWhInventory(m, whId){
       📝 جرد مخزن <b>${esc(w.name)}</b> بتاريخ <input type="date" value="${inv.date}" onchange="setInvDate('${whId}',this.value)" style="border:1px solid var(--border);border-radius:6px;padding:2px 6px;background:var(--panel);color:var(--text)">
       — مجرود: <b id="invCnt">${Object.keys(inv.counts).length}</b> صنف
       <button onclick="invNew('${whId}')" style="margin-right:8px;border:1px solid var(--border);background:var(--panel);color:var(--danger);border-radius:6px;padding:2px 8px;cursor:pointer">🗑️ جرد جديد</button></div>
-    <div style="display:flex;gap:6px;margin-bottom:10px">${segBtn(0,'✍️ إدخال الجرد')}${segBtn(1,'📋 النتيجة')}</div>`;
+    <div style="display:flex;gap:6px;margin-bottom:10px">${segBtn(0,'✍️ إدخال الجرد')}${segBtn(2,'✅ تم الجرد (<span id="invDoneBadge">'+Object.keys(inv.counts).length+'</span>)')}${segBtn(1,'📋 النتيجة')}</div>`;
   if(invView===1){ renderInvResult(m, whId, head); return; }
+  if(invView===2){ renderInvDone(m, whId, head); return; }
   const allMain=[...new Set(items.map(i=>i.mainGroup).filter(Boolean))];
   const allSub=invMain.size? [...new Set(items.filter(i=>invMain.has(i.mainGroup)).map(i=>i.subGroup).filter(Boolean))] : [];
   rsCtx={k:'inv', whId};
@@ -3653,26 +3722,38 @@ function renderWhInventory(m, whId){
   if(invSub.size) list=list.filter(i=>invSub.has(i.subGroup));
   if(q) list=list.filter(i=>rsMatch(i.name, q));
   if(invHideZero) list=list.filter(i=>qtyOf(whId, i.name)>0);
+  const sel = invMain.size>0 && !q, tot = list.length;
+  /* اللي اتجرد بيروح تبويب «تم الجرد» ويفضل هنا اللي لسه — إلا وقت البحث بيظهر الاتنين عشان تلاقي أي صنف */
+  if(!q) list=list.filter(i=>!inv.counts[i.name]);
   const RS_CAP=80, capped = !!q && !invMain.size && list.length>RS_CAP;
   if(capped) list=list.slice(0,RS_CAP);
   rsInfo = q? (capped? 'أول '+RS_CAP+' — كمّل كتابة' : list.length+' نتيجة') : '';
-  const inp='width:62px;padding:8px 4px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;text-align:center';
   m.innerHTML = head+`
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
     ${ddRow('inv',allMain,invMain,allSub,invSub)}
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${invHideZero?'checked':''} onchange="invHideZero=this.checked;render()"> إخفاء الأصناف رصيدها صفر</label>
     ${(!invMain.size && !q)? `<div class="empty">اختار مجموعة رئيسية واحدة أو أكتر عشان تبدأ الجرد، أو دوّر بأيقونة 🔍</div>` :
-      list.length? list.map(it=>{
-        const rq=Number(it.rollQty)||0, c=inv.counts[it.name]||{}, b=pieceBreakdown(it.name,{balance:0});
-        const ins = rq>1
-          ? `<input type="number" inputmode="numeric" placeholder="${b.bigLbl}" value="${c.big??''}" style="${inp}" onchange="setInvCount('${whId}','${it.id}','big',this.value)">
-             <input type="number" inputmode="numeric" placeholder="${b.smallLbl}" value="${c.small??''}" style="${inp}" onchange="setInvCount('${whId}','${it.id}','small',this.value)">`
-          : `<input type="number" inputmode="numeric" placeholder="الفعلي" value="${c.actual??''}" style="${inp};width:84px" onchange="setInvCount('${whId}','${it.id}','q',this.value)">`;
-        return `<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(it.name)}</div>
-          <div class="sub">برنامج: ${esc(balText(it.name, stockOf(whId, it.name)))}</div></div>${ins}</div>`;
-      }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
+      `<div id="invList" data-sel="${sel?1:0}" data-tot="${tot}">
+        ${sel? `<div id="invProg" style="font-size:12.5px;color:var(--muted);margin:2px 0 8px">متبقي في الاختيار ده: ${list.length} صنف</div>`:''}
+        <div id="invAllDone" class="empty" style="display:${sel&&tot&&!list.length?'':'none'}">✅ كل أصناف الاختيار ده اتجردت — شوفها في «تم الجرد»</div>
+        ${list.length? list.map(it=>{
+          const c=inv.counts[it.name]||{}, counted=!!inv.counts[it.name];
+          return `<div class="card invc" data-nm="${esc(it.name)}" ${counted?'':'data-move="1"'}><div class="info"><div class="name" style="font-size:13px">${esc(it.name)}${counted?' <span style="color:var(--ok);font-size:11.5px">✅ اتجرد</span>':''}</div>
+            <div class="sub">برنامج: ${esc(balText(it.name, stockOf(whId, it.name)))}</div></div>${invInputsHtml(whId,it,c,'setInvCount')}</div>`;
+        }).join('') : (tot? '' : `<div class="empty">لا توجد أصناف مطابقة</div>`)}
+      </div>`}
     <div style="height:20px"></div>`;
   const qi=$('#q'); if(qi) qi.oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderWhInventory(m, whId)); };
+  /* لما تسيب كارت (الفوكس يخرج منه) وفيه كمية متسجّلة → الصنف يروح «تم الجرد».
+     بنشيل الكارت من غير ما نعيد رسم الصفحة عشان الخانة اللي بتكتب فيها بعد كده ما تتأثرش. */
+  const L=$('#invList'); if(L) L.addEventListener('focusout', ev=>{
+    const card=ev.target.closest&&ev.target.closest('.invc[data-move="1"]'); if(!card) return;
+    setTimeout(()=>{
+      if(!card.isConnected || card.contains(document.activeElement)) return;     // لسه بيكتب في الخانة التانية (لفة/عود)
+      if(!inv.counts[card.dataset.nm]) return;                                    // مفيش كمية → يفضل ظاهر
+      card.remove(); invRefresh(whId);
+    },0);
+  });
   rsSync();
 }
 function invStatsHtml(r){
@@ -3687,21 +3768,43 @@ function invListHtml(list, kind){
     <div class="sub">${esc(x.mg)} · برنامج: ${fmtN(x.prog)} · فعلي: ${fmtN(x.act)}</div></div>
     <b style="color:${kind==='def'?'var(--danger)':'var(--ok)'}">${kind==='def'?'-':'+'}${fmtN(Math.abs(x.diff))}</b></div>`).join('');
 }
+/* النتيجة متجمّعة بالمجموعة: كل مجموعة (كرافت / نيو / …) فيها عجزها وزيادتها مع بعض */
+function invByGroup(whId){
+  const r=invResult(whId), map=new Map();
+  r.rows.forEach(x=>{ if(!x.diff) return;
+    if(!map.has(x.mg)) map.set(x.mg,{mg:x.mg,def:[],exc:[]});
+    (x.diff<0? map.get(x.mg).def : map.get(x.mg).exc).push(x); });
+  const byName=(a,b)=>a.name.localeCompare(b.name,'ar');
+  return [...map.values()].map(g=>{ g.def.sort(byName); g.exc.sort(byName);
+      g.defTotal=g.def.reduce((a,x)=>a-x.diff,0); g.excTotal=g.exc.reduce((a,x)=>a+x.diff,0); return g; })
+    .sort((a,b)=> ((a.mg==='غير مصنف')-(b.mg==='غير مصنف')) || a.mg.localeCompare(b.mg,'ar'));
+}
+const invGroupTitle = g => g.mg+' — '+[g.def.length? 'عجز '+fmtN(g.defTotal)+' ('+g.def.length+' صنف)':'', g.exc.length? 'زيادة '+fmtN(g.excTotal)+' ('+g.exc.length+' صنف)':''].filter(Boolean).join(' · ');
+function invGroupHtml(g){
+  const row=(x,neg)=>`<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(x.name)}</div>
+    <div class="sub">برنامج: ${fmtN(x.prog)} · فعلي: ${fmtN(x.act)}</div></div>
+    <b style="color:${neg?'var(--danger)':'var(--ok)'}">${neg?'-':'+'}${fmtN(Math.abs(x.diff))}</b></div>`;
+  return `<div class="invgrp"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin:14px 0 8px">
+      <b>📦 ${esc(g.mg)}</b>
+      <span style="font-size:12.5px">${g.def.length?`<span style="color:var(--danger)">🔻 عجز ${g.def.length} · -${fmtN(g.defTotal)}</span>`:''}${g.def.length&&g.exc.length?' &nbsp; ':''}${g.exc.length?`<span style="color:var(--ok)">🔺 زيادة ${g.exc.length} · +${fmtN(g.excTotal)}</span>`:''}</span></div>
+    ${g.def.map(x=>row(x,true)).join('')}${g.exc.map(x=>row(x,false)).join('')}</div>`;
+}
 function renderInvResult(m, whId, head){
   const r=invResult(whId);
+  const groups=invByGroup(whId);
   m.innerHTML = head + (r.counted? `${invStatsHtml(r)}
-    <div style="font-weight:700;margin:6px 0">🔻 تفاصيل العجز</div>${invListHtml(r.def,'def')}
-    <div style="font-weight:700;margin:12px 0 6px">🔺 تفاصيل الزيادة</div>${invListHtml(r.exc,'exc')}` : `<div class="empty">لسه ماتجردش أي صنف — روح إدخال الجرد واكتب الكميات الفعلية</div>`)
+    ${groups.length? groups.map(invGroupHtml).join('') : `<div class="empty">كل الأصناف المجرودة مطابقة ✔</div>`}` : `<div class="empty">لسه ماتجردش أي صنف — روح إدخال الجرد واكتب الكميات الفعلية</div>`)
     + floatBar(`<button onclick="exportInvExcel('${whId}')">📊 إكسل</button><button onclick="exportInvPdf('${whId}')">📄 PDF</button><button onclick="exportInvImage('${whId}')">🖼️ صورة</button>`);
 }
 function invDocBody(whId){
-  const w=warehouses.find(x=>x.id===whId), inv=invGet(whId), r=invResult(whId);
-  const tbl=(list,kind)=> list.length? `<table><tr><th>المجموعة</th><th>الصنف</th><th>الرصيد (برنامج)</th><th>الجرد الفعلي</th><th>${kind==='def'?'العجز':'الزيادة'}</th></tr>
-    ${list.map(x=>`<tr class="z"><td>${esc(x.mg)}</td><td>${esc(x.name)}</td><td>${fmtN(x.prog)}</td><td>${fmtN(x.act)}</td><td class="${kind==='def'?'neg':'pos'}">${fmtN(Math.abs(x.diff))}</td></tr>`).join('')}</table>` : `<div style="color:#666;padding:6px">${kind==='def'?'لا يوجد عجز':'لا يوجد زيادة'}</div>`;
+  const w=warehouses.find(x=>x.id===whId), inv=invGet(whId), r=invResult(whId), groups=invByGroup(whId);
+  const tr=(x,neg)=>`<tr class="z"><td>${esc(x.name)}</td><td>${fmtN(x.prog)}</td><td>${fmtN(x.act)}</td><td class="${neg?'neg':'pos'}">${neg?'-':'+'}${fmtN(Math.abs(x.diff))}</td></tr>`;
+  const grp=g=>`<h3>${esc(invGroupTitle(g))}</h3><table><tr><th>الصنف</th><th>الرصيد (برنامج)</th><th>الجرد الفعلي</th><th>الفرق</th></tr>
+    ${g.def.map(x=>tr(x,true)).join('')}${g.exc.map(x=>tr(x,false)).join('')}</table>`;
   return `<div class="dx"><h2>نتيجة جرد مخزن ${esc(w.name)}</h2><div class="sub">بتاريخ ${inv.date}</div>
     <table><tr><th>الأصناف المجرودة</th><th>أصناف عجز</th><th>أصناف زيادة</th><th>إجمالي العجز</th><th>إجمالي الزيادة</th><th>نسبة المطابقة</th></tr>
     <tr class="z"><td>${fmtN(r.counted)}</td><td class="neg">${fmtN(r.def.length)}</td><td class="pos">${fmtN(r.exc.length)}</td><td class="neg">${fmtN(r.defTotal)}</td><td class="pos">${fmtN(r.excTotal)}</td><td><b>${Math.round(r.pct*100)}%</b></td></tr></table>
-    <h3>تفاصيل العجز</h3>${tbl(r.def,'def')}<h3>تفاصيل الزيادة</h3>${tbl(r.exc,'exc')}</div>`;
+    ${groups.length? groups.map(grp).join('') : `<div style="color:#666;padding:6px">لا يوجد عجز ولا زيادة</div>`}</div>`;
 }
 function exportInvPdf(whId){ const w=warehouses.find(x=>x.id===whId); if(!invResult(whId).counted){ toast('لا يوجد جرد'); return; } exportDocPdf(invDocBody(whId),'نتيجة_جرد_'+w.name+'_'+invGet(whId).date,false); }
 function exportInvImage(whId){ const w=warehouses.find(x=>x.id===whId); if(!invResult(whId).counted){ toast('لا يوجد جرد'); return; } exportDocImage(invDocBody(whId),'نتيجة_جرد_'+w.name+'_'+invGet(whId).date,false); }
@@ -3711,10 +3814,10 @@ function exportInvExcel(whId){
   const data=[['المجموعة','الصنف','الرصيد (برنامج)','الجرد الفعلي','الفرق'],
     ['إجمالي: '+r.counted+' صنف مجرود · عجز '+r.def.length+' · زيادة '+r.exc.length
       +' · مطابقة '+Math.round(r.pct*100)+'%','','','',''],
-    ['تفاصيل العجز','','','',''],
-    ...r.def.map(x=>[x.mg,x.name,x.prog,x.act,-Math.abs(x.diff)]),
-    ['تفاصيل الزيادة','','','',''],
-    ...r.exc.map(x=>[x.mg,x.name,x.prog,x.act,Math.abs(x.diff)])];
+    ...invByGroup(whId).flatMap(g=>[
+      [invGroupTitle(g),'','','',''],
+      ...g.def.map(x=>[x.mg,x.name,x.prog,x.act,-Math.abs(x.diff)]),
+      ...g.exc.map(x=>[x.mg,x.name,x.prog,x.act,Math.abs(x.diff)])])];
   saveAoaXlsx(data, 'نتيجة الجرد', 'نتيجة_جرد_'+w.name+'_'+inv.date+'.xlsx',
     [24,44,16,14,12], {title:'نتيجة جرد مخزن '+w.name+' بتاريخ '+inv.date,
                        sign:['','','','','auto']});
