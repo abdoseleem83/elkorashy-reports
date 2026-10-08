@@ -3974,9 +3974,19 @@ async function ordSendStock(){
     // لو النداء فشل نوقف — أحسن من إننا نبعت من غير ما نمسح.
     ordMsg('بيجيب أصناف برنامج الطلبات...');
     const cat = await ordFetchCatalog();
-    const sent = new Set(rows.map(r=> r.name));
-    const zero = cat.filter(n=> !sent.has(n)).map(n=> ({name:n, stock:0}));
-    const all = rows.concat(zero);
+    // مطابقة تلقائية بالبصمة: «باب 80 سم» عندنا = «باب ٨٠سم» عندهم — من غيرها الصنف كان هيتصفّر ومايتحدّثش
+    const exact = new Set(cat), fp = new Map();
+    cat.forEach(n=>{ const f = ordNorm(n); if(f && !fp.has(f)) fp.set(f, n); });
+    rows.forEach(r=>{ if(!exact.has(r.name)){ const g = fp.get(ordNorm(r.name)); if(g) r.name = g; } });
+    // لو صنفين عندنا وصلوا لنفس الصنف عندهم، آخر واحد بس هو اللي بيتبعت
+    const byName = new Map(); rows.forEach(r=> byName.set(r.name, r));
+    const sendRows = Array.from(byName.values());
+    // الأصناف اللي اتعملها «تجاهل» ما بنلمسهاش — لا بنبعتها ولا بنصفّرها
+    const wh = ordWh(), keep = new Set();
+    Object.keys((wh && whStock[wh.id]) || {}).forEach(n=>{ if(ordTheirName(n) === '') keep.add(ordNorm(n)); });
+    const sent = new Set(sendRows.map(r=> r.name));
+    const zero = cat.filter(n=> !sent.has(n) && !keep.has(ordNorm(n))).map(n=> ({name:n, stock:0}));
+    const all = sendRows.concat(zero);
     ordMsg('بيمسح الرصيد القديم ويبعت الجديد...');
     const r = await fetch(ORD_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({action:'manageUploadCatalog', token:tk, mode:'stock', rows: all})});
@@ -3984,7 +3994,7 @@ async function ordSendStock(){
     const d = await r.json();
     if(!d || d.ok === false) throw new Error((d && d.error) || 'برنامج الطلبات رفض الطلب.');
     const nf = (d.notFound || []).filter(n=> sent.has(n));
-    ordMsg('<b style="color:var(--ok)">تم: اتمسح الرصيد القديم واتحط رصيد ' + (rows.length - nf.length) + ' صنف'
+    ordMsg('<b style="color:var(--ok)">تم: اتمسح الرصيد القديم واتحط رصيد ' + (sendRows.length - nf.length) + ' صنف'
       + (zero.length ? ' · و' + zero.length + ' صنف مش في طنطا اتصفّروا' : '') + '.</b>'
       + (nf.length ? '<div style="margin-top:6px;color:#b45309"><b>' + nf.length + ' صنف</b> مش موجودين عندهم بنفس الاسم فماتبعتوش:<br>'
           + esc(nf.slice(0,10).join('، ')) + (nf.length>10?' …':'')
