@@ -3880,7 +3880,7 @@ function exportInvExcel(whId){
 
 /* ═══════════════ الربط مع برنامج الطلبات (الموزعين) ═══════════════
    اتجاهين:
-     ⬆️ بنبعت رصيد طنطا هناك فيحل محل الرصيد اللي عندهم.
+     ⬆️ بنبعت رصيد طنطا هناك فيتمسح رصيدهم القديم ويتحط الجديد.
      ⬇️ بنجيب الطلبات اللي الموزعين عملوها عشان تشوفها هنا وتخصمها من الرصيد.
    كل اتجاه له رقم سري مختلف عندهم: الرفع برقم «الإدارة» (manageLogin)،
    وقراءة الطلبات برقم «الأدمن» (adminLogin). التوكن بينتهي بعد ١٢ ساعة
@@ -3965,20 +3965,28 @@ async function ordSendStock(){
   const rows = ordRows();
   if(!rows.length) return ordMsg('<b style="color:var(--danger)">مفيش رصيد مرفوع لطنطا.</b>');
   if(!pin) return ordMsg('<b style="color:var(--danger)">اكتب رقم «شاشة الإدارة» بتاع برنامج الطلبات.</b>');
-  if(!confirm('هيتبعت رصيد ' + rows.length + ' صنف من «طنطا» لبرنامج الطلبات ويحل محل الرصيد الحالي هناك. تكمل؟')) return;
+  if(!confirm('هيتمسح الرصيد اللي في برنامج الطلبات كله، وبعدين يتحط رصيد ' + rows.length + ' صنف من «طنطا». أي صنف هناك مش في رصيد طنطا هيبقى صفر. تكمل؟')) return;
   ordSetPin('manage', pin);
   ordMsg('بيسجّل دخول...');
   try{
     const tk = await ordLogin('manage', pin);
-    ordMsg('بيبعت الرصيد...');
+    // المسح: نجيب أصناف برنامج الطلبات دلوقتي، وأي صنف عندهم مش في اللي هنبعته نبعته بصفر.
+    // لو النداء فشل نوقف — أحسن من إننا نبعت من غير ما نمسح.
+    ordMsg('بيجيب أصناف برنامج الطلبات...');
+    const cat = await ordFetchCatalog();
+    const sent = new Set(rows.map(r=> r.name));
+    const zero = cat.filter(n=> !sent.has(n)).map(n=> ({name:n, stock:0}));
+    const all = rows.concat(zero);
+    ordMsg('بيمسح الرصيد القديم ويبعت الجديد...');
     const r = await fetch(ORD_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({action:'manageUploadCatalog', token:tk, mode:'stock', rows})});
+      body: JSON.stringify({action:'manageUploadCatalog', token:tk, mode:'stock', rows: all})});
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     if(!d || d.ok === false) throw new Error((d && d.error) || 'برنامج الطلبات رفض الطلب.');
-    const nf = d.notFound || [];
-    ordMsg('<b style="color:var(--ok)">تم: ' + (d.updated || 0) + ' صنف اتحدّث رصيده هناك.</b>'
-      + (nf.length ? '<div style="margin-top:6px;color:#b45309"><b>' + nf.length + ' صنف</b> مش موجودين عندهم بنفس الاسم فاتسابوا زي ما هم:<br>'
+    const nf = (d.notFound || []).filter(n=> sent.has(n));
+    ordMsg('<b style="color:var(--ok)">تم: اتمسح الرصيد القديم واتحط رصيد ' + (rows.length - nf.length) + ' صنف'
+      + (zero.length ? ' · و' + zero.length + ' صنف مش في طنطا اتصفّروا' : '') + '.</b>'
+      + (nf.length ? '<div style="margin-top:6px;color:#b45309"><b>' + nf.length + ' صنف</b> مش موجودين عندهم بنفس الاسم فماتبعتوش:<br>'
           + esc(nf.slice(0,10).join('، ')) + (nf.length>10?' …':'')
           + '<br>دوس «🔍 طابق الأسماء» تحت عشان تربطهم مرة واحدة.</div>' : ''));
   }catch(e){ ordMsg('<b style="color:var(--danger)">' + esc(ordErr(e)) + '</b>'); }
@@ -4079,7 +4087,7 @@ function renderWhOrders(box){
   <div class="panelbox">
     <b style="font-size:13.5px">⬆️ ابعت رصيد طنطا لبرنامج الطلبات</b>
     <div style="color:var(--muted);font-size:12.5px;margin:4px 0 8px">
-      ${rows.length} صنف هيتبعت ويحل محل الرصيد هناك.
+      ${rows.length} صنف هيتبعت، والرصيد القديم هناك هيتمسح قبلها.
     </div>
     <input id="ord_mpin" type="password" value="${esc(ordPin('manage'))}" placeholder="رقم شاشة الإدارة"
       style="width:100%;padding:9px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);margin-bottom:8px">
