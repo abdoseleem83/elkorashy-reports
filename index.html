@@ -277,39 +277,57 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
 .ddact button{flex:1;padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px;font-weight:700}
 
 /* ═══════════ الشكل الجديد: لوحة تحكم داكنة ═══════════ */
-:root{--gold:#fbbf24;--bn-h:0px;
+:root{--gold:#fbbf24;--bn-h:0px;color-scheme:dark;
   --blue:#2563eb;--blue-d:#1d4ed8;--bg:#0a1020;--panel:#111a30;--panel2:#18233f;
-  --border:#22314f;--text:#e8edf8;--muted:#8d9ab8;--ok:#22c55e}
-html{color-scheme:dark}
-body{background:radial-gradient(900px 420px at 85% -8%,rgba(37,99,235,.28),transparent 62%),
-  radial-gradient(700px 380px at 0% 105%,rgba(139,92,246,.14),transparent 60%),var(--bg)}
-header{background:linear-gradient(180deg,#16265a,#0d1733);border-bottom:1px solid var(--border);box-shadow:0 8px 26px rgba(0,0,0,.4)}
-nav{background:linear-gradient(180deg,#0f1a36,#0b1329)}
+  --border:#22314f;--text:#e8edf8;--muted:#8d9ab8;--ok:#22c55e;
+  --body-bg:radial-gradient(900px 420px at 85% -8%,rgba(37,99,235,.28),transparent 62%),radial-gradient(700px 380px at 0% 105%,rgba(139,92,246,.14),transparent 60%),#0a1020;
+  --hdr-bg:linear-gradient(180deg,#16265a,#0d1733);--nav-bg:linear-gradient(180deg,#0f1a36,#0b1329);
+  --card-bg:linear-gradient(160deg,#18233f,#111a30);--bn-bg:rgba(10,16,32,.94);
+  --th-bg:linear-gradient(180deg,#1d2c52,#16213f);--th-tx:#dbe6ff;--zebra:rgba(255,255,255,.03);
+  --sheet-bg:linear-gradient(180deg,#14203d,#0f1830);--ov-bg:rgba(3,7,18,.62);
+  --sec:#a9b6d6;--okt:#4ade80;--hit:#86efac;--lot:#fca5a5;--track:rgba(255,255,255,.07);--gold-tx:#fbbf24;--sb:#2b3b61}
+/* ☀️ الوضع النهاري */
+:root[data-theme="light"]{color-scheme:light;
+  --blue:#1d4ed8;--blue-d:#173fb0;--bg:#f4f6fb;--panel:#ffffff;--panel2:#eef2fb;
+  --border:#dbe3f3;--text:#1b2436;--muted:#6b7690;--ok:#16a34a;
+  --body-bg:#f4f6fb;--hdr-bg:linear-gradient(180deg,#2150d6,#1a40b0);--nav-bg:#ffffff;
+  --card-bg:#ffffff;--bn-bg:rgba(255,255,255,.96);
+  --th-bg:#eaf0fc;--th-tx:#1b2436;--zebra:rgba(20,40,90,.035);
+  --sheet-bg:#ffffff;--ov-bg:rgba(15,23,42,.45);
+  --sec:#5b6784;--okt:#15803d;--hit:#166534;--lot:#b91c1c;--track:rgba(20,40,90,.09);--gold-tx:#b45309;--sb:#c3cde3}
+:root[data-theme="light"] .htile,:root[data-theme="light"] .card,:root[data-theme="light"] .panelbox,
+:root[data-theme="light"] .hchart,:root[data-theme="light"] .hqa button,:root[data-theme="light"] table.rep,
+:root[data-theme="light"] .pill,:root[data-theme="light"] .hnote{box-shadow:0 3px 12px rgba(30,50,100,.10)}
+:root[data-theme="light"] header{box-shadow:0 4px 16px rgba(30,50,100,.22)}
+:root[data-theme="light"] #bnav{box-shadow:0 -4px 16px rgba(30,50,100,.10)}
+body{background:var(--body-bg)}
+header{background:var(--hdr-bg);border-bottom:1px solid var(--border);box-shadow:0 8px 26px rgba(0,0,0,.4)}
+nav{background:var(--nav-bg)}
 .nav-btn.active{background:linear-gradient(135deg,#2563eb,#4f46e5);box-shadow:0 4px 14px rgba(37,99,235,.4)}
 .stat{box-shadow:0 8px 20px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.1)}
 .hero{background:linear-gradient(135deg,#1e3a8a,#3730a3 58%,#5b21b6);border:1px solid rgba(255,255,255,.14);
   box-shadow:0 14px 34px rgba(37,99,235,.28)}
 .kpi{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(6px)}
 .kpi:nth-child(1) b{color:#4ade80}.kpi:nth-child(2) b{color:#fbbf24}.kpi:nth-child(3) b{color:#7dd3fc}
-.htile{background:linear-gradient(160deg,var(--panel2),var(--panel));border-radius:16px;
+.htile{background:var(--card-bg);border-radius:16px;
   border-color:var(--border);border-color:color-mix(in srgb,var(--ac) 42%,var(--border));box-shadow:0 8px 22px rgba(0,0,0,.34)}
 .hico{box-shadow:0 0 20px rgba(255,255,255,.06);box-shadow:0 0 22px color-mix(in srgb,var(--ac) 38%,transparent)}
-.hnote{background:linear-gradient(160deg,var(--panel2),var(--panel))}
-.card,.panelbox{background:linear-gradient(160deg,var(--panel2),var(--panel));box-shadow:0 4px 14px rgba(0,0,0,.26)}
+.hnote{background:var(--card-bg)}
+.card,.panelbox{background:var(--card-bg);box-shadow:0 4px 14px rgba(0,0,0,.26)}
 .fab{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#241700;box-shadow:0 6px 18px rgba(245,158,11,.45)}
 .toast{background:#1c2a4d;border:1px solid var(--border)}
 input,select,textarea{color-scheme:dark}
 /* اختصارات سريعة + رسم بياني في الرئيسية */
 .hqa{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 2px}
-.hqa button{background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--border);color:var(--text);
+.hqa button{background:var(--card-bg);border:1px solid var(--border);color:var(--text);
   border-radius:14px;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;
   font-size:11px;font-weight:800;box-shadow:0 5px 14px rgba(0,0,0,.28)}
 .hqa button:active{transform:scale(.96)}
 .hqa .i{font-size:20px;line-height:1}
-.hchart{background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--border);border-radius:16px;
+.hchart{background:var(--card-bg);border:1px solid var(--border);border-radius:16px;
   padding:12px 12px 8px;box-shadow:0 6px 18px rgba(0,0,0,.28)}
 .hchart .hmeta{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
-.hchart .hmeta b{font-size:18px;color:#4ade80;font-variant-numeric:tabular-nums}
+.hchart .hmeta b{font-size:18px;color:var(--okt);font-variant-numeric:tabular-nums}
 .hchart .hmeta span{font-size:11px;color:var(--muted);font-weight:700}
 .hlbl{direction:ltr;display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-weight:700;margin-top:4px}
 /* شريط التنقل السفلي (الموبايل) */
@@ -317,12 +335,12 @@ input,select,textarea{color-scheme:dark}
 @media (max-width:999px){
   :root{--bn-h:calc(66px + env(safe-area-inset-bottom,0px))}
   #bnav{display:flex;position:fixed;left:0;right:0;bottom:0;height:var(--bn-h);padding-bottom:env(safe-area-inset-bottom,0px);
-    z-index:31;background:rgba(10,16,32,.94);backdrop-filter:blur(14px);border-top:1px solid var(--border);
+    z-index:31;background:var(--bn-bg);backdrop-filter:blur(14px);border-top:1px solid var(--border);
     box-shadow:0 -8px 24px rgba(0,0,0,.35)}
   #bnav button{flex:1;background:none;border:0;color:var(--muted);font-size:10.5px;font-weight:800;display:flex;flex-direction:column;
     align-items:center;justify-content:center;gap:3px;padding:6px 0;cursor:pointer;position:relative}
   #bnav button .i{font-size:21px;line-height:1}
-  #bnav button.on{color:var(--gold)}
+  #bnav button.on{color:var(--gold-tx)}
   #bnav button.on .i{filter:drop-shadow(0 0 8px rgba(251,191,36,.65))}
   #bnav button.on::before{content:'';position:absolute;top:0;width:30px;height:3px;border-radius:0 0 4px 4px;background:var(--gold)}
   main{padding-bottom:calc(var(--bn-h) + 12px)}
@@ -334,55 +352,59 @@ input,select,textarea{color-scheme:dark}
 @media print{#bnav{display:none !important}}
 
 /* ═══════════ لمسات الشاشات الداخلية ═══════════ */
-@keyframes kFade{from{opacity:0}to{opacity:1}}
-main>*{animation:kFade .25s ease both}
-@media (prefers-reduced-motion:reduce){main>*{animation:none}}
-*{scrollbar-width:thin;scrollbar-color:#2b3b61 transparent}
+#syncPill{white-space:nowrap;max-width:104px;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+/* اختيار الوضع (ليلي / نهاري) */
+.nav-theme{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.nav-theme button{padding:9px 6px;border-radius:12px;border:1px solid var(--border);background:var(--panel2);color:var(--text);
+  font-size:12.5px;font-weight:800;cursor:pointer}
+.nav-theme button.on{background:linear-gradient(135deg,#2563eb,#4f46e5);border-color:#4f6ff0;color:#fff}
+*{scrollbar-width:thin;scrollbar-color:var(--sb) transparent}
 ::-webkit-scrollbar{width:7px;height:7px}
-::-webkit-scrollbar-thumb{background:#2b3b61;border-radius:99px}
+::-webkit-scrollbar-thumb{background:var(--sb);border-radius:99px}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold) !important;box-shadow:0 0 0 3px rgba(251,191,36,.18)}
-input::placeholder,textarea::placeholder{color:#62708f}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:.7}
 button{-webkit-tap-highlight-color:transparent}
 /* تبويبات وأزرار */
-.pill{background:linear-gradient(160deg,var(--panel2),var(--panel));box-shadow:0 3px 10px rgba(0,0,0,.22);transition:transform .12s,background .15s}
+.pill{background:var(--card-bg);box-shadow:0 3px 10px rgba(0,0,0,.22);transition:transform .12s,background .15s}
 .pill:active{transform:scale(.96)}
 .pill.on{background:linear-gradient(135deg,#2563eb,#4f46e5);border-color:#4f6ff0;box-shadow:0 5px 16px rgba(37,99,235,.45)}
 .btn-save{background:linear-gradient(135deg,#2563eb,#4f46e5);box-shadow:0 5px 16px rgba(37,99,235,.38)}
 .btn-save:active,.btn-cancel:active{transform:scale(.97)}
 /* الجداول */
 table.rep{box-shadow:0 6px 20px rgba(0,0,0,.28)}
-table.rep th{background:linear-gradient(180deg,#1d2c52,#16213f);color:#dbe6ff;border-bottom:1px solid #2d3f6b}
-table.rep tbody tr:nth-child(even) td{background-color:rgba(255,255,255,.03)}
+table.rep th{background:var(--th-bg);color:var(--th-tx);border-bottom:1px solid var(--border)}
+table.rep tbody tr:nth-child(even) td{background-color:var(--zebra)}
 table.rep tbody tr:hover td{background-color:rgba(37,99,235,.10)}
-table.rep td.hi{background:rgba(34,197,94,.20) !important;color:#86efac}
-table.rep td.lo{background:rgba(239,68,68,.20) !important;color:#fca5a5}
+table.rep td.hi{background:rgba(34,197,94,.20) !important;color:var(--hit)}
+table.rep td.lo{background:rgba(239,68,68,.18) !important;color:var(--lot)}
 /* الكروت والنوافذ */
 .card{transition:transform .12s,border-color .15s}
-.card:active{transform:scale(.99);border-color:#34497c}
-.overlay{backdrop-filter:blur(4px);background:rgba(3,7,18,.62)}
-.sheet{background:linear-gradient(180deg,#14203d,#0f1830);border:1px solid var(--border);box-shadow:0 -12px 40px rgba(0,0,0,.5)}
+.card:active{transform:scale(.99)}
+.overlay{backdrop-filter:blur(4px);background:var(--ov-bg)}
+.sheet{background:var(--sheet-bg);border:1px solid var(--border);box-shadow:0 -12px 40px rgba(0,0,0,.5)}
 .empty{border:1px dashed var(--border);border-radius:16px;background:rgba(255,255,255,.02)}
-.hsec{color:#a9b6d6;display:flex;align-items:center;gap:8px}
+.hsec{color:var(--sec);display:flex;align-items:center;gap:8px}
 .hsec::before{content:'';width:4px;height:13px;border-radius:3px;background:var(--gold)}
 
 /* نواقص سريعة + نظرة المخازن */
 .hbadge{background:#ef4444;color:#fff;border-radius:99px;font-size:10.5px;padding:1px 7px;font-weight:800}
-.hmore{text-align:center;color:var(--gold);font-size:12px;font-weight:800;padding:8px;cursor:pointer}
+.hmore{text-align:center;color:var(--gold-tx);font-size:12px;font-weight:800;padding:8px;cursor:pointer}
 .wbar{display:grid;grid-template-columns:minmax(70px,26%) 1fr auto;align-items:center;gap:8px;padding:8px 2px;cursor:pointer;
   border-top:1px solid var(--border);font-size:12.5px;font-weight:800}
 .wbar:first-of-type{border-top:0}
 .wbar .wn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wbar .wt{height:9px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;display:block}
+.wbar .wt{height:9px;border-radius:99px;background:var(--track);overflow:hidden;display:block}
 .wbar .wt i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#2563eb,#38bdf8)}
 .wbar b{font-variant-numeric:tabular-nums;min-width:28px;text-align:left}
-.wbar em{grid-column:2/4;font-style:normal;color:#fca5a5;font-size:11px;margin-top:-4px}
+.wbar em{grid-column:2/4;font-style:normal;color:var(--lot);font-size:11px;margin-top:-4px}
 </style>
+<script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("theme_v1")==="light"?"light":"dark")}catch(e){}</script>
 <meta name="theme-color" content="#0d1733">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px">☰</button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v8.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px">☰</button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v8.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
 <div id="bnav"></div>
@@ -1046,7 +1068,7 @@ async function syncNow(quiet){
     saveProgress();
     save('_syncAt_', Date.now()); save('_syncErr_', '');
     syncStatus('☁️ ' + new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}), 'ok');
-    if(down.length || merged.length) render(true);
+    if(down.length || merged.length) syncRender();
     if(!quiet || down.length || up.length || clash.length){
       toast(`مزامنة: نزّل ${down.length} · رفع ${up.length}` + (merged.length ? ` · دمج ${merged.length}` : ''));
     }
@@ -1217,6 +1239,16 @@ try{ $('#hdrLogo').src = LOGO; }catch(e){}
 function syncAuto(){ try{ if(syncCfg().url && !document.hidden) syncNow(true); }catch(e){} }
 setTimeout(()=>{ try{ if(!syncCfg().url){ syncStatus('☁️ مقفولة'); return; } syncAuto(); }catch(e){} }, 800);
 setInterval(syncAuto, 60000);
+/* إعادة الرسم بعد المزامنة: من غير ما الشاشة تطلع لفوق، ومن غير ما نقاطع حد بيكتب أو نافذة مفتوحة */
+let _pendRender = false;
+function syncRender(){
+  const a = document.activeElement, ov = $('#overlay');
+  const typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+  const sheetOpen = ov && getComputedStyle(ov).display !== 'none';
+  if(typing || sheetOpen){ _pendRender = true; return; }
+  _pendRender = false; render(false);
+}
+setInterval(()=>{ if(_pendRender) syncRender(); }, 3000);
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) syncAuto(); });
 window.addEventListener('online', syncAuto);
 window.addEventListener('pagehide', ()=>{
@@ -1231,11 +1263,20 @@ function renderNav(){
   const subs = sc=> sc.map(x=>`<button class="nav-sub${x.on()?' on':''}" onclick="${x.go}">${esc(x.name)}</button>`).join('');
   $('#nav').innerHTML =
     `<div class="nav-head"><span>القايمة</span><button onclick="toggleMenu(false)">✕</button></div>`
+    + `<div class="nav-theme"><button class="${curTheme()==='dark'?'on':''}" onclick="setTheme('dark')">🌙 ليلي</button><button class="${curTheme()==='light'?'on':''}" onclick="setTheme('light')">☀️ نهاري</button></div>`
     + `<button class="nav-search" onclick="toggleMenu(false);openSearch()">🔍 بحث في كل حاجة…</button>`
     + `<button class="nav-btn${module===null?' active':''}" onclick="goHome()">🏠 الرئيسية</button>`
     + modules.map(m=>`<button class="nav-btn ${m.id===module?'active':''}" onclick="${m.id===module? 'toggleMenu(false)' : `switchModule('${m.id}')`}">${m.icon} ${m.name}</button>`
       + (m.id===module ? subs(appScreens().filter(x=> x.mod===m.id)) : '')).join('');
   renderBottomNav();
+}
+function curTheme(){ return document.documentElement.getAttribute('data-theme')==='light' ? 'light' : 'dark'; }
+function setTheme(t){
+  t = t==='light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  try{ localStorage.setItem('theme_v1', t); }catch(e){}
+  const mt=document.querySelector('meta[name="theme-color"]'); if(mt) mt.setAttribute('content', t==='light' ? '#1d4ed8' : '#0d1733');
+  renderNav();
 }
 function bnGo(id){ toggleMenu(false); if(module!==id) bumpUse(id); module=id; q=''; openGroups=new Set(); render(true); }
 function renderBottomNav(){
@@ -6157,9 +6198,9 @@ function renderHome(m){
       const lp=pts[pts.length-1], fp=pts[0];
       spark=`<div class="hsec">نظرة سريعة</div><div class="hchart">
         <div class="hmeta"><b>${shortNum(vals[vals.length-1])}</b><span>مبيعات آخر ${vals.length} شهور</span></div>
-        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:84px;display:block">
-          <path d="${d} L ${lp[0].toFixed(1)} ${H} L ${fp[0].toFixed(1)} ${H} Z" fill="rgba(74,222,128,.13)"/>
-          <path d="${d}" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:84px;display:block;color:var(--okt)">
+          <path d="${d} L ${lp[0].toFixed(1)} ${H} L ${fp[0].toFixed(1)} ${H} Z" fill="currentColor" fill-opacity=".13"/>
+          <path d="${d}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
         </svg>
         <div class="hlbl">${mos6.map(k=>`<span>${esc(moName(k))}</span>`).join('')}</div></div>`;
     }
