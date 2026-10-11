@@ -6632,7 +6632,7 @@ $('#refreshBtn').addEventListener('click', ()=>{ location.reload(); });
 render();
 
 /* ═══════════ رقم سري لكل حذف ═══════════
-   أي أيقونة حذف/تصفير بتطلب نفس الرقم السري بتاع القوائم المالية.
+   أيقونات الحذف 🗑 بس بتطلب نفس الرقم السري بتاع القوائم المالية (مش مسح الملفات ولا التصفير).
    بنلفّ الدوال بعد ما اتعرّفت كلها، فالأزرار القديمة بتشتغل من غير تعديل. */
 let _pinRun=null;
 function askDelPin(run,label){
@@ -6651,10 +6651,8 @@ function delPinOk(){
   if(f) setTimeout(f,0);
 }
 (function(){
-  const LBL={delItem:'حذف صنف',delUnit:'حذف وحدة',delGvCode:'حذف كود',delWarehouse:'حذف مخزن',resetShortage:'تصفير النواقص',
-    delCustomer:'حذف عميل',delSalesMonth:'حذف شهر مبيعات',delEmployee:'حذف موظف',invNew:'جرد جديد (بيمسح الجرد الحالي)',
-    gvDelete:'حذف الطلبية',bonusClearFile:'حذف ملف البونص',bonusNewPeriod:'فترة بونص جديدة',dbClear:'حذف ملف بونص الموزعين',
-    wipeOldServerData:'مسح بيانات السيرفر القديمة'};
+  const LBL={delItem:'حذف صنف',delUnit:'حذف وحدة',delGvCode:'حذف كود',delWarehouse:'حذف مخزن',
+    delCustomer:'حذف عميل',delSalesMonth:'حذف شهر مبيعات',delEmployee:'حذف موظف',gvDelete:'حذف الطلبية'};
   Object.keys(LBL).forEach(n=>{
     const o=window[n]; if(typeof o!=='function') return;
     window[n]=function(){ const a=arguments, self=this; askDelPin(()=>o.apply(self,a), LBL[n]); };
