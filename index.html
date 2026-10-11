@@ -404,7 +404,12 @@ table.dbt td{vertical-align:middle}
 .dbtot{display:flex;gap:8px;margin-top:10px}
 .dbtot span{flex:1;background:var(--panel2);border-radius:10px;padding:8px;text-align:center;font-size:12px;color:var(--muted);font-weight:800}
 .dbtot b{display:block;font-size:17px;color:var(--text);font-variant-numeric:tabular-nums;margin-top:2px}
-.dbtot span:last-child b{color:var(--okt)}
+.dbtot span.dbok b{color:var(--okt)}
+.dbcard{border-top:5px solid var(--dc,var(--border))}
+.dbcard table.dbt th{background:var(--dc);color:#fff;border-color:var(--dc)}
+.dbcard .dbhead>div>div:first-child{color:var(--dc)}
+.dbn.dba{min-width:78px}
+.dbd.pos{color:#16a34a}.dbd.neg{color:#dc2626}
 .dbpick{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 2px;border-top:1px solid var(--border);font-size:13.5px;font-weight:800}
 .dbpick:first-of-type{border-top:0}
 .dbpick label{display:flex;align-items:center;gap:8px;cursor:pointer}
@@ -520,6 +525,7 @@ if(!warehouses.length){
   warehouses=[{id:uid(),name:'طنطا',location:'',type:'مخزن رئيسي'},{id:uid(),name:'الاسكندرية',location:'',type:'مخزن رئيسي'}];
   save('warehouses_v1',warehouses);
 }
+let whTrash = load('whTrash_v1', []);       // مخازن اتحذفت — بتتسترجع من ♻️
 let whStock = load('whStock_v1', {});      // {whId:{itemName:{balance,rolls,rods}}}
 let whShortage = load('whShortage_v1', {}); // {whId:{itemName:{needed,note}}}
 let ordMap = load('ordMap_v1', {});        // اسمنا(مطبّع) -> اسمهم في برنامج الطلبات، '' = تجاهل
@@ -805,7 +811,7 @@ let shortMain=new Set(), shortSub=new Set();
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','whStockAt_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
-  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','bonusAksa_v1','distBonus_v1'];
+  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','bonusAksa_v1','distBonus_v1','whTrash_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
 /* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
@@ -924,7 +930,7 @@ const SYNC_VARS = {
   doorCodeMap_v1: v=>{ doorCodeMap = v; }, doorHide_v1: v=>{ doorHide = v; },
   trialBal_v1: v=>{ trialBal = v; }, finSeg_v1: v=>{ finSeg = v; },
   bonusAksa_v1: v=>{ bonusData = v; },
-  distBonus_v1: v=>{ distBonus = v; },
+  distBonus_v1: v=>{ distBonus = v; }, whTrash_v1: v=>{ whTrash = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
   invCounts_v1: v=>{ invCounts = v; }, ordMap_v1: v=>{ ordMap = v; }, gvMap_v1: v=>{ gvMap = v; },
   // ⚠️ التلاتة دول كانوا في SYNC_KEYS بس مش في SYNC_VARS — يعني بيتنزّلوا
@@ -1512,13 +1518,58 @@ function saveWarehouse(id){
 }
 function delWarehouse(id){
   const w=warehouses.find(x=>x.id===id);
-  if(!confirm('حذف مخزن «'+(w?w.name:'')+'»؟\nهيتمسح معاه أرصدته ونواقصه وجرده.')) return;
+  if(!w) return;
+  if(!confirm('حذف مخزن «'+w.name+'»؟\nهيتنقل لسلة المحذوفات وتقدر ترجّعه من ♻️ (بأرصدته ونواقصه وجرده).')) return;
+  // نسخة كاملة من المخزن قبل الحذف عشان الاسترجاع يرجّع كل حاجة
+  whTrash.unshift({tid:uid(), at:new Date().toISOString(), wh:w,
+    stock:whStock[id]||null, shortage:whShortage[id]||null,
+    inv:invCounts[id]||null, draft:(typeof invDraft!=='undefined' && invDraft[id])||null});
+  whTrash=whTrash.slice(0,30);
+  save('whTrash_v1',whTrash);
   warehouses=warehouses.filter(x=>x.id!==id);
   delete whStock[id]; delete whShortage[id];
   delete invCounts[id]; save('invCounts_v1',invCounts);
   save('warehouses_v1',warehouses); save('whStock_v1',whStock); save('whShortage_v1',whShortage);
   if(load('_whTab_',null)===id) save('_whTab_',null);
-  render(); toast('تم حذف المخزن');
+  render(); toast('اتحذف — ممكن ترجّعه من ♻️');
+}
+/* استرجاع مخزن: من السلة، أو من نسخ احتياطية قديمة على الجهاز (لو فيه) */
+function whBackupCands(){
+  const out=[]; let keys=[]; try{ keys=Object.keys(localStorage); }catch(e){}
+  keys.filter(k=>k.indexOf('_backup_warehouses_v1')===0).forEach(k=>{
+    let arr; try{ arr=JSON.parse(localStorage.getItem(k)); }catch(e){ return; }
+    if(!Array.isArray(arr)) return;
+    const suf=k.slice('_backup_warehouses_v1'.length), rd=n=>{ try{ return (JSON.parse(localStorage.getItem('_backup_'+n+suf))||{}); }catch(e){ return {}; } };
+    const st=rd('whStock_v1'), sh=rd('whShortage_v1'), iv=rd('invCounts_v1');
+    arr.forEach(w=>{ if(w && w.id && w.name && !warehouses.some(x=>x.id===w.id) && !out.some(o=>o.wh.id===w.id))
+      out.push({tid:'bk:'+k+':'+w.id, bk:true, wh:w, stock:st[w.id]||null, shortage:sh[w.id]||null, inv:iv[w.id]||null}); });
+  });
+  return out;
+}
+function whRestoreSheet(){
+  const all=[...whTrash.map(t=>Object.assign({},t)), ...whBackupCands()];
+  const rows=all.map(t=>{
+    const n=Object.keys(t.stock||{}).length, d=t.at? new Date(t.at).toLocaleString('ar-EG') : 'نسخة احتياطية قديمة';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:10px 4px;border-top:1px solid var(--border)">
+      <div style="flex:1;min-width:0"><b>🏭 ${esc(t.wh.name)}</b>
+        <div style="font-size:11.5px;color:var(--muted)">${n? n+' صنف رصيد · ' : ''}<bdi>${esc(d)}</bdi></div></div>
+      <button class="btn-save" style="flex:none;padding:8px 14px" onclick="whRestore(${jsArg(t.tid)})">♻️ رجّعه</button></div>`; }).join('');
+  openSheet(`<h3>♻️ استرجاع مخزن</h3>`
+    + (rows || `<div class="empty">مفيش مخازن محذوفة في السلة.<br><small style="color:var(--muted)">أي مخزن تحذفه من دلوقتي هيتحفظ هنا. ولو المخزن اتحذف قبل التحديث ده، ضيفه بـ ➕ وارفع شيت الأرصدة تاني.</small></div>`)
+    + `<div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إغلاق</button></div>`);
+}
+function whRestore(tid){
+  const t = tid.indexOf('bk:')===0 ? whBackupCands().find(x=>x.tid===tid) : whTrash.find(x=>x.tid===tid);
+  if(!t) return toast('مش لاقي النسخة دي');
+  const w=t.wh;
+  if(!warehouses.some(x=>x.id===w.id)) warehouses.push(w);
+  if(t.stock){ whStock[w.id]=t.stock; save('whStock_v1',whStock); }
+  if(t.shortage){ whShortage[w.id]=t.shortage; save('whShortage_v1',whShortage); }
+  if(t.inv){ invCounts[w.id]=t.inv; save('invCounts_v1',invCounts); }
+  if(t.draft && typeof invDraft!=='undefined'){ invDraft[w.id]=t.draft; save('invDraft_v1',invDraft); }
+  save('warehouses_v1',warehouses);
+  if(tid.indexOf('bk:')!==0){ whTrash=whTrash.filter(x=>x.tid!==tid); save('whTrash_v1',whTrash); }
+  closeSheet(); render(true); toast('اتسترجع مخزن «'+w.name+'»');
 }
 
 /* مخازن متكررة بنفس الاسم: بندمجها في واحد — الأرصدة والنواقص
@@ -1568,6 +1619,9 @@ function renderWarehouses(m){
      «مقارنات» وتحته التلاتة، فالصف فيه المخازن والمقارنات بس. */
   const tabs = [{id:'cmpx',name:'📊 مقارنات'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
   m.innerHTML = moduleStats('warehouses') + tabStrip(tabs.map(t=>({k:t.id,name:t.name})), whTab, k=>`setWhTab('${k}')`, {cls:'tabs'})
+    + `<div style="display:flex;gap:8px;margin:8px 0">
+        <button onclick="editWarehouse('')" title="إضافة مخزن" style="flex:1;padding:9px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:800;font-size:13px;cursor:pointer">➕ إضافة مخزن</button>
+        <button onclick="whRestoreSheet()" title="استرجاع مخزن محذوف" style="flex:1;padding:9px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:800;font-size:13px;cursor:pointer">♻️ استرجاع${whTrash.length?' ('+whTrash.length+')':''}</button></div>`
     + dupWhBar() + `<div id="wh_content"></div>`;
   if(whTab===null) $('#wh_content').innerHTML=whOverview();
   else if(whTab==='cmpx') renderCompareHub($('#wh_content'));
@@ -6051,11 +6105,12 @@ function renderBonusReport(c){
 const DB_FILES=[{k:'ghamry', name:'مشتريات مصطفى الغمري (لشبل)', icon:'🧑‍💼'},
                 {k:'matrouh', name:'مشتريات فرع مطروح', icon:'🏪'}];
 const DB_SECS=[
-  {id:'shibl_aksa', dist:'shibl',   fk:'ghamry',  icon:'🟦', title:'بونص محمد شبل — من اكسا',   sub:'عن مشتريات مصطفى الغمري من اكسا'},
-  {id:'shibl_qur',  dist:'shibl',   fk:'ghamry',  icon:'🟧', title:'بونص محمد شبل — من القرشي', sub:'عن مشتريات مصطفى الغمري من القرشي'},
-  {id:'matrouh',    dist:'matrouh', fk:'matrouh', icon:'🏪', title:'بونص فرع مطروح',            sub:'عن مشتريات الفرع'}];
+  {id:'shibl_aksa', dist:'shibl',   fk:'ghamry',  col:'#1d4ed8', tint:'#dbe7ff', icon:'🟦', title:'بونص محمد شبل — من اكسا',   sub:'عن مشتريات مصطفى الغمري من اكسا'},
+  {id:'shibl_qur',  dist:'shibl',   fk:'ghamry',  col:'#c2570c', tint:'#ffe6d1', icon:'🟧', title:'بونص محمد شبل — من القرشي', sub:'عن مشتريات مصطفى الغمري من القرشي'},
+  {id:'matrouh',    dist:'matrouh', fk:'matrouh', col:'#0f7a4d', tint:'#d5f3e4', icon:'🏪', title:'بونص فرع مطروح',            sub:'عن مشتريات الفرع'}];
 const DB_DEF={shibl:['قطاعات كرافت لاين','قطاعات نيو لاين'],
               matrouh:['قطاعات كرافت لاين','قطاعات نيو لاين','قطاعات كومبن','اكسسوارات']};
+const DB_SUM={col:'#6d28d9', tint:'#e7defb'};      // لون جدول الملخّص
 const DB_ORDER=['قطاعات كرافت لاين','قطاعات نيو لاين','قطاعات كومبن','اكسسوارات'];
 const DB_RATE_DEF=0.01;
 const dbSecOf = id=> DB_SECS.find(x=>x.id===id);
@@ -6126,7 +6181,8 @@ function dbCfgOf(secId, key){
   const o=((distBonus.cfg||{})[secId]||{})[key]||{}, sec=dbSecOf(secId);
   return {on: o.on!==undefined ? !!o.on : DB_DEF[sec.dist].indexOf(key)>=0,
           rate: o.rate!==undefined && o.rate!=='' ? +o.rate : DB_RATE_DEF,
-          amt: (o.amt!==undefined && o.amt!==null && o.amt!=='') ? +o.amt : null};
+          amt: (o.amt!==undefined && o.amt!==null && o.amt!=='') ? +o.amt : null,
+          aksa: (o.aksa!==undefined && o.aksa!==null && o.aksa!=='') ? +o.aksa : null};
 }
 function dbCfgSet(secId, key, patch){
   distBonus.cfg=distBonus.cfg||{}; const c=distBonus.cfg[secId]=distBonus.cfg[secId]||{};
@@ -6139,6 +6195,12 @@ function dbSetAmt(secId, key, v){
   v=String(v||'').replace(/[,،\s]/g,'');
   dbCfgSet(secId, key, {amt: v==='' || isNaN(+v) ? null : +v});
 }
+function dbSetAksa(secId, key, v){
+  v=String(v||'').replace(/[,،\s]/g,'');
+  dbCfgSet(secId, key, {aksa: v==='' || isNaN(+v) ? null : +v});
+}
+const dbSigned = x=>{ const r=Math.round(x); return r>0 ? '+'+fmtN(r) : (r<0 ? '-'+fmtN(-r) : '0'); };
+const dbDiffCls = x=>{ const r=Math.round(x); return r>0 ? 'pos' : (r<0 ? 'neg' : ''); };
 function dbSetRate(secId, key, v){
   v=String(v||'').replace(/[%٪\s]/g,'').replace('،','.');
   if(v==='' || isNaN(+v)) return dbCfgSet(secId, key, {rate:null});
@@ -6152,14 +6214,19 @@ function dbLines(secId){
   const rank=k=>{ const i=DB_ORDER.indexOf(k); return i<0 ? 99 : i; };
   return f.cats.slice().sort((a,b)=> rank(a.name)-rank(b.name) || b.net-a.net).map(c=>{
     const cf=dbCfgOf(secId, c.name), net= cf.amt!==null ? cf.amt : c.net;
-    return {key:c.name, fileNet:c.net, net, rate:cf.rate, on:cf.on, edited:cf.amt!==null,
-            bonus: cf.on ? Math.round(net*cf.rate*100)/100 : 0};
+    const bonus = cf.on ? Math.round(net*cf.rate*100)/100 : 0;
+    return {key:c.name, fileNet:c.net, net, rate:cf.rate, on:cf.on, edited:cf.amt!==null, bonus,
+            aksa:cf.aksa, diff: cf.aksa!==null ? Math.round((bonus-cf.aksa)*100)/100 : null};
   });
 }
 function dbSecModel(secId){
   const lines=dbLines(secId), on=lines.filter(l=>l.on);
-  return {sec:dbSecOf(secId), lines, on,
-    net: on.reduce((a,l)=>a+l.net,0), bonus: Math.round(on.reduce((a,l)=>a+l.bonus,0)*100)/100};
+  const ak=on.filter(l=>l.aksa!==null), aksa=Math.round(ak.reduce((a,l)=>a+l.aksa,0)*100)/100,
+        bonus=Math.round(on.reduce((a,l)=>a+l.bonus,0)*100)/100;
+  // الفرق = بونصنا − بونص اكسا (على القطاعات اللي اتكتب لها بونص اكسا بس)
+  return {sec:dbSecOf(secId), lines, on, hasAksa:ak.length>0, aksa,
+    diff: Math.round((ak.reduce((a,l)=>a+l.bonus,0)-aksa)*100)/100,
+    net: on.reduce((a,l)=>a+l.net,0), bonus};
 }
 /* الأقسام اللي بتظهر في التقرير: متعلّم عليها «يظهر» + فيها قطاع داخل في البونص */
 function dbIds(which){
@@ -6193,10 +6260,12 @@ function dbSecCard(secId){
     <td><label><input type="checkbox" ${l.on?'checked':''} onchange="dbToggleCat('${secId}',${jsArg(l.key)},this.checked)"> ${esc(l.key)}</label></td>
     <td><input class="dbn" inputmode="decimal" value="${l.net}" onchange="dbSetAmt('${secId}',${jsArg(l.key)},this.value)" title="${l.edited?'معدّل يدوي — الأصلي '+l.fileNet:'من الملف'}">${l.edited?`<div class="dbed" onclick="dbSetAmt('${secId}',${jsArg(l.key)},'')">↩︎ ${dbMoney(l.fileNet)}</div>`:''}</td>
     <td><input class="dbr" inputmode="decimal" value="${Math.round(l.rate*10000)/100}" onchange="dbSetRate('${secId}',${jsArg(l.key)},this.value)">%</td>
-    <td>${l.on? '<b>'+dbMoney(l.bonus)+'</b>' : '—'}</td></tr>`).join('');
-  return `<div class="dbcard">${head}
-    <div style="overflow-x:auto"><table class="rep dbt"><thead><tr><th>القطاع</th><th>المبلغ</th><th>النسبة</th><th>البونص</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="dbtot"><span>مبلغ القطاعات المختارة<b>${dbMoney(M.net)}</b></span><span>البونص المستحق<b>${dbMoney(M.bonus)}</b></span></div></div>`;
+    <td>${l.on? '<b>'+dbMoney(l.bonus)+'</b>' : '—'}</td>
+    <td><input class="dbn dba" inputmode="decimal" placeholder="—" value="${l.aksa!==null?l.aksa:''}" onchange="dbSetAksa('${secId}',${jsArg(l.key)},this.value)"></td>
+    <td>${l.aksa!==null? `<b class="dbd ${dbDiffCls(l.diff)}">${dbSigned(l.diff)}</b>` : '—'}</td></tr>`).join('');
+  return `<div class="dbcard" style="--dc:${sec.col};--dt:${sec.tint}">${head}
+    <div style="overflow-x:auto"><table class="rep dbt"><thead><tr><th>القطاع</th><th>المبلغ</th><th>النسبة</th><th>البونص</th><th>بونص اكسا</th><th>الفرق</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="dbtot"><span>مبلغ القطاعات المختارة<b>${dbMoney(M.net)}</b></span><span class="dbok">البونص المستحق<b>${dbMoney(M.bonus)}</b></span>${M.hasAksa? `<span>بونص اكسا<b>${dbMoney(M.aksa)}</b></span><span>الفرق<b class="dbd ${dbDiffCls(M.diff)}">${dbSigned(M.diff)}</b></span>` : ''}</div></div>`;
 }
 function dbExportBar(which){
   const n=dbIds(which).length;
@@ -6231,48 +6300,63 @@ function renderDBAll(c){
     ${dbSummaryHtml(dbIds('all'), false)}${dbExportBar('all')}`;
 }
 /* جدول ملخّص بالأقسام + إجمالي كل موزّع + الإجمالي الكلي */
+const dbAnyAksa = ids=> ids.some(id=>dbSecModel(id).hasAksa);
 function dbSummaryRows(ids){
-  const out=[]; let g=0;
+  const out=[]; let g=0, ga=0, gd=0;
+  const A=M=> M.hasAksa ? [M.aksa, M.diff] : ['',''];
   [['shibl','إجمالي شبل'],['matrouh','إجمالي مطروح']].forEach(([d,lbl])=>{
     const mine=ids.filter(id=>dbSecOf(id).dist===d); if(!mine.length) return;
-    mine.forEach(id=>{ const M=dbSecModel(id); out.push({t:'row', c:[dbSecOf(id).title, M.net, M.bonus]}); });
-    if(mine.length>1){ const net=mine.reduce((a,id)=>a+dbSecModel(id).net,0), b=dbTotal(mine); out.push({t:'sub', c:[lbl, net, b]}); }
-    g+=dbTotal(mine);
+    mine.forEach(id=>{ const M=dbSecModel(id); out.push({t:'row', col:dbSecOf(id).col, c:[dbSecOf(id).title, M.net, M.bonus, ...A(M)]}); });
+    const Ms=mine.map(dbSecModel), ha=Ms.some(m=>m.hasAksa);
+    if(mine.length>1){ const net=Ms.reduce((a,m)=>a+m.net,0), b=dbTotal(mine);
+      out.push({t:'sub', c:[lbl, net, b, ha? Ms.reduce((a,m)=>a+m.aksa,0):'', ha? Ms.reduce((a,m)=>a+m.diff,0):'']}); }
+    g+=dbTotal(mine); Ms.forEach(m=>{ if(m.hasAksa){ ga+=m.aksa; gd+=m.diff; } });
   });
-  out.push({t:'tot', c:['إجمالي البونص', '', Math.round(g*100)/100]});
+  const any=dbAnyAksa(ids);
+  out.push({t:'tot', c:['إجمالي البونص', '', Math.round(g*100)/100, any? Math.round(ga*100)/100 : '', any? Math.round(gd*100)/100 : '']});
   return out;
 }
 function dbSummaryHtml(ids, doc){
   if(!ids.length) return `<div class="empty">مفيش قسم هيظهر — علّم على اللي عايزه فوق</div>`;
-  const R=dbSummaryRows(ids).map(r=> `<tr class="${r.t==='row'?'z':(r.t==='sub'?'s':'s')}"><td>${esc(r.c[0])}</td><td>${r.c[1]===''?'':dbMoney(r.c[1])}</td><td><b>${dbMoney(r.c[2])}</b></td></tr>`).join('');
-  return `<div style="overflow-x:auto"><table class="rep"><thead><tr><th>البيان</th><th>مبلغ المشتريات</th><th>البونص</th></tr></thead><tbody>${R}</tbody></table></div>`;
+  const ha=dbAnyAksa(ids), th=`style="background:${DB_SUM.col};border-color:${DB_SUM.col};color:#fff"`;
+  const R=dbSummaryRows(ids).map(r=> `<tr class="${r.t==='row'?'z':'s'}"><td${r.col?` style="border-right:6px solid ${r.col}"`:''}>${esc(r.c[0])}</td><td>${r.c[1]===''?'':dbMoney(r.c[1])}</td><td><b>${dbMoney(r.c[2])}</b></td>`
+    + (ha? `<td>${r.c[3]===''?'':dbMoney(r.c[3])}</td><td>${r.c[4]===''?'':`<b class="dbd ${dbDiffCls(r.c[4])}">${dbSigned(r.c[4])}</b>`}</td>` : '') + `</tr>`).join('');
+  return `<div style="overflow-x:auto"><table class="rep"><thead><tr><th ${th}>البيان</th><th ${th}>مبلغ المشتريات</th><th ${th}>البونص</th>${ha?`<th ${th}>بونص اكسا</th><th ${th}>الفرق</th>`:''}</tr></thead><tbody>${R}</tbody></table></div>`;
 }
 function dbDocBody(ids){
   const per=distBonus.period? ' — '+esc(distBonus.period) : '';
   let h=`<div class="dx"><h2>بونص الموزعين${per}</h2>`;
   ids.forEach(id=>{
-    const M=dbSecModel(id), sec=M.sec;
-    h+=`<h3>${esc(sec.title)}</h3><div class="sub" style="text-align:right;margin-bottom:6px">${esc(sec.sub)}</div>
-      <table><tr><th>القطاع</th><th>المبلغ</th><th>النسبة</th><th>البونص</th></tr>`
-      + M.on.map(l=>`<tr class="z"><td>${esc(l.key)}</td><td>${dbMoney(l.net)}</td><td>${bonusPct(l.rate)}</td><td>${dbMoney(l.bonus)}</td></tr>`).join('')
-      + `<tr class="s"><td>الإجمالي</td><td>${dbMoney(M.net)}</td><td></td><td>${dbMoney(M.bonus)}</td></tr></table>`;
+    const M=dbSecModel(id), sec=M.sec, ha=M.hasAksa, th=`style="background:${sec.col};border-color:${sec.col}"`, tot=`style="background:${sec.tint}"`;
+    h+=`<h3 style="color:${sec.col};border-right:7px solid ${sec.col};padding-right:8px">${esc(sec.title)}</h3><div class="sub" style="text-align:right;margin-bottom:6px">${esc(sec.sub)}</div>
+      <table><tr><th ${th}>القطاع</th><th ${th}>المبلغ</th><th ${th}>النسبة</th><th ${th}>البونص</th>${ha?`<th ${th}>بونص اكسا</th><th ${th}>الفرق</th>`:''}</tr>`
+      + M.on.map(l=>`<tr class="z"><td>${esc(l.key)}</td><td>${dbMoney(l.net)}</td><td>${bonusPct(l.rate)}</td><td>${dbMoney(l.bonus)}</td>`
+          + (ha? `<td>${l.aksa!==null?dbMoney(l.aksa):''}</td><td class="${l.aksa!==null?dbDiffCls(l.diff):''}">${l.aksa!==null?dbSigned(l.diff):''}</td>` : '') + `</tr>`).join('')
+      + `<tr class="s"><td ${tot}>الإجمالي</td><td ${tot}>${dbMoney(M.net)}</td><td ${tot}></td><td ${tot}>${dbMoney(M.bonus)}</td>`
+      + (ha? `<td ${tot}>${dbMoney(M.aksa)}</td><td ${tot} class="${dbDiffCls(M.diff)}">${dbSigned(M.diff)}</td>` : '') + `</tr></table>`;
   });
   if(ids.length>1){
-    h+=`<h3>الملخّص</h3><table><tr><th>البيان</th><th>مبلغ المشتريات</th><th>البونص</th></tr>`
-      + dbSummaryRows(ids).map(r=>`<tr class="${r.t==='row'?'z':'s'}"><td>${esc(r.c[0])}</td><td>${r.c[1]===''?'':dbMoney(r.c[1])}</td><td>${dbMoney(r.c[2])}</td></tr>`).join('')
+    const ha=dbAnyAksa(ids), th=`style="background:${DB_SUM.col};border-color:${DB_SUM.col}"`, tot=`style="background:${DB_SUM.tint}"`;
+    h+=`<h3 style="color:${DB_SUM.col};border-right:7px solid ${DB_SUM.col};padding-right:8px">الملخّص</h3><table><tr><th ${th}>البيان</th><th ${th}>مبلغ المشتريات</th><th ${th}>البونص</th>${ha?`<th ${th}>بونص اكسا</th><th ${th}>الفرق</th>`:''}</tr>`
+      + dbSummaryRows(ids).map(r=>{ const st=r.t==='row'? '' : tot, f=(i)=> r.c[i]===''?'':dbMoney(r.c[i]);
+          return `<tr class="${r.t==='row'?'z':'s'}"><td ${r.col?`style="border-right:7px solid ${r.col}"`:st}>${esc(r.c[0])}</td><td ${st}>${f(1)}</td><td ${st}>${f(2)}</td>`
+          + (ha? `<td ${st}>${f(3)}</td><td ${st} class="${r.c[4]===''?'':dbDiffCls(r.c[4])}">${r.c[4]===''?'':dbSigned(r.c[4])}</td>` : '') + `</tr>`; }).join('')
       + `</table>`;
   }
   return h+`</div>`;
 }
 function dbExcel(ids, file){
-  const aoa=[['الجهة','القطاع','المبلغ','النسبة','البونص']];
+  const ha=dbAnyAksa(ids);
+  const aoa=[['الجهة','القطاع','المبلغ','النسبة','البونص', ...(ha?['بونص اكسا','الفرق']:[])]];
   ids.forEach(id=>{
     const M=dbSecModel(id);
-    M.on.forEach(l=> aoa.push([M.sec.title, l.key, Math.round(l.net*100)/100, bonusPct(l.rate), Math.round(l.bonus*100)/100]));
-    aoa.push([M.sec.title, 'إجمالي', Math.round(M.net*100)/100, '', M.bonus]);
+    M.on.forEach(l=> aoa.push([M.sec.title, l.key, Math.round(l.net*100)/100, bonusPct(l.rate), Math.round(l.bonus*100)/100,
+      ...(ha?[l.aksa!==null?l.aksa:'', l.aksa!==null?l.diff:'']:[])]));
+    aoa.push([M.sec.title, 'إجمالي', Math.round(M.net*100)/100, '', M.bonus, ...(ha?[M.hasAksa?M.aksa:'', M.hasAksa?M.diff:'']:[])]);
   });
-  aoa.push(['إجمالي البونص','','','', dbTotal(ids)]);
-  saveAoaXlsx(aoa, 'بونص الموزعين', file+'.xlsx', [34,26,16,10,16], {title:'بونص الموزعين'+(distBonus.period?' — '+distBonus.period:'')});
+  const sum=dbSummaryRows(ids).pop();
+  aoa.push(['إجمالي البونص','','','', dbTotal(ids), ...(ha?[sum.c[3], sum.c[4]]:[])]);
+  saveAoaXlsx(aoa, 'بونص الموزعين', file+'.xlsx', [34,26,16,10,16,...(ha?[16,14]:[])], {title:'بونص الموزعين'+(distBonus.period?' — '+distBonus.period:'')});
 }
 function dbExport(which, kind){
   const ids=dbIds(which);
@@ -6523,6 +6607,36 @@ function render(top){
 
 $('#refreshBtn').addEventListener('click', ()=>{ location.reload(); });
 render();
+
+/* ═══════════ رقم سري لكل حذف ═══════════
+   أي أيقونة حذف/تصفير بتطلب نفس الرقم السري بتاع القوائم المالية.
+   بنلفّ الدوال بعد ما اتعرّفت كلها، فالأزرار القديمة بتشتغل من غير تعديل. */
+let _pinRun=null;
+function askDelPin(run,label){
+  _pinRun=run;
+  openSheet(`<h3>🔐 ${esc(label||'تأكيد الحذف')}</h3>
+    <div class="f-row"><label>الرقم السري</label>
+      <input id="del_pw" type="password" inputmode="numeric" autocomplete="off"></div>
+    <div class="f-actions"><button class="btn-cancel" onclick="_pinRun=null;closeSheet()">إلغاء</button>
+      <button class="btn-save" onclick="delPinOk()">تأكيد</button></div>`);
+  setTimeout(()=>{ const el=$('#del_pw'); if(el){ el.focus(); el.onkeydown=e=>{ if(e.key==='Enter') delPinOk(); }; } }, 60);
+}
+function delPinOk(){
+  const v=($('#del_pw').value||'').trim();
+  if(v!==FIN_PASS){ toast('الرقم السري غلط'); return; }
+  const f=_pinRun; _pinRun=null; closeSheet();
+  if(f) setTimeout(f,0);
+}
+(function(){
+  const LBL={delItem:'حذف صنف',delUnit:'حذف وحدة',delGvCode:'حذف كود',delWarehouse:'حذف مخزن',resetShortage:'تصفير النواقص',
+    delCustomer:'حذف عميل',delSalesMonth:'حذف شهر مبيعات',delEmployee:'حذف موظف',invNew:'جرد جديد (بيمسح الجرد الحالي)',
+    gvDelete:'حذف الطلبية',bonusClearFile:'حذف ملف البونص',bonusNewPeriod:'فترة بونص جديدة',dbClear:'حذف ملف بونص الموزعين',
+    wipeOldServerData:'مسح بيانات السيرفر القديمة'};
+  Object.keys(LBL).forEach(n=>{
+    const o=window[n]; if(typeof o!=='function') return;
+    window[n]=function(){ const a=arguments, self=this; askDelPin(()=>o.apply(self,a), LBL[n]); };
+  });
+})();
 </script>
 </body>
 </html>
