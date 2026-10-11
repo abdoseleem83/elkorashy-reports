@@ -3817,8 +3817,36 @@ function exportGvCompareExcel(){
 // ===================== الجرد الفعلي =====================
 let invCounts=load('invCounts_v1',{}), invMain=new Set(), invSub=new Set(), invHideZero=false, invView=0;
 function invGet(whId){ if(!invCounts[whId]) invCounts[whId]={date:todayStr(),counts:{}}; return invCounts[whId]; }
+/* مسودة الإدخال: اللي بتكتبه في «إدخال الجرد» بيتحفظ مسودة على الجهاز بس، ومابيتحسبش مجرود غير لما تدوس 💾 */
+let invDraft=load('invDraft_v1',{});
+function invDraftGet(whId){ if(!invDraft[whId]) invDraft[whId]={}; return invDraft[whId]; }
+function setInvDraft(whId,itemId,kind,val){
+  const it=items.find(x=>x.id===itemId); if(!it) return;
+  const d=invDraftGet(whId), rq=Number(it.rollQty)||0, c=d[it.name]||{};
+  if(kind==='q'){ if(val===''){ delete d[it.name]; } else { d[it.name]={actual:Number(val)}; } }
+  else {
+    if(val==='') delete c[kind]; else c[kind]=Number(val);
+    if(c.big===undefined && c.small===undefined) delete d[it.name];
+    else { c.actual=(c.big||0)*rq+(c.small||0); d[it.name]=c; }
+  }
+  save('invDraft_v1',invDraft);
+}
+function invSave(whId,itemId,btn){
+  const it=items.find(x=>x.id===itemId); if(!it) return;
+  const card=btn.closest('.invc'), d=invDraftGet(whId), c=d[it.name];
+  /* لو لسه ماخرجش من الخانة، onchange ممكن ما اتنفذش — نقرا القيم من الكارت مباشرة */
+  if(card){ const ins=[...card.querySelectorAll('input[type=number]')], rq=Number(it.rollQty)||0;
+    if(rq>1){ ins.forEach((el,i)=>setInvDraft(whId,itemId,i===0?'big':'small',el.value)); } else if(ins[0]) setInvDraft(whId,itemId,'q',ins[0].value); }
+  const cc=invDraftGet(whId)[it.name];
+  if(!cc || cc.actual===undefined){ toast('اكتب الكمية الأول'); return; }
+  invGet(whId).counts[it.name]=cc; delete invDraftGet(whId)[it.name];
+  save('invCounts_v1',invCounts); save('invDraft_v1',invDraft);
+  if(card && card.dataset.move==='1'){ card.remove(); invRefresh(whId); }
+  else render(true);
+  toast('اتحفظ ✅ — في «تم الجرد»');
+}
 function setInvDate(whId,v){ invGet(whId).date=v; save('invCounts_v1',invCounts); }
-function invNew(whId){ if(!confirm('بدء جرد جديد؟ هيتمسح الجرد الحالي لهذا المخزن.')) return; invCounts[whId]={date:todayStr(),counts:{}}; save('invCounts_v1',invCounts); render(); }
+function invNew(whId){ if(!confirm('بدء جرد جديد؟ هيتمسح الجرد الحالي لهذا المخزن.')) return; invCounts[whId]={date:todayStr(),counts:{}}; invDraft[whId]={}; save('invCounts_v1',invCounts); save('invDraft_v1',invDraft); render(); }
 function setInvCount(whId,itemId,kind,val){
   const it=items.find(x=>x.id===itemId); if(!it) return;
   const inv=invGet(whId), rq=Number(it.rollQty)||0, c=inv.counts[it.name]||{};
@@ -3948,23 +3976,13 @@ function renderWhInventory(m, whId){
         ${sel? `<div id="invProg" style="font-size:12.5px;color:var(--muted);margin:2px 0 8px">متبقي في الاختيار ده: ${list.length} صنف</div>`:''}
         <div id="invAllDone" class="empty" style="display:${sel&&tot&&!list.length?'':'none'}">✅ كل أصناف الاختيار ده اتجردت — شوفها في «تم الجرد»</div>
         ${list.length? list.map(it=>{
-          const c=inv.counts[it.name]||{}, counted=!!inv.counts[it.name];
+          const counted=!!inv.counts[it.name], c=counted? inv.counts[it.name] : (invDraftGet(whId)[it.name]||{});
           return `<div class="card invc" data-nm="${esc(it.name)}" ${counted?'':'data-move="1"'}><div class="info"><div class="name" style="font-size:13px">${esc(it.name)}${counted?' <span style="color:var(--ok);font-size:11.5px">✅ اتجرد</span>':''}</div>
-            <div class="sub">برنامج: ${esc(balText(it.name, stockOf(whId, it.name)))}</div></div>${invInputsHtml(whId,it,c,'setInvCount')}</div>`;
+            <div class="sub">برنامج: ${esc(balText(it.name, stockOf(whId, it.name)))}</div></div>${counted? '' : `<button title="حفظ ونقله لتم الجرد" onclick="invSave('${whId}','${it.id}',this)" style="border:1px solid var(--border);background:var(--panel2);border-radius:8px;padding:8px 10px;font-size:16px;cursor:pointer">💾</button>`}${invInputsHtml(whId,it,c,counted?'setInvCountDone':'setInvDraft')}</div>`;
         }).join('') : (tot? '' : `<div class="empty">لا توجد أصناف مطابقة</div>`)}
       </div>`}
     <div style="height:20px"></div>`;
   const qi=$('#q'); if(qi) qi.oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderWhInventory(m, whId)); };
-  /* لما تسيب كارت (الفوكس يخرج منه) وفيه كمية متسجّلة → الصنف يروح «تم الجرد».
-     بنشيل الكارت من غير ما نعيد رسم الصفحة عشان الخانة اللي بتكتب فيها بعد كده ما تتأثرش. */
-  const L=$('#invList'); if(L) L.addEventListener('focusout', ev=>{
-    const card=ev.target.closest&&ev.target.closest('.invc[data-move="1"]'); if(!card) return;
-    setTimeout(()=>{
-      if(!card.isConnected || card.contains(document.activeElement)) return;     // لسه بيكتب في الخانة التانية (لفة/عود)
-      if(!inv.counts[card.dataset.nm]) return;                                    // مفيش كمية → يفضل ظاهر
-      card.remove(); invRefresh(whId);
-    },0);
-  });
   rsSync();
 }
 function invStatsHtml(r){
