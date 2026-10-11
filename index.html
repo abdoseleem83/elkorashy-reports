@@ -247,6 +247,9 @@ table.rep.stk th:first-child{background:var(--panel2)}
 table.rep.bon{width:100%;font-size:13px}
 table.rep.bon th{white-space:normal;font-size:12px;line-height:1.3}
 table.rep.bon td,table.rep.bon th{padding:7px 3px}
+table.rep.bon .dbn{width:70px;min-width:0;padding:5px 2px;font-size:12px}
+table.rep.bon td.plus{color:#16a34a;font-weight:800}table.rep.bon td.minus{color:#dc2626;font-weight:800}
+table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{width:26%}
 table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;max-width:none;width:34%}
 .qs{display:flex;gap:10px;font-size:12px;align-items:center;flex-wrap:wrap}
 .qs small{color:var(--muted)}
@@ -6002,14 +6005,25 @@ function bonusLines(){
     .map(l=>{ const o=L[l], rate=bonusRate(l); return Object.assign(o, {rate, bonus: Math.round(o.net*rate*100)/100}); });
 }
 const bonusPct = r=> (Math.round(r*10000)/100)+'%';
+/* بونص اكسا الفعلي لكل قطاع (بيتكتب بإيدك) والفرق = بونصنا − بونص اكسا */
+function bonusAksaOf(line){ const v=(bonusData.aksa||{})[line]; return (v===undefined||v===null||v==='') ? null : +v; }
+function bonusSetAksa(line, v){
+  v=String(v||'').replace(/[,،\s]/g,'');
+  bonusData.aksa=bonusData.aksa||{};
+  if(v==='' || isNaN(+v)) delete bonusData.aksa[line]; else bonusData.aksa[line]=+v;
+  bonusSave(); render();
+}
 function bonusModel(){
   const lines=bonusLines(), body=[];
   // البونص بالجنيه الصحيح عشان العمود يبقى بشكل واحد (الحسبة نفسها بالقروش)
-  lines.forEach(o=> body.push({type:'row', cells:[o.line, Math.round(o.net), bonusPct(o.rate), Math.round(o.bonus)]}));
+  lines.forEach(o=>{ const a=bonusAksaOf(o.line);
+    o.aksa=a; o.diff= a===null ? null : Math.round((o.bonus-a)*100)/100;
+    body.push({type:'row', cells:[o.line, Math.round(o.net), bonusPct(o.rate), Math.round(o.bonus), a===null?'':Math.round(a), a===null?'':Math.round(o.diff)]}); });
   const net=lines.reduce((a,o)=>a+o.net,0), bon=lines.reduce((a,o)=>a+o.bonus,0);
-  if(lines.length) body.push({type:'tot', cells:['الإجمالي', Math.round(net), '', Math.round(bon)]});
+  const ak=lines.filter(o=>o.aksa!==null), aT=ak.reduce((a,o)=>a+o.aksa,0), dT=ak.reduce((a,o)=>a+o.bonus,0)-aT;
+  if(lines.length) body.push({type:'tot', cells:['الإجمالي', Math.round(net), '', Math.round(bon), ak.length?Math.round(aT):'', ak.length?Math.round(dT):'']});
   return {title:'بونص اكسا'+(bonusData.period?' — '+bonusData.period:''),
-    header:['القطاع','صافي المشتريات','نسبة البونص','البونص المستحق'], body,
+    header:['القطاع','صافي المشتريات','نسبة البونص','البونص المستحق','بونص اكسا','الفرق'], body,
     hiLo:{},   // مفيش تلوين أعلى/أقل — التقرير ده حسبة مش مقارنة
     rowTap: lines.map(o=>`bonusLineSheet(${jsArg(o.line)})`), tapCol:0, tapIcon:'▾', lines};
 }
@@ -6092,8 +6106,18 @@ function renderBonusReport(c){
   renderRepTable(c, 'bonus', md, {noMedal:true,
     warn: miss.length? 'لسه ما اترفعش: '+miss.map(esc).join('، ') : '',
     boxes: `<div style="display:flex;gap:8px;margin-bottom:10px">${box('صافي المشتريات',tot[1],'var(--blue)')}${box('البونص المستحق',tot[3],'var(--ok)')}</div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">دوس على القطاع تشوف أصنافه وتعدّل نسبته</div>`});
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">دوس على القطاع تشوف أصنافه وتعدّل نسبته · اكتب بونص اكسا في خانته والفرق = بونصنا − بونص اكسا</div>`});
   const t=c.querySelector('table.rep'); if(t) t.classList.add('bon');
+  // عمود «بونص اكسا» خانات كتابة، والفرق ملوّن (موجب أخضر / سالب أحمر)
+  if(t){
+    const lines=md.lines, trs=[...t.querySelectorAll('tr')].filter(r=>!r.classList.contains('dcexp')&&r.querySelector('td'));
+    lines.forEach((o,i)=>{ const tr=trs[i]; if(!tr) return; const tds=tr.querySelectorAll('td'); if(tds.length<6) return;
+      tds[4].innerHTML=`<input class="dbn dba" inputmode="decimal" placeholder="—" value="${o.aksa!==null?o.aksa:''}" onchange="bonusSetAksa(${jsArg(o.line)},this.value)">`;
+      if(o.diff!==null) tds[5].className = Math.round(o.diff)>0 ? 'plus' : (Math.round(o.diff)<0 ? 'minus' : ''); });
+    const last=trs[trs.length-1];
+    if(last && last.classList.contains('m')){ const d=md.body[md.body.length-1].cells[5], tds=last.querySelectorAll('td');
+      if(d!=='' && tds[5]) tds[5].className = d>0?'plus':(d<0?'minus':''); }
+  }
 }
 
 
@@ -6535,9 +6559,8 @@ function renderHome(m){
   if(S.short) notes.push(['#dc2626', `🧾 ${S.short} صنف في طلب النواقص`, `switchModule('warehouses')`]);
   if(dupWarehouses().length) notes.push(['#dc2626','🏭 في مخازن متكررة بنفس الاسم — محتاجة دمج',
     `switchModule('warehouses')`]);
-  // الأقسام الأكتر استخدامًا فوق (من غير استخدام بيفضل الترتيب الأصلي)
-  const use=homeUse();
-  const ordered=modules.slice().sort((a,b)=> (use[b.id]||0)-(use[a.id]||0) || modules.indexOf(a)-modules.indexOf(b));
+  // ترتيب الأيقونات ثابت (مش بيتغيّر حسب الاستخدام)
+  const ordered=modules.slice();
   // نواقص سريعة من كل المخازن
   let shortHtml='';
   try{
