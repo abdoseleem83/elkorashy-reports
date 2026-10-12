@@ -2468,7 +2468,10 @@ function distBlkModel(){
     return {name:n, cells, rowTot, ptot, total: ptot.reduce((a,b)=>a+b,0)};
   }).filter(d=> Math.round(d.total)!==0).sort((a,b)=> b.total-a.total);
   const gp = pcs.map((_,k)=> dists.reduce((a,d)=>a+d.ptot[k],0));
-  return {cols, labels: pcs.map(pc=>pc.label), dists, gp, grand: gp.reduce((a,b)=>a+b,0),
+  const rawL = pcs.map(pc=>pc.label), yrs = new Set(rawL.map(l=> (String(l).match(/\s*\d{4}$/)||[''])[0].trim()));
+  // أسماء الشهور من غير السنة لو كلها في سنة واحدة (السنة في العنوان)
+  const labels = (yrs.size===1 && [...yrs][0]) ? rawL.map(l=> String(l).replace(/\s*\d{4}$/,'')) : rawL;
+  return {cols, labels, dists, gp, grand: gp.reduce((a,b)=>a+b,0),
           title:'موزعين وقطاعات — '+periodLabel()};
 }
 const distBlkN = v=> Math.round(v).toLocaleString('en-US');
@@ -2482,7 +2485,7 @@ function distBlkHtml(md, doc){
   const th=(t,al,extra)=>`<th style="padding:8px 5px;background:${P.hd};color:${P.hdt};font-weight:800;text-align:${al||'center'};white-space:nowrap;${extra||''}">${t}</th>`;
   const td='padding:6px 6px;white-space:nowrap;';
   const colCnt = 3 + nP + (multi?1:0);
-  const head = `<tr>${th('م','center','width:30px')}${th('الموزع','right')}${th('القطاع','right')}${md.labels.map(l=>th(esc(l))).join('')}${multi?th('الإجمالي'):''}</tr>`;
+  const head = `<tr>${th('مسلسل','center','width:44px')}${th('الموزع','right')}${th('بيان','right')}${md.labels.map(l=>th(esc(l))).join('')}${multi?th('الإجمالي'):''}</tr>`;
   const body = md.dists.map((d,i)=>{
     const colMax = d.ptot.map((_,k)=> Math.max(...d.cells.map(r=>r[k])));
     const totMax = Math.max(...d.rowTot);
@@ -2511,7 +2514,7 @@ function exportDistBlk(kind){
   if(!md.dists.length){ toast('لا توجد بيانات'); return; }
   const file = md.title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_'), multi=md.labels.length>1;
   if(kind==='x'){
-    const aoa=[['م','الموزع','القطاع',...md.labels,...(multi?['الإجمالي']:[])]];
+    const aoa=[['مسلسل','الموزع','بيان',...md.labels,...(multi?['الإجمالي']:[])]];
     md.dists.forEach((d,i)=>{
       md.cols.forEach((sc,j)=> aoa.push([i+1, d.name, secLabel(sc), ...d.cells[j].map(Math.round), ...(multi?[Math.round(d.rowTot[j])]:[])]));
       aoa.push(['', d.name, 'إجمالي الموزع', ...d.ptot.map(Math.round), ...(multi?[Math.round(d.total)]:[])]);
