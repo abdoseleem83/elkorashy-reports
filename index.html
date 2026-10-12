@@ -2457,61 +2457,70 @@ function distBlkAgg(months, cols){
   return {list, total: list.reduce((a,r)=>a+r.total,0)};
 }
 function distBlkModel(){
-  const D = buildDistSectors(), cols = D.cols;
-  const blocks = periodCols().map(pc=> Object.assign({label:pc.label}, distBlkAgg(pc.months, cols)));
-  return {cols, blocks, title:'موزعين وقطاعات — '+periodLabel()};
+  const D = buildDistSectors(), cols = D.cols, pcs = periodCols();
+  const per = pcs.map(pc=> distBlkAgg(pc.months, cols));
+  const names = new Set(); per.forEach(p=> p.list.forEach(r=> names.add(r.name)));
+  const dists = [...names].map(n=>{
+    // cells[قطاع][فترة]
+    const cells = cols.map((sc,j)=> per.map(p=>{ const r=p.list.find(x=>x.name===n); return r? r.cells[j] : 0; }));
+    const ptot = per.map((p,k)=> cells.reduce((a,row)=>a+row[k],0));
+    const rowTot = cells.map(row=> row.reduce((a,b)=>a+b,0));
+    return {name:n, cells, rowTot, ptot, total: ptot.reduce((a,b)=>a+b,0)};
+  }).filter(d=> Math.round(d.total)!==0).sort((a,b)=> b.total-a.total);
+  const gp = pcs.map((_,k)=> dists.reduce((a,d)=>a+d.ptot[k],0));
+  return {cols, labels: pcs.map(pc=>pc.label), dists, gp, grand: gp.reduce((a,b)=>a+b,0),
+          title:'موزعين وقطاعات — '+periodLabel()};
 }
 const distBlkN = v=> Math.round(v).toLocaleString('en-US');
-function distBlkHtml(block, cols, doc){
-  const P = doc ? {hd:'#1d4ed8', hdt:'#fff', ln:'#cfd6e4', sep:'#eef1f6', mut:'#667085', tx:'#101828', bg:'#fff', tot:'#dbe7ff', tott:'#1d4ed8'}
-                : {hd:'var(--blue,#1d4ed8)', hdt:'#fff', ln:'var(--border)', sep:'var(--panel2,#eef1f6)', mut:'var(--muted)', tx:'var(--text)', bg:'var(--panel)', tot:'var(--panel2,#dbe7ff)', tott:'var(--blue,#1d4ed8)'};
+/* الشهور (أو الكوارترات/السنة) أعمدة جنب بعض، وآخرها عمود إجمالي لو فيه أكتر من فترة */
+function distBlkHtml(md, doc){
+  const P = doc ? {hd:'#1d4ed8', hdt:'#fff', ln:'#cfd6e4', sep:'#c9d2e3', mut:'#667085', tx:'#101828', bg:'#fff', tot:'#dbe7ff', tott:'#1d4ed8'}
+                : {hd:'var(--blue,#1d4ed8)', hdt:'#fff', ln:'var(--border)', sep:'var(--border)', mut:'var(--muted)', tx:'var(--text)', bg:'var(--panel)', tot:'var(--panel2,#dbe7ff)', tott:'var(--blue,#1d4ed8)'};
   const G='background:rgba(22,163,74,.2);color:'+(doc?'#0a7d3c':'var(--ok,#16a34a)')+';font-weight:800';
   const R='background:rgba(220,38,38,.18);color:'+(doc?'#b42318':'#ef4444');
-  const th=(t,w,al)=>`<th style="padding:8px 4px;background:${P.hd};color:${P.hdt};font-weight:800;text-align:${al||'center'};width:${w}">${t}</th>`;
-  const sepRow=`<tr style="height:10px;background:${P.sep}"><td colspan="4" style="padding:0;border-top:1px solid ${P.ln};border-bottom:1px solid ${P.ln}"></td></tr>`;
-  const body = block.list.map((r,i)=>{
-    const mx = Math.max(...r.cells), gi = mx>0 ? r.cells.indexOf(mx) : -1;
-    const lines = cols.map((sc,j)=>{
-      const v=r.cells[j], z=Math.round(v)===0;
-      const st = j===gi ? G : (z ? R : '');
-      return `<div style="display:flex;justify-content:space-between;gap:4px;padding:3px 6px;margin-top:${j?3:0}px;border-radius:4px;${st}"><span>${esc(secLabel(sc))}</span><span>${z?'0':distBlkN(v)}</span></div>`;
+  const multi = md.labels.length>1, nP = md.labels.length;
+  const th=(t,al,extra)=>`<th style="padding:8px 5px;background:${P.hd};color:${P.hdt};font-weight:800;text-align:${al||'center'};white-space:nowrap;${extra||''}">${t}</th>`;
+  const td='padding:6px 6px;white-space:nowrap;';
+  const colCnt = 3 + nP + (multi?1:0);
+  const head = `<tr>${th('م','center','width:30px')}${th('الموزع','right')}${th('القطاع','right')}${md.labels.map(l=>th(esc(l))).join('')}${multi?th('الإجمالي'):''}</tr>`;
+  const body = md.dists.map((d,i)=>{
+    const colMax = d.ptot.map((_,k)=> Math.max(...d.cells.map(r=>r[k])));
+    const totMax = Math.max(...d.rowTot);
+    const rows = md.cols.map((sc,j)=>{
+      const cells = d.cells[j].map((v,k)=>{ const z=Math.round(v)===0, st = z ? R : (v===colMax[k] && v>0 ? G : '');
+        return `<td style="${td}text-align:center;${st}">${z?'0':distBlkN(v)}</td>`; }).join('');
+      const t=d.rowTot[j], tz=Math.round(t)===0, tst = tz ? R : (t===totMax && t>0 ? G : '');
+      return `<tr>${j===0? `<td rowspan="${md.cols.length+1}" style="${td}text-align:center;color:${P.mut};vertical-align:top;border-left:1px solid ${P.ln}">${i+1}</td><td rowspan="${md.cols.length+1}" style="${td}font-weight:800;vertical-align:top;white-space:normal;word-break:break-word;min-width:74px;border-left:1px solid ${P.ln}">${esc(d.name)}</td>`:''}
+        <td style="${td}">${esc(secLabel(sc))}</td>${cells}${multi?`<td style="${td}text-align:center;font-weight:800;${tst}">${tz?'0':distBlkN(t)}</td>`:''}</tr>`;
     }).join('');
-    return (i? sepRow : '') + `<tr><td style="padding:8px 4px;text-align:center;color:${P.mut};vertical-align:top">${i+1}</td>
-      <td style="padding:8px 4px;font-weight:800;vertical-align:top;word-break:break-word">${esc(r.name)}</td>
-      <td style="padding:6px 4px;vertical-align:top">${lines}</td>
-      <td style="padding:8px 4px;text-align:center;font-weight:800;vertical-align:top">${distBlkN(r.total)}</td></tr>`;
+    const totRow = `<tr style="background:${P.tot};color:${P.tott};font-weight:800"><td style="${td}">إجمالي الموزع</td>${d.ptot.map(v=>`<td style="${td}text-align:center">${distBlkN(v)}</td>`).join('')}${multi?`<td style="${td}text-align:center">${distBlkN(d.total)}</td>`:''}</tr>`;
+    const sep = i? `<tr style="height:10px"><td colspan="${colCnt}" style="padding:0;background:${P.sep};border:0"></td></tr>` : '';
+    return sep + rows + totRow;
   }).join('');
-  return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:12.5px;background:${P.bg};color:${P.tx};border:1px solid ${P.ln}">
-    <thead><tr>${th('م','9%')}${th('الموزع','22%','right')}${th('القطاعات','43%','right')}${th('الإجمالي','26%')}</tr></thead>
-    <tbody>${body}</tbody>
-    <tfoot><tr style="background:${P.tot};color:${P.tott};font-weight:800"><td colspan="3" style="padding:9px 8px;text-align:right">الإجمالي الكلي</td><td style="padding:9px 4px;text-align:center">${distBlkN(block.total)}</td></tr></tfoot></table></div>`;
+  const foot = `<tr style="background:${P.hd};color:#fff;font-weight:800"><td colspan="3" style="${td}text-align:right">الإجمالي الكلي</td>${md.gp.map(v=>`<td style="${td}text-align:center">${distBlkN(v)}</td>`).join('')}${multi?`<td style="${td}text-align:center">${distBlkN(md.grand)}</td>`:''}</tr>`;
+  return `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12.5px;background:${P.bg};color:${P.tx};border:1px solid ${P.ln}"><thead>${head}</thead><tbody>${body}</tbody><tfoot>${foot}</tfoot></table></div>`;
 }
 function renderRepDistBlocks(m){
   const md = distBlkModel();
-  if(!md.cols.length || !md.blocks.some(b=>b.list.length)){ m.innerHTML = `<div class="empty">مفيش مبيعات مصنّفة — صنّف العملاء من شاشة العملاء</div>`; return; }
-  const multi = md.blocks.length>1;
-  m.innerHTML = hiddenSecBar() + md.blocks.filter(b=>b.list.length).map(b=>
-      (multi? `<div style="font-weight:800;margin:12px 0 6px">${esc(b.label)}</div>` : '') + distBlkHtml(b, md.cols, false)).join('')
+  if(!md.cols.length || !md.dists.length){ m.innerHTML = `<div class="empty">مفيش مبيعات مصنّفة — صنّف العملاء من شاشة العملاء</div>`; return; }
+  m.innerHTML = hiddenSecBar() + distBlkHtml(md, false)
     + floatBar(`<button onclick="exportRep('distblk','x')">📊 إكسل</button><button onclick="exportRep('distblk','p')">📄 PDF</button><button onclick="exportRep('distblk','i')">🖼️ صورة</button>`);
 }
 function exportDistBlk(kind){
-  const md = distBlkModel(), blocks = md.blocks.filter(b=>b.list.length);
-  if(!blocks.length){ toast('لا توجد بيانات'); return; }
-  const file = md.title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_');
+  const md = distBlkModel();
+  if(!md.dists.length){ toast('لا توجد بيانات'); return; }
+  const file = md.title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_'), multi=md.labels.length>1;
   if(kind==='x'){
-    const multi=blocks.length>1, aoa=[[...(multi?['الفترة']:[]),'م','الموزع','القطاع','المبلغ']];
-    blocks.forEach(b=>{
-      b.list.forEach((r,i)=>{
-        md.cols.forEach((sc,j)=> aoa.push([...(multi?[b.label]:[]), i+1, r.name, secLabel(sc), Math.round(r.cells[j])]));
-        aoa.push([...(multi?[b.label]:[]), '', r.name, 'إجمالي الموزع', Math.round(r.total)]);
-      });
-      aoa.push([...(multi?[b.label]:[]), '', '', 'الإجمالي الكلي', Math.round(b.total)]);
+    const aoa=[['م','الموزع','القطاع',...md.labels,...(multi?['الإجمالي']:[])]];
+    md.dists.forEach((d,i)=>{
+      md.cols.forEach((sc,j)=> aoa.push([i+1, d.name, secLabel(sc), ...d.cells[j].map(Math.round), ...(multi?[Math.round(d.rowTot[j])]:[])]));
+      aoa.push(['', d.name, 'إجمالي الموزع', ...d.ptot.map(Math.round), ...(multi?[Math.round(d.total)]:[])]);
     });
-    saveAoaXlsx(aoa, 'تقرير', file+'.xlsx', [...(multi?[16]:[]),6,26,20,16], {title: md.title});
+    aoa.push(['', '', 'الإجمالي الكلي', ...md.gp.map(Math.round), ...(multi?[Math.round(md.grand)]:[])]);
+    saveAoaXlsx(aoa, 'تقرير', file+'.xlsx', [6,26,20,...md.labels.map(()=>14),...(multi?[16]:[])], {title: md.title});
     return;
   }
-  const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>`
-    + blocks.map(b=> (blocks.length>1? `<h3>${esc(b.label)}</h3>`:'') + distBlkHtml(b, md.cols, true)).join('') + `</div>`;
+  const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${distBlkHtml(md, true)}</div>`;
   if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
 }
 
