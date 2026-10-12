@@ -25,6 +25,8 @@ input,select,textarea,button{font-family:inherit}
 header{background:var(--blue);color:#fff;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;
   display:flex;align-items:center;justify-content:space-between;flex-shrink:0;position:relative;z-index:20}
 header h1{font-size:16px;margin:0;font-weight:700;white-space:nowrap;cursor:pointer}
+header h1{min-width:0;flex:1 1 0;overflow:hidden;text-overflow:ellipsis}
+header>span{flex:none}
 @media (max-width:420px){ header .ver{display:none} header h1{font-size:15px} }
 /* الموبايلات الضيقة: اللوجو بيقول الاسم، فالكلام بيستخبى عشان ☰ والأزرار يدخلوا */
 @media (max-width:390px){ header h1 .ttl{display:none} }
@@ -102,6 +104,10 @@ main{flex:1;overflow-y:auto;padding:10px}
 .kpi b{display:block;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.25}
 .kpi span{display:block;font-size:10.5px;opacity:.9;margin-top:2px;font-weight:700}
 .hgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.rgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 10px}
+.rgrid .rtile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:68px;padding:8px 4px;white-space:normal;text-align:center;line-height:1.25;border-radius:12px;flex:none;width:auto}
+.rgrid .rtile .ri{font-size:22px;line-height:1}
+.rgrid .rtile .rn{font-size:12px;font-weight:800}
 .htile{position:relative;overflow:hidden;background:var(--panel);border:1px solid var(--border);
   border-radius:15px;padding:11px 6px 10px;cursor:pointer;text-align:center;min-width:0;
   transition:transform .12s ease, box-shadow .12s ease}
@@ -570,6 +576,14 @@ function secColOf(key){
 }
 const secLabel  = k => (secCfg[k]||{}).name || k;
 const secHidden = k => !!(secCfg[k]||{}).hide;
+/* العمود المخفي بيتشال من كل التقارير: صافي العميل = إجمالي مبيعاته − اللي في الأعمدة المخفية */
+function hiddenSecAmt(mo, name){
+  if(!Object.keys(secCfg).some(k=> secCfg[k] && secCfg[k].hide)) return 0;
+  const bs=(monthlySector[mo]||{})[name]; if(!bs) return 0;
+  let t=0; Object.keys(bs).forEach(k=>{ if(secHidden(secColOf(k))) t+=bs[k]||0; });
+  return t;
+}
+const saleNet = (mo, name)=> ((monthlySales[mo]||{})[name]||0) - hiddenSecAmt(mo, name);
 /* المجموعات الرئيسية اللي بتتجمّع تحت القطاع ده */
 /* كل المفاتيح الموجودة في البيانات، وكل واحد رايح أنهي عمود */
 function secAllKeys(){
@@ -2187,6 +2201,7 @@ function renderSales(m){
 const SALES_REPORTS = [
   {id:'dist',      name:'📈 موزعين إجمالي'},
   {id:'distsec',   name:'🧩 موزعين قطاعات'},
+  {id:'distblk',   name:'📋 موزعين وقطاعات'},
   {id:'doorcode',  name:'🚪 أبواب بالكود'},
   {id:'distdoor',  name:'🚪 موزعين أبواب'},
   {id:'special',   name:'🏷️ مبيعات خاصة'},
@@ -2197,11 +2212,16 @@ const SALES_REPORTS = [
 function setSalesReport(id){ const cur=load('_salesRep_',null); save('_salesRep_', cur===id?null:id); render(true); }
 function renderSalesReportsHub(m){
   const v = load('_salesRep_', null);
-  m.innerHTML = tabStrip(SALES_REPORTS.map(x=>({k:x.id,name:x.name})), v, k=>`setSalesReport('${k}')`)
-    + (v==='custcmp' ? '' : periodBar()) + `<div id="srep_c"></div>`;
+  // أيقونات مرتبة في شبكة ثابتة (من غير سكرول)
+  const tiles = SALES_REPORTS.map(x=>{ const mt=String(x.name).match(/^(\S+)\s+(.*)$/), ic=mt?mt[1]:'📄', nm=mt?mt[2]:x.name;
+    return `<button class="stab rtile${x.id===v?' on':''}" onclick="setSalesReport('${x.id}')"><span class="ri">${ic}</span><span class="rn">${esc(nm)}</span></button>`; }).join('');
+  m.innerHTML = `<div class="rgrid">${tiles}</div>`
+    + (v==='custcmp' ? '' : periodBar())
+    + (['dist','special','cmpmo','custcmp'].indexOf(v)>=0 ? hiddenSecBar() : '') + `<div id="srep_c"></div>`;
   const c = $('#srep_c');
   if(v==='dist') renderSalesReport(c);
   else if(v==='distsec') renderRepDistSectors(c);
+  else if(v==='distblk') renderRepDistBlocks(c);
   else if(v==='doorcode') renderRepDoorsByCode(c);
   else if(v==='distdoor') renderRepDistDoors(c);
   else if(v==='special') renderRepSpecial(c);
@@ -2413,6 +2433,86 @@ function renderRepDistSectors(m){
   if(!d.list.length){ m.innerHTML = `<div class="empty">مفيش مبيعات مصنّفة — صنّف العملاء من شاشة العملاء</div>`; return; }
   const md=repDistSectorsModel();
   renderRepTable(m, 'distsec', md, { boxes: hiddenSecBar() + modelBoxesHtml(md) });
+}
+
+/* ٢-ب) موزعين وقطاعات — بلوك لكل موزع: كل القطاعات (حتى الصفر) + إجمالي الموزع + إجمالي كلي
+   ترتيب القطاعات ثابت · الموزعين من الأكبر للأصغر · الصفر أحمر · أعلى قطاع عند كل موزع أخضر
+   الفترة من نفس شريط الشهور/الكوارتر/السنة (كل فترة في بلوك لوحدها). */
+function distBlkAgg(months, cols){
+  const custByName={}; customers.forEach(c=>custByName[c.name]=c);
+  const rows={};
+  months.forEach(mo=>{
+    Object.entries(monthlySector[mo]||{}).forEach(([cname, bySec])=>{
+      const cls=(custByName[cname]||{}).cls||'';
+      if(!cls || cls==='مستبعد' || cls==='عميل ابواب' || cls==='مبيعات خاصة') return;
+      const key = cls==='موزع' ? cname : cls;
+      const r = rows[key] = rows[key] || {};
+      Object.entries(bySec).forEach(([s0, v])=>{ const sc=secColOf(s0); r[sc]=(r[sc]||0)+v; });
+    });
+  });
+  const list = Object.keys(rows).map(n=>{
+    const cells = cols.map(sc=> rows[n][sc]||0);
+    return {name:n, cells, total: cells.reduce((a,b)=>a+b,0)};
+  }).filter(r=> Math.round(r.total)!==0).sort((a,b)=> b.total-a.total);
+  return {list, total: list.reduce((a,r)=>a+r.total,0)};
+}
+function distBlkModel(){
+  const D = buildDistSectors(), cols = D.cols;
+  const blocks = periodCols().map(pc=> Object.assign({label:pc.label}, distBlkAgg(pc.months, cols)));
+  return {cols, blocks, title:'موزعين وقطاعات — '+periodLabel()};
+}
+const distBlkN = v=> Math.round(v).toLocaleString('en-US');
+function distBlkHtml(block, cols, doc){
+  const P = doc ? {hd:'#1d4ed8', hdt:'#fff', ln:'#cfd6e4', sep:'#eef1f6', mut:'#667085', tx:'#101828', bg:'#fff', tot:'#dbe7ff', tott:'#1d4ed8'}
+                : {hd:'var(--blue,#1d4ed8)', hdt:'#fff', ln:'var(--border)', sep:'var(--panel2,#eef1f6)', mut:'var(--muted)', tx:'var(--text)', bg:'var(--panel)', tot:'var(--panel2,#dbe7ff)', tott:'var(--blue,#1d4ed8)'};
+  const G='background:rgba(22,163,74,.2);color:'+(doc?'#0a7d3c':'var(--ok,#16a34a)')+';font-weight:800';
+  const R='background:rgba(220,38,38,.18);color:'+(doc?'#b42318':'#ef4444');
+  const th=(t,w,al)=>`<th style="padding:8px 4px;background:${P.hd};color:${P.hdt};font-weight:800;text-align:${al||'center'};width:${w}">${t}</th>`;
+  const sepRow=`<tr style="height:10px;background:${P.sep}"><td colspan="4" style="padding:0;border-top:1px solid ${P.ln};border-bottom:1px solid ${P.ln}"></td></tr>`;
+  const body = block.list.map((r,i)=>{
+    const mx = Math.max(...r.cells), gi = mx>0 ? r.cells.indexOf(mx) : -1;
+    const lines = cols.map((sc,j)=>{
+      const v=r.cells[j], z=Math.round(v)===0;
+      const st = j===gi ? G : (z ? R : '');
+      return `<div style="display:flex;justify-content:space-between;gap:4px;padding:3px 6px;margin-top:${j?3:0}px;border-radius:4px;${st}"><span>${esc(secLabel(sc))}</span><span>${z?'0':distBlkN(v)}</span></div>`;
+    }).join('');
+    return (i? sepRow : '') + `<tr><td style="padding:8px 4px;text-align:center;color:${P.mut};vertical-align:top">${i+1}</td>
+      <td style="padding:8px 4px;font-weight:800;vertical-align:top;word-break:break-word">${esc(r.name)}</td>
+      <td style="padding:6px 4px;vertical-align:top">${lines}</td>
+      <td style="padding:8px 4px;text-align:center;font-weight:800;vertical-align:top">${distBlkN(r.total)}</td></tr>`;
+  }).join('');
+  return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:12.5px;background:${P.bg};color:${P.tx};border:1px solid ${P.ln}">
+    <thead><tr>${th('م','9%')}${th('الموزع','22%','right')}${th('القطاعات','43%','right')}${th('الإجمالي','26%')}</tr></thead>
+    <tbody>${body}</tbody>
+    <tfoot><tr style="background:${P.tot};color:${P.tott};font-weight:800"><td colspan="3" style="padding:9px 8px;text-align:right">الإجمالي الكلي</td><td style="padding:9px 4px;text-align:center">${distBlkN(block.total)}</td></tr></tfoot></table></div>`;
+}
+function renderRepDistBlocks(m){
+  const md = distBlkModel();
+  if(!md.cols.length || !md.blocks.some(b=>b.list.length)){ m.innerHTML = `<div class="empty">مفيش مبيعات مصنّفة — صنّف العملاء من شاشة العملاء</div>`; return; }
+  const multi = md.blocks.length>1;
+  m.innerHTML = hiddenSecBar() + md.blocks.filter(b=>b.list.length).map(b=>
+      (multi? `<div style="font-weight:800;margin:12px 0 6px">${esc(b.label)}</div>` : '') + distBlkHtml(b, md.cols, false)).join('')
+    + floatBar(`<button onclick="exportRep('distblk','x')">📊 إكسل</button><button onclick="exportRep('distblk','p')">📄 PDF</button><button onclick="exportRep('distblk','i')">🖼️ صورة</button>`);
+}
+function exportDistBlk(kind){
+  const md = distBlkModel(), blocks = md.blocks.filter(b=>b.list.length);
+  if(!blocks.length){ toast('لا توجد بيانات'); return; }
+  const file = md.title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_');
+  if(kind==='x'){
+    const multi=blocks.length>1, aoa=[[...(multi?['الفترة']:[]),'م','الموزع','القطاع','المبلغ']];
+    blocks.forEach(b=>{
+      b.list.forEach((r,i)=>{
+        md.cols.forEach((sc,j)=> aoa.push([...(multi?[b.label]:[]), i+1, r.name, secLabel(sc), Math.round(r.cells[j])]));
+        aoa.push([...(multi?[b.label]:[]), '', r.name, 'إجمالي الموزع', Math.round(r.total)]);
+      });
+      aoa.push([...(multi?[b.label]:[]), '', '', 'الإجمالي الكلي', Math.round(b.total)]);
+    });
+    saveAoaXlsx(aoa, 'تقرير', file+'.xlsx', [...(multi?[16]:[]),6,26,20,16], {title: md.title});
+    return;
+  }
+  const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>`
+    + blocks.map(b=> (blocks.length>1? `<h3>${esc(b.label)}</h3>`:'') + distBlkHtml(b, md.cols, true)).join('') + `</div>`;
+  if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
 }
 
 /* ٣) الأبواب بالكود — صف لكل كود، وأعمدة للمقاسات
@@ -2656,8 +2756,8 @@ function buildSpecial(){
   const cols=periodCols(); const moCol={}; cols.forEach((c,i)=> c.months.forEach(mo=> moCol[mo]=i));
   const names=new Set(customers.filter(c=>(c.cls||'')==='مبيعات خاصة').map(c=>c.name));
   const rows={};
-  salesMonths().forEach(mo=> Object.entries(monthlySales[mo]||{}).forEach(([n,net])=>{
-    if(!names.has(n)) return;
+  salesMonths().forEach(mo=> Object.keys(monthlySales[mo]||{}).forEach(n=>{
+    if(!names.has(n)) return; const net=saleNet(mo,n);
     rows[n]=rows[n]||{}; rows[n][moCol[mo]]=(rows[n][moCol[mo]]||0)+net; }));
   const list=Object.keys(rows).map(n=>{
     const cells=cols.map((c,i)=> Math.round(rows[n][i]||0));
@@ -2698,8 +2798,8 @@ function buildMonthCompare(){
   const custByName={}; customers.forEach(c=> custByName[c.name]=c);
   const agg={};   // المفتاح: اسم الموزع، أو اسم التصنيف للباقي
   const add=(mo, key)=>{
-    Object.entries(monthlySales[mo]||{}).forEach(([name,net])=>{
-      const cls=(custByName[name]||{}).cls||'';
+    Object.keys(monthlySales[mo]||{}).forEach(name=>{
+      const cls=(custByName[name]||{}).cls||'', net=saleNet(mo,name);
       if(!cls || cls==='مستبعد' || cls==='عميل ابواب' || cls==='مبيعات خاصة') return;
       const row = cls==='موزع' ? name : cls;
       agg[row]=agg[row]||{a:0,b:0}; agg[row][key]+=net;
@@ -2814,7 +2914,7 @@ function buildCustCompare(){
   const prevMo = i0>0? live[i0-1] : null;     // الشهر اللي قبل الفترة (لسهم أول شهر)
   const custByName={}; customers.forEach(c=>custByName[c.name]=c);
   const rows=sel.map(name=>{
-    const cells=months.map(mo=> Math.round((monthlySales[mo]||{})[name]||0));
+    const cells=months.map(mo=> Math.round(saleNet(mo,name)));
     const total=cells.reduce((a,b)=>a+b,0);
     return {name, cls:(custByName[name]||{}).cls||'', cells, total,
       avg: months.length? Math.round(total/months.length) : 0};
@@ -2945,6 +3045,7 @@ function repModel(id){
   return null;
 }
 function exportRep(id, kind){
+  if(id==='distblk') return exportDistBlk(kind);
   const md = repModel(id);
   if(!md || !md.body.length){ toast('لا توجد بيانات'); return; }
   const file = md.title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_');
@@ -3053,8 +3154,8 @@ function buildDistTotal(){
   const custByName={}; customers.forEach(c=>custByName[c.name]=c);
   const rollup={}, distRows={}; const unclassified=new Set();
   months.forEach(mo=>{
-    Object.entries(monthlySales[mo]||{}).forEach(([name,net])=>{
-      const cls=(custByName[name]||{}).cls||'';
+    Object.keys(monthlySales[mo]||{}).forEach(name=>{
+      const cls=(custByName[name]||{}).cls||'', net=saleNet(mo,name);
       if(cls==='مستبعد' || cls==='عميل ابواب' || cls==='مبيعات خاصة') return;   // ليهم تقاريرهم لوحدهم
       if(!cls){ unclassified.add(name); return; }
       const k=moCol[mo];
