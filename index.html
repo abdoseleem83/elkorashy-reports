@@ -2460,18 +2460,20 @@ function distBlkModel(){
   const D = buildDistSectors(), cols = D.cols, pcs = periodCols();
   const per = pcs.map(pc=> distBlkAgg(pc.months, cols));
   const names = new Set(); per.forEach(p=> p.list.forEach(r=> names.add(r.name)));
-  const dists = [...names].map(n=>{
+  let dists = [...names].map(n=>{
     // cells[قطاع][فترة]
     const cells = cols.map((sc,j)=> per.map(p=>{ const r=p.list.find(x=>x.name===n); return r? r.cells[j] : 0; }));
     const ptot = per.map((p,k)=> cells.reduce((a,row)=>a+row[k],0));
     const rowTot = cells.map(row=> row.reduce((a,b)=>a+b,0));
     return {name:n, cells, rowTot, ptot, total: ptot.reduce((a,b)=>a+b,0)};
   }).filter(d=> Math.round(d.total)!==0).sort((a,b)=> b.total-a.total);
+  const allD = dists, hid = new Set(load('distBlkHide_v1',[]));
+  dists = allD.filter(d=> !hid.has(d.name));          // الموزعين اللي اخترت تخفيهم
   const gp = pcs.map((_,k)=> dists.reduce((a,d)=>a+d.ptot[k],0));
   const rawL = pcs.map(pc=>pc.label), yrs = new Set(rawL.map(l=> (String(l).match(/\s*\d{4}$/)||[''])[0].trim()));
   // أسماء الشهور من غير السنة لو كلها في سنة واحدة (السنة في العنوان)
   const labels = (yrs.size===1 && [...yrs][0]) ? rawL.map(l=> String(l).replace(/\s*\d{4}$/,'')) : rawL;
-  return {cols, labels, dists, gp, grand: gp.reduce((a,b)=>a+b,0),
+  return {cols, labels, dists, allD, gp, grand: gp.reduce((a,b)=>a+b,0),
           title:'موزعين وقطاعات — '+periodLabel()};
 }
 const distBlkN = v=> Math.round(v).toLocaleString('en-US');
@@ -2503,10 +2505,40 @@ function distBlkHtml(md, doc){
   const foot = `<tr style="background:${P.hd};color:#fff;font-weight:800"><td colspan="3" style="${td}text-align:right">الإجمالي الكلي</td>${md.gp.map(v=>`<td style="${td}text-align:center">${distBlkN(v)}</td>`).join('')}${multi?`<td style="${td}text-align:center">${distBlkN(md.grand)}</td>`:''}</tr>`;
   return `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12.5px;background:${P.bg};color:${P.tx};border:1px solid ${P.ln}"><thead>${head}</thead><tbody>${body}</tbody><tfoot>${foot}</tfoot></table></div>`;
 }
+/* اختيار الموزعين اللي يظهروا (والباقي بيتخفي من الشاشة والتصدير) */
+function distBlkPick(){
+  const md = distBlkModel(), hid = new Set(load('distBlkHide_v1',[]));
+  const rows = md.allD.map(d=> `<label class="dbpk" data-n="${esc(d.name)}" style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-top:1px solid var(--border);cursor:pointer">
+      <input type="checkbox" ${hid.has(d.name)?'':'checked'} onchange="distBlkToggle(${jsArg(d.name)},this.checked)" style="width:20px;height:20px;flex:none">
+      <span style="flex:1;min-width:0;font-weight:800">${esc(d.name)}</span><span style="color:var(--muted);font-size:12px">${distBlkN(d.total)}</span></label>`).join('');
+  openSheet(`<h3>👥 اختار الموزعين</h3>
+    <input id="dbpk_q" placeholder="🔍 ابحث عن موزع…" oninput="distBlkPickFilter(this.value)" style="width:100%;margin:6px 0 8px">
+    <div style="display:flex;gap:8px;margin-bottom:6px">
+      <button class="btn-cancel" style="flex:1" onclick="distBlkPickAll(true)">✅ الكل</button>
+      <button class="btn-cancel" style="flex:1" onclick="distBlkPickAll(false)">⬜ ولا واحد</button></div>
+    <div id="dbpk_list" style="max-height:48vh;overflow-y:auto">${rows}</div>
+    <div class="f-actions"><button class="btn-save" onclick="closeSheet();render()">تم</button></div>`);
+}
+function distBlkToggle(name, on){
+  const hid = new Set(load('distBlkHide_v1',[]));
+  if(on) hid.delete(name); else hid.add(name);
+  save('distBlkHide_v1',[...hid]);
+}
+function distBlkPickAll(on){
+  const names=[...document.querySelectorAll('#dbpk_list .dbpk')].filter(l=>l.style.display!=='none');
+  const hid = new Set(load('distBlkHide_v1',[]));
+  names.forEach(l=>{ const n=l.getAttribute('data-n'); if(on) hid.delete(n); else hid.add(n); l.querySelector('input').checked=on; });
+  save('distBlkHide_v1',[...hid]);
+}
+function distBlkPickFilter(q){
+  q=String(q||'').trim();
+  document.querySelectorAll('#dbpk_list .dbpk').forEach(l=>{ l.style.display = !q || l.getAttribute('data-n').indexOf(q)>=0 ? '' : 'none'; });
+}
 function renderRepDistBlocks(m){
   const md = distBlkModel();
-  if(!md.cols.length || !md.dists.length){ m.innerHTML = `<div class="empty">مفيش مبيعات مصنّفة — صنّف العملاء من شاشة العملاء</div>`; return; }
-  m.innerHTML = hiddenSecBar() + distBlkHtml(md, false)
+  if(!md.cols.length || !md.allD.length){ m.innerHTML = `<div class="empty">مفيش مبيعات مصنّفة — صنّف العملاء من شاشة العملاء</div>`; return; }
+  const pick = `<button onclick="distBlkPick()" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;margin:0 0 8px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:800;font-size:12.5px;cursor:pointer">👥 الموزعين (${md.dists.length} من ${md.allD.length}) ▾</button>`;
+  m.innerHTML = hiddenSecBar() + pick + (md.dists.length ? distBlkHtml(md, false) : `<div class="empty">كل الموزعين مخفيين — اختار منهم من زرار 👥</div>`)
     + floatBar(`<button onclick="exportRep('distblk','x')">📊 إكسل</button><button onclick="exportRep('distblk','p')">📄 PDF</button><button onclick="exportRep('distblk','i')">🖼️ صورة</button>`);
 }
 function exportDistBlk(kind){
@@ -3058,6 +3090,7 @@ function repModel(id){
 }
 function exportRep(id, kind){
   if(id==='distblk') return exportDistBlk(kind);
+  if(id==='fin_bs') return exportBsDetail(kind);
   const md = repModel(id);
   if(!md || !md.body.length){ toast('لا توجد بيانات'); return; }
   const file = md.title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_');
@@ -5251,6 +5284,7 @@ function finClearSeg(){
   finSeg={}; save('finSeg_v1', finSeg); render(); toast('اتصفّر');
 }
 function renderFinStatement(m, id){
+  if(id==='bs') return renderFinBS(m);
   const per=finCur();
   if(!per){ m.innerHTML=`<div class="empty">ارفع ميزان مراجعة الأول من «موازين المراجعة»</div>`; return; }
   const det=finDetailOn();
@@ -5274,6 +5308,96 @@ function renderFinStatement(m, id){
     <span class="mosep">${det? 'كل الحسابات ظاهرة وبتتطبع مع القائمة' : 'دوس على أي بند يفتحلك حساباته'}</span></div>`;
   m.innerHTML = `<div class="hsec">${esc(FIN_TITLES[id]||'')} — ${moName(per)}</div><div id="fin_t"></div>`;
   renderRepTable($('#fin_t'), 'fin_'+id, md, {boxes:bars, noColor:[1], noMedal:true});
+}
+/* ═══ قائمة المركز المالي بالتفصيل (زي ورقة العمل) ═══
+   العملاء والموردين وغيرهم بيتقسموا حسب رصيد كل حساب: المدين في الأصول والدائن في الإلتزامات
+   (العملاء دفعات مقدمة لوحدهم · الموردين دفعات مقدمة لوحدهم · وكده المدينون المتنوعون والبنوك). */
+function bsDetail(per){
+  const all = finLeaves(per), leaves = all.filter(a=> !/^[34]/.test(a.code)), used = new Set();
+  const take = f=>{ const r=leaves.filter(a=> !used.has(a.code) && f(a)); r.forEach(a=>used.add(a.code)); return r; };
+  const pre = p=> a=> a.code.startsWith(p);
+  const sum = arr=> arr.reduce((t,x)=>t+x.bal,0), dr = arr=> arr.filter(a=>a.bal>0), cr = arr=> arr.filter(a=>a.bal<0);
+  const fixedL=take(pre('11')), cashL=take(pre('1201')), bankL=take(pre('1206')), custL=take(pre('1202')), stockL=take(pre('1203')),
+        miscL=take(pre('1204')), advL=take(pre('1207')), custody=take(pre('1208')), othDebL=take(pre('1209')),
+        suppL=take(pre('2201')), accrL=take(pre('2207')), curOth=take(pre('12')),
+        capL=take(pre('2101')), partL=take(pre('2106')), ltOth=take(pre('21')), clOth=take(pre('22'));
+  const unclassified = leaves.filter(a=> !used.has(a.code) && Math.round(a.bal));
+  const profit = -all.filter(a=> /^[34]/.test(a.code)).reduce((t,x)=>t+x.bal,0);
+  const rows=[]; const R=(t,o)=>rows.push(Object.assign({t},o));
+  const row=(code,name,v,always)=>{ if(always || Math.round(v)) R('row',{code,name,v}); };
+  const list=arr=> arr.forEach(a=> R('row',{code:a.code,name:a.name,v:a.bal}));
+  R('sec',{name:'أولاً: الأصول الثابتة'}); list(fixedL);
+  const fixedT=sum(fixedL); R('sub',{name:'إجمالي الأصول الثابتة',v:fixedT});
+  R('sec',{name:'ثانياً: الأصول المتداولة'});
+  R('grp',{name:'الخزائن:'}); list(cashL); R('sub',{name:'إجمالي الخزائن',v:sum(cashL)});
+  row('1206','البنوك',sum(dr(bankL)),true);
+  row('1202','العملاء - أرصدة مدينة (مطلوب تحصيلها)',sum(dr(custL)),true);
+  row('1203','المخازن',sum(stockL),true);
+  row('1204','مدينون متنوعون',sum(dr(miscL)),true);
+  row('1207','سلف العاملين',sum(advL),true);
+  R('grp',{name:'العهد:'}); list(custody); R('sub',{name:'إجمالي العهد',v:sum(custody)});
+  row('1209','أرصدة مدينة أخرى',sum(othDebL),true);
+  row('2201','دفعات مقدمة لموردين (أرصدة مدينة)',sum(dr(suppL)),true);
+  row('2207','مستحقات - أرصدة مدينة',sum(dr(accrL)));
+  row('','أصول متداولة أخرى',sum(curOth));
+  const curT = sum(cashL)+sum(dr(bankL))+sum(dr(custL))+sum(stockL)+sum(dr(miscL))+sum(advL)+sum(custody)+sum(othDebL)+sum(dr(suppL))+sum(dr(accrL))+sum(curOth);
+  R('sub',{name:'إجمالي الأصول المتداولة',v:curT});
+  const assets = fixedT + curT; R('grand',{name:'إجمالي الأصول',v:assets});
+  R('sec',{name:'ثالثاً: حقوق الملكية والالتزامات الثابتة'});
+  row('2101','رأس المال',-sum(capL),true);
+  row('2106','جاري الشريك (سلف - مسحوبات شخصية)',-sum(partL),true);
+  row('','التزامات طويلة الأجل أخرى',-sum(ltOth));
+  row('','الأرباح المرحلة غير الموزعة حتى تاريخه (إيرادات - مصروفات)',profit,true);
+  const eqT = -sum(capL)-sum(partL)-sum(ltOth)+profit; R('sub',{name:'إجمالي حقوق الملكية والالتزامات الثابتة',v:eqT});
+  R('sec',{name:'رابعاً: الالتزامات المتداولة'});
+  row('2201','الموردون - أرصدة دائنة (مستحقة الدفع)',-sum(cr(suppL)),true);
+  row('2207','مستحقات',-sum(cr(accrL)),true);
+  row('1202','العملاء - أرصدة دائنة (مقدم من العملاء)',-sum(cr(custL)),true);
+  row('1204','دائنون متنوعون (أرصدة دائنة)',-sum(cr(miscL)));
+  row('1206','بنوك - أرصدة دائنة (سحب على المكشوف)',-sum(cr(bankL)));
+  row('','التزامات متداولة أخرى',-sum(clOth));
+  const clT = -sum(cr(suppL))-sum(cr(accrL))-sum(cr(custL))-sum(cr(miscL))-sum(cr(bankL))-sum(clOth);
+  R('sub',{name:'إجمالي الالتزامات المتداولة',v:clT});
+  const total = eqT + clT; R('grand',{name:'إجمالي حقوق الملكية والالتزامات',v:total});
+  const diff = assets - total; R('chk',{name:'فرق التوازن (يجب أن يساوي صفر)',v:diff});
+  return {rows, assets, total, diff, unclassified, per};
+}
+const bsFmt = v=>{ const r=Math.round(v); return r===0 ? '-' : (r<0 ? '('+fmtN(-r)+')' : fmtN(r)); };
+function bsDetailHtml(D, doc){
+  const C = doc ? {navy:'#1f3a6e', navyT:'#fff', gold:'#f5c542', sub:'#e3e7ee', grp:'#f1f3f7', ln:'#cfd6e4', tx:'#101828', bg:'#fff', mut:'#667085'}
+                : {navy:'#1f3a6e', navyT:'#fff', gold:'#f5c542', sub:'var(--panel2,#e3e7ee)', grp:'var(--panel2,#f1f3f7)', ln:'var(--border)', tx:'var(--text)', bg:'var(--panel)', mut:'var(--muted)'};
+  const td='padding:7px 8px;';
+  const body = D.rows.map(r=>{
+    if(r.t==='sec') return `<tr><td colspan="3" style="${td}background:${C.navy};color:${C.navyT};font-weight:800">${esc(r.name)}</td></tr>`;
+    if(r.t==='grp') return `<tr><td></td><td colspan="2" style="${td}font-weight:800;background:${C.grp}">${esc(r.name)}</td></tr>`;
+    if(r.t==='sub') return `<tr style="background:${C.sub};font-weight:800"><td></td><td style="${td}">${esc(r.name)}</td><td style="${td}text-align:left;white-space:nowrap" dir="ltr">${bsFmt(r.v)}</td></tr>`;
+    if(r.t==='grand') return `<tr style="background:${C.navy};color:${C.navyT};font-weight:800"><td colspan="2" style="${td}">${esc(r.name)}</td><td style="${td}text-align:left;color:${C.gold};white-space:nowrap" dir="ltr">${bsFmt(r.v)}</td></tr>`;
+    if(r.t==='chk') return `<tr style="font-weight:800"><td colspan="2" style="${td}">${esc(r.name)}</td><td style="${td}text-align:left;color:${Math.abs(r.v)>1?'#dc2626':'#16a34a'};white-space:nowrap" dir="ltr">${Math.abs(r.v)>1?bsFmt(r.v):'(0)'}</td></tr>`;
+    return `<tr style="border-bottom:1px solid ${C.ln}"><td style="${td}color:${C.mut};white-space:nowrap;width:64px">${esc(r.code||'')}</td><td style="${td}">${esc(r.name)}</td><td style="${td}text-align:left;white-space:nowrap" dir="ltr">${bsFmt(r.v)}</td></tr>`;
+  }).join('');
+  const un = D.unclassified.length ? `<div style="margin-top:8px;font-size:12px;color:#dc2626">⚠️ ${D.unclassified.length} حساب خارج التبويب ومش داخل في القائمة: ${D.unclassified.slice(0,6).map(a=>esc(a.code+' '+a.name)).join('، ')}${D.unclassified.length>6?' …':''}</div>` : '';
+  return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;background:${C.bg};color:${C.tx};border:1px solid ${C.ln}"><tbody>${body}</tbody></table></div>${un}`;
+}
+function renderFinBS(m){
+  const per=finCur();
+  if(!per){ m.innerHTML=`<div class="empty">ارفع ميزان مراجعة الأول من «موازين المراجعة»</div>`; return; }
+  const D=bsDetail(per), bal=Math.abs(D.diff)<=1;
+  m.innerHTML = `<div class="hsec">شركة القرشي — المركز المالي — كما في نهاية ${moName(per)}</div>`
+    + (bal ? `<div class="hnote" style="--ac:var(--ok)"><span class="dot"></span><span>✅ متوازن — الأصول = الإلتزامات وحقوق الملكية</span></div>`
+           : `<div class="warn">⚠️ المركز مش متوازن — الفرق ${fmtN(Math.round(D.diff))}</div>`)
+    + bsDetailHtml(D,false)
+    + floatBar(`<button onclick="exportRep('fin_bs','x')">📊 إكسل</button><button onclick="exportRep('fin_bs','p')">📄 PDF</button><button onclick="exportRep('fin_bs','i')">🖼️ صورة</button>`);
+}
+function exportBsDetail(kind){
+  const per=finCur(); if(!per){ toast('ارفع ميزان مراجعة الأول'); return; }
+  const D=bsDetail(per), title='شركة القرشي — ورقة عمل المركز المالي', sub='كما في نهاية '+moName(per), file='المركز_المالي_'+moName(per).replace(/\s+/g,'_');
+  if(kind==='x'){
+    const aoa=[['الكود','البيان','المبلغ']];
+    D.rows.forEach(r=>{ if(r.t==='sec'||r.t==='grp') aoa.push(['',r.name,'']); else aoa.push([r.code||'', r.name, Math.round(r.v)]); });
+    saveAoaXlsx(aoa,'المركز المالي',file+'.xlsx',[12,52,18],{title:title+' — '+sub}); return;
+  }
+  const body=`<div class="dx"><h2>${esc(title)}</h2><div class="sub">${esc(sub)}</div>${bsDetailHtml(D,true)}</div>`;
+  if(kind==='p') exportDocPdf(body,file,false); else exportDocImage(body,file,false);
 }
 function renderPayroll(m){
   const tabs=['👥 العاملين','✍️ الحضور والخصومات','📊 النواتج'];
