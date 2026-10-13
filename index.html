@@ -5065,13 +5065,13 @@ function commitTrialBalance(){
   const p=pendingImport; if(!p||p.type!=='tb') return;
   const per=$('#tb_yr').value+'-'+$('#tb_mo').value;
   if(trialBal[per] && !confirm('ميزان '+moName(per)+' مرفوع قبل كده — تستبدله؟')) return;
-  trialBal[per]=p.list; save('trialBal_v1',trialBal); save('_finPer_',per);
+  trialBal[per]=p.list; save('trialBal_v1',trialBal); if(finAdj[per]){ delete finAdj[per]; save('finAdj_v1',finAdj); } save('_finPer_',per);
   finAutoSeg(per);                                  // توزيع أوّلي على فروع PVC
   pendingImport=null; closeSheet(); render(true); toast('اتحفظ ميزان '+moName(per));
 }
 function delTrialBalance(per){
   if(!confirm('حذف ميزان '+moName(per)+'؟')) return;
-  delete trialBal[per]; save('trialBal_v1',trialBal); render(true); toast('اتحذف');
+  delete trialBal[per]; save('trialBal_v1',trialBal); if(finAdj[per]){ delete finAdj[per]; save('finAdj_v1',finAdj); } render(true); toast('اتحذف');
 }
 function trialBalModel(per){
   const list=(trialBal[per]||[]).slice().sort((a,b)=> String(a.code).localeCompare(String(b.code)));
@@ -5407,7 +5407,7 @@ function bsAdjEdit(i, code){
   const orig = a.adj? a.orig : a.bal;
   openSheet(`<h3>✏️ تعديل رصيد حساب</h3>
     <div style="font-weight:800">${esc(a.name)}</div><div style="color:var(--muted);font-size:12px;margin-bottom:8px"><bdi>${esc(a.code)}</bdi> · الرصيد الأصلي <bdi dir="ltr">${bsFmt(orig)}</bdi> (مدين موجب / دائن بالسالب)</div>
-    <div class="f-row"><label>الرصيد الجديد (مدين +، دائن −)</label><input id="adj_v" type="number" inputmode="decimal" value="${Math.round(a.bal)}"></div>
+    <div class="f-row"><label>الرصيد الجديد (مدين +، دائن −)</label><input id="adj_v" type="number" inputmode="decimal" value="${Math.round(a.bal*100)/100}"></div>
     <div style="font-size:11.5px;color:var(--muted)">التعديل بيتحسب في المركز المالي بس، وبيعيد تقسيم الحساب مدين/دائن تلقائي. ملف الميزان نفسه مش بيتغيّر.</div>
     <div class="f-actions">${a.adj? `<button class="btn-cancel" onclick="bsAdjSave(${i},${jsArg(code)},true)">↩️ رجّع الأصلي</button>`:''}
       <button class="btn-cancel" onclick="bsRowOpen(${i})">إلغاء</button><button class="btn-save" onclick="bsAdjSave(${i},${jsArg(code)},false)">حفظ</button></div>`);
@@ -6284,8 +6284,8 @@ function bonusClearFile(fk){
   delete bonusData.files[fk]; bonusSave(); render();
 }
 function bonusNewPeriod(){
-  if(!confirm('فترة جديدة؟ هيتمسح كل الملفات المرفوعة (النِسَب بتفضل زي ما هي).')) return;
-  bonusData.files={}; bonusData.period=''; bonusSave(); render(true);
+  if(!confirm('فترة جديدة؟ هيتمسح كل الملفات المرفوعة وبونص اكسا اللي كتبته (النِسَب بتفضل زي ما هي).')) return;
+  bonusData.files={}; bonusData.period=''; bonusData.aksa={}; bonusSave(); render(true);
 }
 function bonusSetPeriod(v){ bonusData.period=String(v||'').trim(); bonusSave(); }
 /* سطور التقرير: كل قطاع بصافيه ونسبته وبونصه، والأصناف تحت كل سطر */
