@@ -561,7 +561,7 @@ let custPend={};
 const SECTOR_MAP={
   'قطاعات PVC كومبن':'كومبن','قطاعات كرافت لاين':'كرافت لاين','نيو لاين':'نيو لاين',
   'اكسسورات pvc اكسا':'اكسسوارات','اكسسوارات خارجيه':'اكسسوارات','جيفيز':'جيفز',
-  'ابواب WPC':'ابواب','شاتر':'أخرى','تصنيع':'أخرى','حشوات':'أخرى'
+  'ابواب WPC':'ابواب','شاتر':'أخرى','تصنيع':'اكسسوارات','حشوات':'اكسسوارات'
 };
 /* ترتيب أعمدة القطاعات زي ما اتطلب، وأسماء قديمة اتخزنت في بيانات سابقة */
 const SECTOR_ORDER=['كرافت لاين','نيو لاين','كومبن','اكسسوارات','جيفز','ابواب','أخرى','غير معروف'];
@@ -569,11 +569,13 @@ const SECTOR_ALIAS={'قطاعات كرافت لاين':'كرافت لاين','ق
 const secName = s2 => SECTOR_ALIAS[s2] || s2;
 /* المفتاح المخزّن ممكن يكون مجموعة رئيسية (البيانات الجديدة) أو اسم
    قطاع جاهز (بيانات قديمة). secMove بتخليك تنقل أي مجموعة لعمود تاني. */
+/* حشوات + تصنيع + أي اكسسوارات (اكسا · خارجية · تصنيع …) = عمود واحد «اكسسوارات» (جيفز لوحده) */
+const secMergeAcc = c => (/[اإأ]كسس|حشو|تصنيع/.test(c) && !/جيف/.test(c)) ? 'اكسسوارات' : c;
 function secColOf(key){
   const k=String(key||'');
-  if(secMove[k]) return secMove[k];
+  if(secMove[k]) return secMergeAcc(secMove[k]);
   if(SECTOR_MAP[k]) return SECTOR_MAP[k];
-  return secName(k);
+  return secMergeAcc(secName(k));
 }
 const secLabel  = k => (secCfg[k]||{}).name || k;
 const secHidden = k => !!(secCfg[k]||{}).hide;
@@ -608,7 +610,7 @@ function secGroups(k){
 }
 /* أعمدة إنت عملتها (زي «الومنيوم») — بتتخزّن في secCfg بعلامة custom */
 function secCustomCols(){ return Object.keys(secCfg).filter(c=> (secCfg[c]||{}).custom); }
-const secNat = g => SECTOR_MAP[g] ? SECTOR_MAP[g] : secName(g);
+const secNat = g => SECTOR_MAP[g] ? SECTOR_MAP[g] : secMergeAcc(secName(g));
 function secMoveTo(group, col, reopen){
   if(col===secColOf(group)) return;
   if(col===secNat(group)) delete secMove[group]; else secMove[group]=col;
@@ -2228,7 +2230,7 @@ const SALES_REPORTS = [
   {id:'distblk',   name:'📋 موزعين وقطاعات'},
   {id:'doorcode',  name:'🚪 أبواب بالكود'},
   {id:'distdoor',  name:'🚪 موزعين أبواب'},
-  {id:'buys',      name:'🛒 مشتريات'},
+  {id:'buys',      name:'🛒 عملاء جملة'},
 ];
 function setSalesReport(id){ const cur=load('_salesRep_',null); save('_salesRep_', cur===id?null:id); render(true); }
 function renderSalesReportsHub(m){
@@ -2776,7 +2778,7 @@ function renderRepDistDoors(m){
   });
 }
 
-/* ٥) مشتريات — كل عميل جملة بسطر، وقدامه اشترى كام من كل مجموعة.
+/* ٥) عملاء جملة — كل عميل جملة بسطر، وقدامه اشترى كام من كل مجموعة.
       نفس شكل «موزعين قطاعات» بس للعملاء مش للموزعين. */
 function buildBuys(){
   const custByName={}; customers.forEach(c=> custByName[c.name]=c);
@@ -2801,7 +2803,7 @@ function repBuysModel(){
   const d=buildBuys(), body=[];
   d.list.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells.map(v=>Math.round(v)), Math.round(r.total)]}));
   body.push({type:'tot', cells:['الإجمالي', ...d.tot.map(v=>Math.round(v)), Math.round(d.total)]});
-  return {title:'مشتريات عملاء الجملة — '+periodLabel(),
+  return {title:'عملاء الجملة — '+periodLabel(),
     header:['العميل', ...d.cols.map(secLabel), 'الإجمالي'],
     headTap:['', ...d.cols.map(k=>`secSheet(${jsArg(k)})`), ''], body, d,
     boxes:[{l:'أعلى ٣ عملاء', rows:d.list.map(r=>({name:r.name, val:r.total}))},
@@ -2809,7 +2811,7 @@ function repBuysModel(){
 }
 function renderRepBuys(m){
   const d=buildBuys();
-  if(!d.list.length){ m.innerHTML=`<div class="empty">مفيش مشتريات لعملاء جملة —<br>صنّف العملاء «مبيعات جملة» من شاشة العملاء</div>`; return; }
+  if(!d.list.length){ m.innerHTML=`<div class="empty">مفيش مبيعات لعملاء جملة —<br>صنّف العملاء «مبيعات جملة» من شاشة العملاء</div>`; return; }
   const md=repBuysModel();
   renderRepTable(m, 'buys', md, {boxes: hiddenSecBar() + modelBoxesHtml(md)});
 }
