@@ -549,6 +549,7 @@ let salesArchive = load('salesArchive_v1', []);      // شهور مؤرشفة �
 let custAlias = load('custAlias_v1', {});            // اسم قديم ← الاسم الجديد بعد الدمج
 let secCfg = load('secCfg_v1', {});                  // القطاع ← {name: اسم بديل, hide: مخفي}
 let secMove = load('secMove_v1', {});                // مجموعة رئيسية ← العمود اللي تروحه
+let secMerge = load('secMerge_v1', {});              // عمود ← العمود اللي اتدمج فيه (دمج أعمدة بالاسم الموحّد)
 let doorCodeMap = load('doorCodeMap_v1', {});        // اسم صنف الباب ← كود بالإيد
 let doorHide = load('doorHide_v1', []);              // أصناف اتشالت من تقارير الأبواب
 let bonusData = load('bonusAksa_v1', {period:'', files:{}, rates:{}, itemLine:{}});   // بونص اكسا
@@ -573,9 +574,9 @@ const secName = s2 => SECTOR_ALIAS[s2] || s2;
 const secMergeAcc = c => (/[اإأ]كسس|حشو|تصنيع/.test(c) && !/جيف/.test(c)) ? 'اكسسوارات' : c;
 function secColOf(key){
   const k=String(key||'');
-  if(secMove[k]) return secMergeAcc(secMove[k]);
-  if(SECTOR_MAP[k]) return SECTOR_MAP[k];
-  return secMergeAcc(secName(k));
+  let c = secMove[k] ? secMergeAcc(secMove[k]) : (SECTOR_MAP[k] ? SECTOR_MAP[k] : secMergeAcc(secName(k)));
+  for(let i=0; i<8 && secMerge[c]; i++) c = secMerge[c];      // عمود اتدمج في عمود تاني
+  return c;
 }
 const secLabel  = k => (secCfg[k]||{}).name || k;
 const secHidden = k => !!(secCfg[k]||{}).hide;
@@ -601,6 +602,7 @@ function secAllCols(){
   Object.keys(keys).forEach(k=> cols[secColOf(k)]=1);
   SECTOR_ORDER.forEach(c=> cols[c]=1);
   secCustomCols().forEach(c=> cols[c]=1);
+  Object.keys(secMerge).forEach(c=> delete cols[c]);          // اتدمجت في غيرها
   return Object.keys(cols).sort(secSort);
 }
 function secGroups(k){
@@ -736,7 +738,7 @@ function secColTotals(){
 function hiddenSecBar(){
   const cols=secAllCols(), t=secColTotals();
   const hid=cols.filter(secHidden), empty=cols.filter(c=> !secHidden(c) && !Math.round(t[c]||0));
-  return `<div class="morow"><button class="mochip" onclick="secColsSheet()">🧩 الأعمدة (${cols.length-hid.length-empty.length} ظاهر${hid.length?' · '+hid.length+' مخفي':''}${empty.length?' · '+empty.length+' فاضي':''})</button>${hid.map(k=>
+  return `<div class="morow"><button class="mochip" onclick="secColsSheet()">🧩 الأعمدة (${cols.length-hid.length-empty.length} ظاهر${hid.length?' · '+hid.length+' مخفي':''}${empty.length?' · '+empty.length+' فاضي':''})</button><button class="mochip" onclick="secMergeSheet()">🔗 دمج أعمدة</button>${hid.map(k=>
     `<button class="mochip" onclick="secShow(${jsArg(k)})">${esc(secLabel(k))} ✕</button>`).join('')}</div>`;
 }
 function secColsSheet(){
@@ -750,8 +752,42 @@ function secColsSheet(){
           <div class="sub">${st} · ${v? repFmt(v) : '—'}</div></div>
         <div class="act"><button title="${h?'إظهار':'إخفاء'}" onclick="secToggleHide(${jsArg(c)})">${h?'🙈':'👁️'}</button>
           <button title="البنود" onclick="secSheet(${jsArg(c)})">⚙️</button></div></div>`; }).join('')}
+    ${Object.keys(secMerge).length? `<div class="t3lbl" style="margin-top:10px">أعمدة مدموجة</div>`+Object.keys(secMerge).map(c=>`<div class="card"><div class="info"><div class="name">${esc(secLabel(c))}</div><div class="sub">مدموج في «${esc(secLabel(secColOf(c)))}»</div></div><div class="act"><button title="فك الدمج" onclick="secUnmerge(${jsArg(c)})">↩️ فك</button></div></div>`).join('') : ''}
     <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">تمام</button>
+      <button class="btn-cancel" onclick="secMergeSheet()">🔗 دمج أعمدة</button>
       <button class="btn-save" onclick="secNewCol(null)">➕ عمود جديد</button></div>`);
+}
+/* دمج أكتر من عمود (قطاع) مع بعض — بيظهروا باسم واحد في كل التقارير، وأي بيانات جديدة بنفس الأعمدة بتتدمج لوحدها */
+function secMergeSheet(){
+  const cols=secAllCols(), t=secColTotals();
+  openSheet(`<h3>🔗 دمج أعمدة</h3>
+    <p style="font-size:12.5px;color:var(--muted);line-height:1.7;margin:0 0 8px">علّم على القطاعات اللي عايز تدمجها (اتنين أو أكتر)، واكتب الاسم اللي هيظهروا بيه.</p>
+    <div style="max-height:42vh;overflow-y:auto">${cols.map(c=>{ const v=Math.round(t[c]||0);
+      return `<label style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-top:1px solid var(--border);cursor:pointer">
+        <input type="checkbox" class="smck" value="${esc(c)}" style="width:20px;height:20px;flex:none">
+        <span style="flex:1;min-width:0;font-weight:800">${esc(secLabel(c))}</span><span style="color:var(--muted);font-size:12px">${v? repFmt(v) : 'فاضي'}</span></label>`; }).join('')}</div>
+    <div class="f-row" style="margin-top:10px"><label>الاسم اللي هيظهروا بيه</label>
+      <input id="sm_name" placeholder="مثلاً: اكسسوارات"></div>
+    <div class="f-actions"><button class="btn-cancel" onclick="secColsSheet()">رجوع</button>
+      <button class="btn-save" onclick="secMergeDo()">🔗 دمج</button></div>`);
+}
+function secMergeDo(){
+  const sel=[...document.querySelectorAll('.smck:checked')].map(x=>x.value);
+  if(sel.length<2){ toast('علّم على عمودين على الأقل'); return; }
+  const t=secColTotals(), big=sel.slice().sort((a,b)=> (t[b]||0)-(t[a]||0))[0];
+  const name=(($('#sm_name').value)||'').trim() || secLabel(big);
+  const all=secAllCols();
+  // لو الاسم هو اسم واحد من اللي اخترتهم أو عمود موجود → ده الأساس، غير كده بنعمل عمود جديد بالاسم
+  let target = sel.find(c=> c===name || secLabel(c)===name) || all.find(c=> c===name || secLabel(c)===name);
+  if(!target){ target=name; secCfg[target]=Object.assign({}, secCfg[target], {custom:1}); }
+  delete secMerge[target];
+  sel.forEach(c=>{ if(c!==target) secMerge[c]=target; });
+  Object.keys(secMerge).forEach(c=>{ if(secMerge[c]===c) delete secMerge[c]; });
+  save('secMerge_v1',secMerge); save('secCfg_v1',secCfg);
+  render(); toast('اتدمجوا في «'+secLabel(target)+'»'); secColsSheet();
+}
+function secUnmerge(c){
+  delete secMerge[c]; save('secMerge_v1',secMerge); render(); toast('اتفك الدمج'); secColsSheet();
 }
 function secToggleHide(c){
   if(secHidden(c)){ delete secCfg[c].hide; if(!Object.keys(secCfg[c]).length) delete secCfg[c]; }
@@ -831,7 +867,7 @@ let shortMain=new Set(), shortSub=new Set();
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','whStockAt_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
-  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','finAdj_v1','bonusAksa_v1','distBonus_v1','whTrash_v1'];
+  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','secMerge_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','finAdj_v1','bonusAksa_v1','distBonus_v1','whTrash_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
 /* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
@@ -948,7 +984,7 @@ const SYNC_VARS = {
   whShortage_v1: v=>{ whShortage = v; }, customers_v1: v=>{ customers = v; },
   monthlySales_v1: v=>{ monthlySales = v; }, monthlySector_v1: v=>{ monthlySector = v; }, monthlyDoors_v1: v=>{ monthlyDoors = v; },
   monthlyItems_v1: v=>{ monthlyItems = v; }, salesArchive_v1: v=>{ salesArchive = v; },
-  custAlias_v1: v=>{ custAlias = v; }, secCfg_v1: v=>{ secCfg = v; }, secMove_v1: v=>{ secMove = v; },
+  custAlias_v1: v=>{ custAlias = v; }, secCfg_v1: v=>{ secCfg = v; }, secMove_v1: v=>{ secMove = v; }, secMerge_v1: v=>{ secMerge = v; },
   doorCodeMap_v1: v=>{ doorCodeMap = v; }, doorHide_v1: v=>{ doorHide = v; },
   trialBal_v1: v=>{ trialBal = v; }, finSeg_v1: v=>{ finSeg = v; }, finAdj_v1: v=>{ finAdj = v; },
   bonusAksa_v1: v=>{ bonusData = v; },
