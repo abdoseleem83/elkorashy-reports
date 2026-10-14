@@ -532,7 +532,8 @@ let units = load('units_v1', ['لفة','عود','متر','كرتونة','قطع�
 let warehouses = load('warehouses_v1', []);
 if(!warehouses.length){
   warehouses=[{id:uid(),name:'طنطا',location:'',type:'مخزن رئيسي'},{id:uid(),name:'الاسكندرية',location:'',type:'مخزن رئيسي'}];
-  save('warehouses_v1',warehouses);
+  // بنكتبها مباشرة من غير save(): مش «تعديل» يترفع، فلو السيرفر فيه مخازن حقيقية الجهاز الجديد بياخدها هي بس
+  try{ localStorage.setItem('warehouses_v1', JSON.stringify(warehouses)); localStorage.setItem('_whDefaultSig_', JSON.stringify(warehouses)); }catch(e){}
 }
 let whTrash = load('whTrash_v1', []);       // مخازن اتحذفت — بتتسترجع من ♻️
 let whStock = load('whStock_v1', {});      // {whId:{itemName:{balance,rolls,rods}}}
@@ -882,6 +883,8 @@ function syncHasData(k){
   for(const k of SYNC_KEYS){
     if(syncRevs[k] || syncPulled[k]) continue;   // متختوم خلاص
     if(!syncHasData(k)) continue;                // فاضي — مفيش حاجة ترفع
+    // المخازن الافتراضية اللي لسه ما اتلمستش مش «شغل» — لو اتختمت كانت هتتدمج مع مخازن السيرفر وتطلع ٤
+    if(k==='warehouses_v1' && localStorage.getItem('_whDefaultSig_') === localStorage.getItem('warehouses_v1')) continue;
     syncRevs[k] = 1; n++;
   }
   if(n){ try{ localStorage.setItem('_syncRevs_', JSON.stringify(syncRevs)); }catch(e){} }
@@ -1103,6 +1106,7 @@ async function syncNow(quiet){
       }
     }
     saveProgress();
+    try{ if(autoCleanDupWarehouses()) merged.push('warehouses_v1'); }catch(e){}
     save('_syncAt_', Date.now()); save('_syncErr_', '');
     syncStatus('☁️ ' + new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}), 'ok');
     if(down.length || merged.length) syncRender();
@@ -1591,6 +1595,25 @@ function whRestore(tid){
 
 /* مخازن متكررة بنفس الاسم: بندمجها في واحد — الأرصدة والنواقص
    والجرد بيتنقلوا، والباقي بيتشال. */
+/* مخزن فاضي (من غير أرصدة ولا نواقص ولا جرد) ومعاه مخزن بنفس الاسم فيه بيانات = نسخة زيادة اتعملت من جهاز جديد → بتتشال لوحدها.
+   لو الاتنين فيهم بيانات بيفضل زرار الدمج (ده قرارك). */
+function whHasData(id){
+  const nz=o=> o && Object.keys(o).length>0;
+  return !!(nz(whStock[id]) || nz(whShortage[id]) || nz(invCounts[id]) || (typeof invDraft!=='undefined' && nz(invDraft[id])));
+}
+function autoCleanDupWarehouses(){
+  let changed=false;
+  dupWarehouses().forEach(g=>{
+    const withData=g.list.filter(w=>whHasData(w.id));
+    const drop = withData.length ? g.list.filter(w=>!whHasData(w.id)) : g.list.slice(1);
+    if(!drop.length) return;
+    const ids=new Set(drop.map(w=>w.id));
+    warehouses=warehouses.filter(w=>!ids.has(w.id)); changed=true;
+    if(ids.has(load('_whTab_',null))) save('_whTab_', (withData[0]||g.list[0]).id);
+  });
+  if(changed) save('warehouses_v1',warehouses);
+  return changed;
+}
 function dupWarehouses(){
   const by={}; warehouses.forEach(w=>{ const k=String(w.name||'').trim(); (by[k]=by[k]||[]).push(w); });
   return Object.keys(by).filter(k=> by[k].length>1).map(k=>({name:k, list:by[k]}));
@@ -1631,6 +1654,7 @@ function dupWhBar(){
       `<button class="mochip on" onclick="mergeDupWarehouse(${jsArg(g.name)})">🔗 دمج ${esc(g.name)} (${g.list.length})</button>`).join('')}</div></div>`;
 }
 function renderWarehouses(m){
+  try{ autoCleanDupWarehouses(); }catch(e){}
   const whTab = load('_whTab_', null);
   /* المقارنات كانت مفروشة جنب المخازن في نفس الصف. دلوقتي تبويب واحد
      «مقارنات» وتحته التلاتة، فالصف فيه المخازن والمقارنات بس. */
@@ -2204,30 +2228,25 @@ const SALES_REPORTS = [
   {id:'distblk',   name:'📋 موزعين وقطاعات'},
   {id:'doorcode',  name:'🚪 أبواب بالكود'},
   {id:'distdoor',  name:'🚪 موزعين أبواب'},
-  {id:'special',   name:'🏷️ مبيعات خاصة'},
   {id:'buys',      name:'🛒 مشتريات'},
-  {id:'cmpmo',     name:'⚖️ مقارنة شهور'},
-  {id:'custcmp',   name:'🔍 مقارنة عميل'},
 ];
 function setSalesReport(id){ const cur=load('_salesRep_',null); save('_salesRep_', cur===id?null:id); render(true); }
 function renderSalesReportsHub(m){
-  const v = load('_salesRep_', null);
+  let v = load('_salesRep_', null);
+  if(v && !SALES_REPORTS.some(x=>x.id===v)) v = null;      // تقرير اتشال
   // أيقونات مرتبة في شبكة ثابتة (من غير سكرول)
   const tiles = SALES_REPORTS.map(x=>{ const mt=String(x.name).match(/^(\S+)\s+(.*)$/), ic=mt?mt[1]:'📄', nm=mt?mt[2]:x.name;
     return `<button class="stab rtile${x.id===v?' on':''}" onclick="setSalesReport('${x.id}')"><span class="ri">${ic}</span><span class="rn">${esc(nm)}</span></button>`; }).join('');
   m.innerHTML = `<div class="rgrid">${tiles}</div>`
-    + (v==='custcmp' ? '' : periodBar())
-    + (['dist','special','cmpmo','custcmp'].indexOf(v)>=0 ? hiddenSecBar() : '') + `<div id="srep_c"></div>`;
+    + periodBar()
+    + (v==='dist' ? hiddenSecBar() : '') + `<div id="srep_c"></div>`;
   const c = $('#srep_c');
   if(v==='dist') renderSalesReport(c);
   else if(v==='distsec') renderRepDistSectors(c);
   else if(v==='distblk') renderRepDistBlocks(c);
   else if(v==='doorcode') renderRepDoorsByCode(c);
   else if(v==='distdoor') renderRepDistDoors(c);
-  else if(v==='special') renderRepSpecial(c);
   else if(v==='buys') renderRepBuys(c);
-  else if(v==='cmpmo') renderRepMonthCompare(c);
-  else if(v==='custcmp') renderRepCustCompare(c);
   else c.innerHTML = `<div class="empty">اختار التقرير من فوق</div>`;
 }
 // الموزعين بس (العملاء المصنّفين «موزع»)
@@ -2796,34 +2815,9 @@ function renderRepBuys(m){
 }
 
 /* ٥) مبيعات خاصة — كل عميل مصنّف «مبيعات خاصة» بسطر وعمود لكل شهر */
-function buildSpecial(){
-  const cols=periodCols(); const moCol={}; cols.forEach((c,i)=> c.months.forEach(mo=> moCol[mo]=i));
-  const names=new Set(customers.filter(c=>(c.cls||'')==='مبيعات خاصة').map(c=>c.name));
-  const rows={};
-  salesMonths().forEach(mo=> Object.keys(monthlySales[mo]||{}).forEach(n=>{
-    if(!names.has(n)) return; const net=saleNet(mo,n);
-    rows[n]=rows[n]||{}; rows[n][moCol[mo]]=(rows[n][moCol[mo]]||0)+net; }));
-  const list=Object.keys(rows).map(n=>{
-    const cells=cols.map((c,i)=> Math.round(rows[n][i]||0));
-    return {name:n, cells, total:cells.reduce((a,b)=>a+b,0)};
-  }).sort((a,b)=> b.total-a.total);
-  const tot=cols.map((c,i)=> list.reduce((a,r)=> a+r.cells[i],0));
-  return {cols, list, tot, total: tot.reduce((a,b)=>a+b,0)};
-}
-function repSpecialModel(){
-  const d=buildSpecial(), body=[];
-  d.list.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells, r.total]}));
-  body.push({type:'tot', cells:['الإجمالي', ...d.tot, d.total]});
-  return {title:'المبيعات الخاصة — '+periodLabel(),
-    header:['العميل', ...d.cols.map(c=>c.label), 'الإجمالي'], body, d,
-    boxes:[{l:'أعلى ٣', rows:d.list.map(r=>({name:r.name, val:r.total}))}]};
-}
-function renderRepSpecial(m){
-  const d=buildSpecial();
-  if(!d.list.length){ m.innerHTML=`<div class="empty">مفيش عملاء مصنّفين «مبيعات خاصة» —<br>صنّفهم من شاشة العملاء</div>`; return; }
-  const md=repSpecialModel();
-  renderRepTable(m, 'special', md, { boxes: modelBoxesHtml(md) });
-}
+
+
+
 
 /* ═══ ٦) مقارنة المبيعات بين شهرين ═══
    نفس صفوف تقرير «موزعين إجمالي» (التصنيفات مجمّعة + كل موزع بسطر)،
@@ -2836,253 +2830,17 @@ function cmpMonths(){
   return {mos, a, b};
 }
 function setCmpMo(which, mo){ save(which==='a'?'_cmpMoA_':'_cmpMoB_', mo); render(true); }
-function buildMonthCompare(){
-  const {mos, a, b} = cmpMonths();
-  if(mos.length<2 || !a || !b) return {mos, a, b, list:[], ta:0, tb:0};
-  const custByName={}; customers.forEach(c=> custByName[c.name]=c);
-  const agg={};   // المفتاح: اسم الموزع، أو اسم التصنيف للباقي
-  const add=(mo, key)=>{
-    Object.keys(monthlySales[mo]||{}).forEach(name=>{
-      const cls=(custByName[name]||{}).cls||'', net=saleNet(mo,name);
-      if(!cls || cls==='مستبعد' || cls==='عميل ابواب' || cls==='مبيعات خاصة') return;
-      const row = cls==='موزع' ? name : cls;
-      agg[row]=agg[row]||{a:0,b:0}; agg[row][key]+=net;
-    });
-  };
-  add(a,'a'); add(b,'b');
-  const list=Object.keys(agg).map(name=>{
-    const va=agg[name].a, vb=agg[name].b, diff=vb-va;
-    return {name, va, vb, diff, pct: va? Math.round(diff/va*100) : null};
-  }).sort((x,y)=> y.vb - x.vb);
-  const ta=list.reduce((s2,r)=>s2+r.va,0), tb=list.reduce((s2,r)=>s2+r.vb,0);
-  return {mos, a, b, list, ta, tb};
-}
+
 const pctTxt = p => p===null ? '—' : (p>0?'+':'')+p+'%';
-function repMonthCompareModel(){
-  const d=buildMonthCompare(); const body=[];
-  d.list.forEach(r=> body.push({type:'row', cells:[r.name, Math.round(r.va), Math.round(r.vb),
-    Math.round(r.diff), pctTxt(r.pct)]}));
-  const tdiff=d.tb-d.ta, tpct=d.ta? Math.round(tdiff/d.ta*100) : null;
-  body.push({type:'tot', cells:['الإجمالي', Math.round(d.ta), Math.round(d.tb), Math.round(tdiff), pctTxt(tpct)]});
-  return {title:`مقارنة المبيعات — ${moName(d.a)} مقابل ${moName(d.b)}`,
-    header:['بيان', moName(d.a)||'—', moName(d.b)||'—', 'الفرق', 'النسبة'],
-    body, sign:['','','','auto','auto'], d,
-    boxes:[{l:'أعلى ٣ في '+moName(d.b), rows:d.list.map(r=>({name:r.name, val:r.vb}))}]};
-}
-function renderRepMonthCompare(m){
-  const d=buildMonthCompare();
-  if(d.mos.length<2){
-    m.innerHTML=`<div class="empty">المقارنة محتاجة شهرين على الأقل —
-      لسه مرفوع ${d.mos.length} شهر.<br>ارفع شيت شهر تاني من «رفع شيت المبيعات».</div>`;
-    return;
-  }
-  const sel=(which,cur)=>`<select onchange="setCmpMo('${which}',this.value)"
-    style="padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:var(--panel);
-    color:var(--text);font-weight:700;font-size:13.5px">
-    ${d.mos.map(mo=>`<option value="${mo}" ${mo===cur?'selected':''}>${moName(mo)}</option>`).join('')}</select>`;
-  const tdiff=d.tb-d.ta, tpct=d.ta? Math.round(tdiff/d.ta*100) : null;
-  const col=v=> v>0?'var(--green,#0a7d3c)' : (v<0?'var(--red,#c0202f)':'inherit');
-  const cell=v=>{ const n=Math.round(v);
-    const t = n===0 ? '—' : (n>0?'+':'−')+Math.abs(n).toLocaleString('en-US');
-    return `<td style="color:${col(n)};font-weight:700">${t}</td>`; };
-  const pcell=p=>`<td style="color:${col(p===null?0:p)};font-weight:700">${pctTxt(p)}</td>`;
-  m.innerHTML=`
-    ${topBoxes(d.list.map(r=>({name:r.name, val:r.vb})), 'أعلى ٣ في '+moName(d.b))}
-    <div class="toolbar" style="align-items:center;gap:8px;flex-wrap:wrap">
-      <span style="font-size:13px;color:var(--muted)">من</span>${sel('a',d.a)}
-      <span style="font-size:13px;color:var(--muted)">إلى</span>${sel('b',d.b)}
-    </div>
-    <div style="overflow-x:auto"><table class="rep stk">
-      <tr><th>م</th><th>بيان</th><th>${moName(d.a)}</th><th>${moName(d.b)}</th><th>الفرق</th><th>النسبة</th></tr>
-      ${d.list.map((r,i)=>`<tr><td>${i<3?MEDALS[i]:(i+1)}</td><td>${esc(r.name)}</td>
-        <td>${repFmt(r.va)}</td><td>${repFmt(r.vb)}</td>${cell(r.diff)}${pcell(r.pct)}</tr>`).join('')}
-      <tr class="m"><td></td><td><b>الإجمالي</b></td><td><b>${repFmt(d.ta)}</b></td>
-        <td><b>${repFmt(d.tb)}</b></td>${cell(tdiff)}${pcell(tpct)}</tr>
-    </table></div>
-    ${floatBar(`<button onclick="exportRep('cmpmo','x')">📊 إكسل</button><button onclick="exportRep('cmpmo','p')">📄 PDF</button><button onclick="exportRep('cmpmo','i')">🖼️ صورة</button>`)}`;
-}
 
-/* ═══ ٧) مقارنة عميل — عميل أو أكتر × فترة بتحددها ═══
-   جدول إجمالي (الشهور + إجمالي + متوسط شهري + نسبة) وجدول قطاعات.
-   بتشتغل على أي عميل (موزع/جملة/خاصة/أبواب) من غير ما يهم تصنيفه. */
-function ccAllCustomers(){
-  const cnt={};
-  monthsLive().forEach(mo=> Object.entries(monthlySales[mo]||{}).forEach(([n,v])=>{ cnt[n]=(cnt[n]||0)+(v||0); }));
-  return Object.keys(cnt).map(n=>({name:n, val:cnt[n]})).sort((a,b)=> b.val-a.val);
-}
-function ccPeriod(){
-  const live=monthsLive();
-  let f=load('_ccFrom_',null), t=load('_ccTo_',null);
-  if(!live.includes(f)) f=live[0]||null;
-  if(!live.includes(t)) t=live[live.length-1]||null;
-  if(f && t && moNum(f)>moNum(t)){ const x=f; f=t; t=x; }
-  const months=(f&&t)? live.filter(mo=> moNum(mo)>=moNum(f) && moNum(mo)<=moNum(t)) : [];
-  return {live, f, t, months};
-}
-function ccSelected(){
-  const have=new Set(ccAllCustomers().map(c=>c.name));
-  return (load('_ccSel_',[])||[]).filter(n=> have.has(n));
-}
-function setCcPeriod(which, mo){ save(which==='f'?'_ccFrom_':'_ccTo_', mo); render(true); }
-function ccToggle(name){
-  const sel=ccSelected(); const i=sel.indexOf(name);
-  if(i>=0) sel.splice(i,1); else sel.push(name);
-  save('_ccSel_', sel); render(true);
-}
-function ccClear(){ save('_ccSel_', []); render(true); }
-function ccPickSheet(){
-  const all=ccAllCustomers(), sel=new Set(ccSelected());
-  openSheet(`<h3>🔍 اختار العملاء</h3>
-    <input id="cc_q" placeholder="ابحث بالاسم" oninput="ccFilter()"
-      style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:14px">
-    <div id="cc_list" style="max-height:50vh;overflow:auto;margin-top:8px">${all.map(c=>
-      `<label data-n="${esc(c.name)}" style="display:flex;gap:10px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--border)">
-        <input type="checkbox" value="${esc(c.name)}" ${sel.has(c.name)?'checked':''}>
-        <span style="flex:1">${esc(c.name)}</span>
-        <span style="font-size:11.5px;color:var(--muted)">${repFmt(c.val)}</span></label>`).join('')}</div>
-    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
-      <button class="btn-save" onclick="ccPickSave()">✔ تطبيق</button></div>`);
-}
-function ccFilter(){
-  const q=($('#cc_q').value||'').trim().toLowerCase();
-  document.querySelectorAll('#cc_list label').forEach(l=>{
-    l.style.display = (!q || (l.dataset.n||'').toLowerCase().includes(q)) ? 'flex' : 'none'; });
-}
-function ccPickSave(){
-  const v=[...document.querySelectorAll('#cc_list input:checked')].map(i=>i.value);
-  save('_ccSel_', v); closeSheet(); render(true);
-}
-function buildCustCompare(){
-  const {months,f,t,live}=ccPeriod(), sel=ccSelected();
-  const i0=months.length? live.indexOf(months[0]) : -1;
-  const prevMo = i0>0? live[i0-1] : null;     // الشهر اللي قبل الفترة (لسهم أول شهر)
-  const custByName={}; customers.forEach(c=>custByName[c.name]=c);
-  const rows=sel.map(name=>{
-    const cells=months.map(mo=> Math.round(saleNet(mo,name)));
-    const total=cells.reduce((a,b)=>a+b,0);
-    return {name, cls:(custByName[name]||{}).cls||'', cells, total,
-      avg: months.length? Math.round(total/months.length) : 0};
-  }).sort((a,b)=> b.total-a.total);
-  const tot=months.map((mo,i)=> rows.reduce((a,r)=> a+r.cells[i], 0));
-  const total=tot.reduce((a,b)=>a+b,0);
-  // القطاعات: نفس منطق «موزعين قطاعات» (نقل المجموعات + الأعمدة المخفية)
-  const secSet=new Set(), bySec={}, bySecMo={};
-  sel.forEach(name=>{ bySec[name]={}; bySecMo[name]={};
-    months.forEach(mo=>{ bySecMo[name][mo]={};
-      Object.entries((monthlySector[mo]||{})[name]||{}).forEach(([k,v])=>{
-        const s2=secColOf(k); secSet.add(s2); bySec[name][s2]=(bySec[name][s2]||0)+v;
-        bySecMo[name][mo][s2]=(bySecMo[name][mo][s2]||0)+v; }); }); });
-  const cols=[...secSet].filter(s2=> !secHidden(s2) && sel.some(n=> Math.round(bySec[n][s2]||0))).sort(secSort);
-  const srows=rows.map(r=>{
-    const cells=cols.map(s2=> Math.round(bySec[r.name][s2]||0));
-    const mrows=months.map(mo=>{
-      const c2=cols.map(s2=> Math.round(bySecMo[r.name][mo][s2]||0));
-      return {mo, cells:c2, total:c2.reduce((a,b)=>a+b,0)};
-    });
-    let prev=null;                                   // مفيش بيانات قطاعات للشهر ده = مفيش سهم
-    if(prevMo){
-      const raw=(monthlySector[prevMo]||{})[r.name]||{};
-      if(Object.keys(raw).length){
-        const acc={}; Object.entries(raw).forEach(([k,v])=>{ const s2=secColOf(k); acc[s2]=(acc[s2]||0)+v; });
-        const c2=cols.map(s2=> Math.round(acc[s2]||0));
-        prev={cells:c2, total:c2.reduce((a,b)=>a+b,0)};
-      }
-    }
-    return {name:r.name, cells, total:cells.reduce((a,b)=>a+b,0), mrows, prev};
-  });
-  const stot=cols.map((s2,i)=> srows.reduce((a,r)=> a+r.cells[i], 0));
-  const stotal=stot.reduce((a,b)=>a+b,0);
-  return {months, f, t, rows, tot, total, cols, srows, stot, stotal};
-}
-const ccPct=(v,t)=> t? (Math.round(v/t*1000)/10)+'%' : '—';
-function ccTitle(d, what){
-  const names=d.rows.map(r=>r.name);
-  const who = names.length<=3 ? names.join(' + ') : names.length+' عملاء';
-  return `${what} — ${who} — ${moName(d.f)}${d.f!==d.t? ' إلى '+moName(d.t) : ''}`;
-}
-function repCustCmpModel(){
-  const d=buildCustCompare(), body=[];
-  d.rows.forEach(r=> body.push({type:'row', cells:[r.name, ...r.cells, r.total, r.avg, ccPct(r.total,d.total)]}));
-  if(d.rows.length>1)
-    body.push({type:'tot', cells:['الإجمالي', ...d.tot, d.total,
-      d.months.length? Math.round(d.total/d.months.length) : 0, d.total? '100%' : '—']});
-  const md={title: ccTitle(d, d.rows.length===1? 'تقرير عميل — إجمالي' : 'مقارنة عملاء — إجمالي'),
-    header:['العميل', ...d.months.map(moName), 'الإجمالي', 'المتوسط الشهري', 'النسبة'], body, d,
-    boxes: d.rows.length>1 ? [{l:'أعلى ٣ عملاء', rows:d.rows.map(r=>({name:r.name, val:r.total}))}] : []};
-  md.hiLo = modelHiLo(md, [md.header.length-1]);
-  return md;
-}
-const ccDir=(cur,prev)=> cur>prev? 'up' : (cur<prev? 'down' : '');
-function repCustCmpSecModel(){
-  const d=buildCustCompare(), body=[], arrows=[], multi=d.months.length>1;
-  d.srows.forEach(r=>{
-    r.mrows.forEach((m2,i)=>{
-      body.push({type:'row', cells:[i===0? r.name : '', moName(m2.mo), ...m2.cells, m2.total]});
-      const pv = i===0 ? r.prev : r.mrows[i-1];      // كل شهر مقابل اللي قبله (وأول شهر مقابل اللي قبل الفترة)
-      arrows.push(pv? ['','', ...m2.cells.map((v,k)=> ccDir(v,pv.cells[k])), ccDir(m2.total,pv.total)] : null);
-    });
-    if(multi){ body.push({type:'tot', cells:[r.name, 'إجمالي الفترة', ...r.cells, r.total]}); arrows.push(null); }
-  });
-  if(d.srows.length>1){ body.push({type:'tot', cells:['الإجمالي الكلي', 'الفترة كلها', ...d.stot, d.stotal]}); arrows.push(null); }
-  if(d.cols.length){ body.push({type:'sub', cells:['', 'نسبة القطاع', ...d.stot.map(v=> ccPct(v,d.stotal)), d.stotal? '100%' : '—']}); arrows.push(null); }
-  return {title: ccTitle(d, d.rows.length===1? 'تقرير عميل — قطاعات' : 'مقارنة عملاء — قطاعات'),
-    header:['العميل', 'الشهر', ...d.cols.map(secLabel), 'الإجمالي'], body: d.cols.length? body : [],
-    arrows, hiLo:{}, d};
-}
-function renderRepCustCompare(m){
-  const all=ccAllCustomers();
-  if(!all.length){ m.innerHTML=`<div class="empty">لسه مفيش مبيعات مرفوعة — ارفع شيت من «رفع شيت المبيعات»</div>`; return; }
-  const p=ccPeriod(), sel=ccSelected();
-  const pick=(which,cur)=>`<select onchange="setCcPeriod('${which}',this.value)"
-    style="padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:var(--panel);
-    color:var(--text);font-weight:700;font-size:13.5px">
-    ${p.live.map(mo=>`<option value="${mo}" ${mo===cur?'selected':''}>${moName(mo)}</option>`).join('')}</select>`;
-  const head=`<div class="toolbar" style="align-items:center;gap:8px;flex-wrap:wrap">
-      <span style="font-size:13px;color:var(--muted)">الفترة من</span>${pick('f',p.f)}
-      <span style="font-size:13px;color:var(--muted)">إلى</span>${pick('t',p.t)}</div>
-    <div class="morow"><button class="mochip on" onclick="ccPickSheet()">➕ اختار عملاء</button>
-      ${sel.map(n=>`<button class="mochip on" onclick="ccToggle(${jsArg(n)})">${esc(n)} ✕</button>`).join('')}
-      ${sel.length? `<button class="mochip" onclick="ccClear()">مسح الكل</button>` : ''}</div>`;
-  if(!sel.length){
-    m.innerHTML = head + `<div class="empty">اختار عميل أو أكتر من «➕ اختار عملاء» وحدد الفترة،<br>وهيطلعلك إجمالي بالشهور وتفصيل بالقطاعات</div>`;
-    return;
-  }
-  const md1=repCustCmpModel(), md2=repCustCmpSecModel();
-  m.innerHTML = head + `<div id="cc_t1"></div>
-    <div class="t3lbl" style="margin:16px 0 2px">🧩 حسب القطاعات</div>
-    <div style="font-size:12px;color:var(--muted);margin:0 0 6px">▲ زيادة · ▼ نقص — عن الشهر اللي قبله</div><div id="cc_t2"></div>`
-    + floatBar(`<button onclick="exportCustCmp('p')">📄 PDF</button><button onclick="exportCustCmp('d')">⬇️ تنزيل صورة</button><button onclick="exportCustCmp('i')">📤 مشاركة</button>`);
-  const xbar=id=>`<div class="morow" style="margin-top:6px"><button class="mochip" onclick="exportRep('${id}','x')">📊 إكسل</button></div>`;
-  renderRepTable($('#cc_t1'), 'custcmp', md1, {boxes: modelBoxesHtml(md1), bar: xbar('custcmp')});
-  if(md2.body.length) renderRepTable($('#cc_t2'), 'custcmpsec', md2, {bar: xbar('custcmpsec'), noMedal:true});
-  else $('#cc_t2').innerHTML=`<div class="empty">مفيش تفصيل قطاعات للعملاء دول في الفترة دي</div>`;
-}
-function exportCustCmp(kind){
-  const m1=repCustCmpModel(), m2=repCustCmpSecModel();
-  if(!m1.body.length){ toast('لا توجد بيانات'); return; }
-  const prep=md=>{ md.hiLo = md.hiLo || modelHiLo(md); let i=0;       // ميداليات زي الشاشة
-    md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]+' '+r.cells[0]; i++; } }); };
-  prep(m1); const hasSec=m2.body.length; if(hasSec) m2.hiLo={};
-  const title=ccTitle(m1.d, m1.d.rows.length===1? 'تقرير عميل' : 'مقارنة عملاء');
-  const file=title.replace(/[\/:*?"<>|—]/g,'').trim().replace(/\s+/g,'_');
-  const h3=t=>`<h3 style="margin:14px 0 6px;font-size:15px">${t}</h3>`;
-  const body=`<div class="dx"><h2>${esc(title)}</h2><div class="sub">${todayStr()}</div>
-    ${docBoxesHtml(m1)}${h3('📅 إجمالي المبيعات بالشهور')}${docTableHtml(m1)}
-    ${hasSec? h3('🧩 حسب القطاعات')+`<div style="font-size:11px;color:#555;margin:0 0 6px">▲ زيادة · ▼ نقص — عن الشهر اللي قبله</div>`+docTableHtml(m2) : ''}</div>`;
-  if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true, kind==='d');
-}
 
-/* تصدير موحّد للتقارير التلاتة الجداد */
+
 function repModel(id){
   if(id==='dist')     return repDistTotalModel();
   if(id==='distsec')  return repDistSectorsModel();
   if(id==='doorcode') return repDoorsByCodeModel();
   if(id==='distdoor') return repDistDoorsModel();
-  if(id==='special')  return repSpecialModel();
   if(id==='buys')     return repBuysModel();
-  if(id==='cmpmo')    return repMonthCompareModel();
-  if(id==='custcmp')  return repCustCmpModel();
-  if(id==='custcmpsec') return repCustCmpSecModel();
   if(id==='tb')       return trialBalModel(finCur());
   if(id==='bonus')    return bonusModel();
   if(id.indexOf('fin_')===0) return finModel(finCur(), id.slice(4), finDetailOn());
@@ -3101,7 +2859,7 @@ function exportRep(id, kind){
       {title: md.title, sign: md.sign||[], hiLo: md.hiLo, arrows: md.arrows});
     return;
   }
-  if(!/^(tb|fin_|bonus|custcmpsec)/.test(id)){ let i=0;              // ميداليات في المستند زي الشاشة
+  if(!/^(tb|fin_|bonus)/.test(id)){ let i=0;              // ميداليات في المستند زي الشاشة
     md.body.forEach(r=>{ if(r.type==='row'){ if(i<3) r.cells[0]=MEDALS[i]+' '+r.cells[0]; i++; } }); }
   const body = `<div class="dx"><h2>${esc(md.title)}</h2><div class="sub">${todayStr()}</div>${docBoxesHtml(md)}${docTableHtml(md)}</div>`;
   if(kind==='p') exportDocPdf(body, file, true); else exportDocImage(body, file, true);
@@ -6951,6 +6709,7 @@ function delPinOk(){
     window[n]=function(){ const a=arguments, self=this; askDelPin(()=>o.apply(self,a), LBL[n]); };
   });
 })();
+try{ autoCleanDupWarehouses(); }catch(e){}
 </script>
 </body>
 </html>
