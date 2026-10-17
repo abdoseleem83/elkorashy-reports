@@ -1444,6 +1444,7 @@ function renderGvCodes(m){
   m.innerHTML = `
     <div class="impbar">
       <label>📥 استيراد أكواد جيفز<input type="file" id="impGv" accept=".xlsx,.xls" style="display:none"></label>
+      <label onclick="exportGvCodesXlsx()">📤 تصدير أكواد جيفز (إكسل)</label>
     </div>
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
     ${list.length? list.map(i=>`<div class="card"><div class="info"><div class="name">${esc(i.name)}</div>
@@ -1517,6 +1518,23 @@ function saveGvCode(id){
   save('gvcodes_v1',gvcodes); closeSheet(); render(); toast('تم الحفظ');
 }
 function delGvCode(id){ if(!confirm('حذف الكود؟')) return; gvcodes=gvcodes.filter(x=>x.id!==id); save('gvcodes_v1',gvcodes); render(); }
+/* تصدير أصناف جيفز (الاسم · الكود · القطع بالكرتونة · وزن القطعة · سعر القطعة)
+   بنفس ترتيب أعمدة الاستيراد وشيت «اكواد جيفز» — يعني الملف اللي بيطلع يرجع يتستورد زي ما هو.
+   مفيش سطور عنوان فوق الجدول عشان الاستيراد بيعتبر أول صف هو العناوين. */
+function exportGvCodesXlsx(){
+  if(!gvcodes.length){ toast('لا توجد أكواد جيفز'); return; }
+  if(typeof XLSX==='undefined'){ toast('مكتبة الإكسل لسه ما اتحمّلتش — اتأكد من النت وجرّب تاني'); return; }
+  const num=v=>{ const n=parseFloat(v); return (v===''||v==null||isNaN(n))? '' : n; };
+  const aoa=[['اسم الصنف','الكود','عدد القطع بالكرتونة','وزن القطعة (كجم)','سعر القطعة ($)']]
+    .concat(gvcodes.map(g=>[g.name||'', g.code||'', num(g.perCarton), num(g.weight), num(g.price)]));
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:44},{wch:18},{wch:20},{wch:18},{wch:16}];
+  const wbk=XLSX.utils.book_new();
+  wbk.Workbook={Views:[{RTL:true}]};
+  XLSX.utils.book_append_sheet(wbk, ws, 'اكواد جيفز');
+  XLSX.writeFile(wbk, 'اكواد_جيفز_'+todayStr()+'.xlsx');
+  toast('تم تصدير '+gvcodes.length+' كود');
+}
 function importGvCodes(file){
   const r=new FileReader();
   r.onload=e=>{
