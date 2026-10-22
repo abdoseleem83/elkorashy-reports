@@ -5293,10 +5293,11 @@ function editEmployee(id){
     <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button><button class="btn-save" onclick="saveEmployee('${id}')">حفظ</button></div>`);
 }
 function saveEmployee(id){
+  if(id==='null'||id==='undefined') id='';   // زرار + كان بيبعت 'null' نصًا فالموظف الجديد ما كانش بيتضاف
   const name=$('#e_name').value.trim(), salary=$('#e_salary').value;
   if(!name || salary===''){ toast('الاسم والمرتب مطلوبين'); return; }
   const o={id:id||uid(),name,branch:$('#e_branch').value.trim(),salary:Number(salary),h1:$('#e_h1').checked,h2:$('#e_h2').checked};
-  if(id){ const i=employees.findIndex(x=>x.id===id); employees[i]=o; } else employees.push(o);
+  const i=id? employees.findIndex(x=>x.id===id) : -1; if(i>=0) employees[i]=o; else employees.push(o);
   save('employees_v1',employees); closeSheet(); render(); toast('تم الحفظ');
 }
 function delEmployee(id){ if(!confirm('حذف الموظف؟ (بياناته في الشهور السابقة هتفضل محفوظة بس مش هتظهر)')) return; employees=employees.filter(x=>x.id!==id); save('employees_v1',employees); render(); }
