@@ -2277,7 +2277,7 @@ function renderSales(m){
   else if(st===1) renderSalesCustomers($('#st_content'));
   else renderSalesReportsHub($('#st_content'));
 }
-/* ═══ تقارير المبيعات: أربع تقارير جوه أيقونة واحدة ═══ */
+/* ═══ تقارير المبيعات: ست تقارير جوه أيقونة واحدة ═══ */
 const SALES_REPORTS = [
   {id:'dist',      name:'📈 موزعين إجمالي'},
   {id:'distsec',   name:'🧩 موزعين قطاعات'},
@@ -2872,22 +2872,6 @@ function renderRepBuys(m){
 
 /* ٥) مبيعات خاصة — كل عميل مصنّف «مبيعات خاصة» بسطر وعمود لكل شهر */
 
-
-
-
-/* ═══ ٦) مقارنة المبيعات بين شهرين ═══
-   نفس صفوف تقرير «موزعين إجمالي» (التصنيفات مجمّعة + كل موزع بسطر)،
-   بس عمودين لشهرين تختارهم، وعمود فرق وعمود نسبة. */
-function cmpMonths(){
-  const mos = salesMonths();
-  let a = load('_cmpMoA_', null), b = load('_cmpMoB_', null);
-  if(!mos.includes(a)) a = mos[mos.length-2] || mos[0] || null;
-  if(!mos.includes(b)) b = mos[mos.length-1] || null;
-  return {mos, a, b};
-}
-function setCmpMo(which, mo){ save(which==='a'?'_cmpMoA_':'_cmpMoB_', mo); render(true); }
-
-const pctTxt = p => p===null ? '—' : (p>0?'+':'')+p+'%';
 
 
 
