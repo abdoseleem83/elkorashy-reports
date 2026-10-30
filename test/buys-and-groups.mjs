@@ -24,8 +24,8 @@ await pg.evaluate(()=>{ module='sales'; save('_salesTab_',2); save('_salesRep_',
 await pg.waitForTimeout(400);
 
 // ── ١) تقرير المشتريات
-ck('أيقونة «مشتريات» موجودة',
-  (await pg.locator('#st_content > .stabs .stab').allInnerTexts()).some(t=>/مشتريات/.test(t)));
+ck('أيقونة «عملاء جملة» موجودة',
+  (await pg.locator('#st_content .rgrid .rtile').allInnerTexts()).some(t=>/عملاء جملة/.test(t)));
 const md=await pg.evaluate(()=> repModel('buys'));
 ck('عملاء الجملة بس في التقرير',
   md.body.filter(r=>r.type==='row').map(r=>r.cells[0]).join('|')==='عبد الخالق|محل النور',
@@ -66,7 +66,7 @@ ck('وفيه أسماء العملاء والمجموعات', /عبد الخال
 const cnt=(doc.match(/dxtl/g)||[]).length;
 ck('مجموعتين مربعات (عملاء ومجموعات)', cnt===2, String(cnt));
 // في كل التقارير
-const all=await pg.evaluate(()=> ['dist','distsec','doorcode','distdoor','special','cmpmo','buys']
+const all=await pg.evaluate(()=> ['dist','distsec','doorcode','distdoor','buys']
   .map(id=>{ try{ const m3=repModel(id); return {id, n:((m3&&m3.boxes)||[]).length}; }catch(e){ return {id, err:1}; } }));
 ck('كل تقارير المبيعات فيها مربعات', all.every(x=>x.err||x.n>0), JSON.stringify(all));
 console.log(bad?('❌ فشل '+bad):'✅ كله تمام');

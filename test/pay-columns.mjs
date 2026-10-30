@@ -13,27 +13,27 @@ await pg.goto(process.env.APP_URL); await pg.waitForTimeout(900);
 await pg.evaluate(()=>{ module='payroll'; save('_payTab_',2); payKind='full'; payMonth='2026-09'; payHalf=2; render(true); });
 await pg.waitForTimeout(350);
 ck('زرار اختيار الأعمدة ظاهر في الكشف الكامل',
-  /اختيار الأعمدة \(15 من 15\)/.test(await pg.evaluate(()=>document.body.innerText)));
+  /اختيار الأعمدة \(18 من 18\)/.test(await pg.evaluate(()=>document.body.innerText)));
 let h=await pg.evaluate(()=> payModel().header);
-ck('الكشف الكامل ١٥ عمود + م والموظف والفرع', h.length===18, String(h.length));
+ck('الكشف الكامل ١٨ عمود + م والموظف والفرع', h.length===21, String(h.length));
 
 await pg.evaluate(()=> payColsSheet()); await pg.waitForTimeout(250);
-ck('الشيت فيه كل الأعمدة', (await pg.locator('.sheet .clschip').count())===15);
+ck('الشيت فيه كل الأعمدة', (await pg.locator('.sheet .clschip').count())===18);
 // نشيل ٣ أعمدة
 for(const k of ['dAb','dLate','dPen']) await pg.evaluate(x=> payColToggle(x), k);
 await pg.waitForTimeout(250);
 h=await pg.evaluate(()=> payModel().header);
-ck('بعد شيل ٣ أعمدة بقى ١٥', h.length===15, h.join('|'));
+ck('بعد شيل ٣ أعمدة بقى ١٨', h.length===18, h.join('|'));
 ck('خصم الغياب والتأخير والجزاءات اتشالوا',
   !h.includes('خصم غياب') && !h.includes('خصم تأخير') && !h.includes('خصم جزاءات'), '');
 ck('الاختيار اتحفظ',
-  (await pg.evaluate(()=> JSON.parse(localStorage.getItem('payFullCols_v1')).length))===12);
+  (await pg.evaluate(()=> JSON.parse(localStorage.getItem('payFullCols_v1')).length))===15);
 // «الصافي بس»
 await pg.evaluate(()=> payColsAll(0)); await pg.waitForTimeout(250);
 h=await pg.evaluate(()=> payModel().header);
 ck('«الصافي بس» = م والموظف والفرع والصافي', h.join('|')==='م|الموظف|الفرع|الصافي', h.join('|'));
 await pg.evaluate(()=> payColsAll(1)); await pg.waitForTimeout(250);
-ck('«الكل» رجّعهم', (await pg.evaluate(()=> payModel().header.length))===18);
+ck('«الكل» رجّعهم', (await pg.evaluate(()=> payModel().header.length))===21);
 
 // فرع واحد = عمود الفرع وسطر الفرع مالهمش لازمة
 await pg.evaluate(()=> setPayExportBranch('الاسكندريه')); await pg.waitForTimeout(250);
@@ -47,7 +47,7 @@ ck('كل الفروع: الفرع رجع', (await pg.evaluate(()=> payModel().he
 // كشف الإرسال ليه اختياره لوحده
 await pg.evaluate(()=>{ setPayKind('send'); }); await pg.waitForTimeout(250);
 ck('كشف الإرسال زرار بعدده هو',
-  /اختيار الأعمدة \(9 من 10\)/.test(await pg.evaluate(()=>document.body.innerText)), '');
+  /اختيار الأعمدة \(11 من 12\)/.test(await pg.evaluate(()=>document.body.innerText)), '');
 // المستند العريض بيدخل كامل
 const w=await pg.evaluate(()=>{ payKind='full'; const el=mkDoc(payDocBody(), true);
   const t=el.querySelector('table'); const r={cut: t.getBoundingClientRect().width > el.clientWidth+2};

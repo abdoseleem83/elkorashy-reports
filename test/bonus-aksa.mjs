@@ -30,14 +30,14 @@ let st=await pg.evaluate(()=> ({k:bonusFile('kraft'), a:bonusFile('acc')}));
 ck('كرافت: صنفين (المكرر اتجمع والإجمالي اتشال)', st.k && st.k.rows.length===2 && st.k.rows[0].val===1250000, JSON.stringify(st.k&&st.k.rows));
 let md=await pg.evaluate(()=> bonusModel());
 const row=l=> (md.body.find(r=>r.cells[0]===l)||{}).cells;
-ck('كرافت 1,750,000 × 2% = 35,000', JSON.stringify(row('كرافت لاين'))===JSON.stringify(['كرافت لاين',1750000,'2%',35000]), JSON.stringify(row('كرافت لاين')));
+ck('كرافت 1,750,000 × 2% = 35,000', JSON.stringify(row('كرافت لاين').slice(0,4))===JSON.stringify(['كرافت لاين',1750000,'2%',35000]), JSON.stringify(row('كرافت لاين')));
 ck('اكسسوارات عام 300,000 × 5%', row('اكسسوارات عام')[3]===15000, JSON.stringify(row('اكسسوارات عام')));
 ck('بلسيه لوحده', row('اكسسوارات ( بلسيه )')[1]===100000);
 ck('سيلكون وفوم مع بعض 100,000', row('اكسسوارات ( سيلكون وفوم)')[1]===100000);
 ck('الفرش برّه البونص 0%', row('خارج البونص')[2]==='0%' && row('خارج البونص')[3]===0);
 const tot=md.body[md.body.length-1].cells;
 ck('الإجمالي', tot[1]===2260000 && tot[3]===35000+15000+5000+5000, JSON.stringify(tot));
-ck('العنوان والأعمدة', md.header.join('|')==='القطاع|صافي المشتريات|نسبة البونص|البونص المستحق');
+ck('العنوان والأعمدة', md.header.join('|')==='القطاع|صافي المشتريات|نسبة البونص|البونص المستحق|بونص اكسا|الفرق');
 
 // تعديل النسبة ونقل صنف
 await pg.evaluate(()=>{ setBonusTab('rep'); }); await pg.waitForTimeout(200);
@@ -46,7 +46,7 @@ ck('بيقول إن فيه ملفات لسه ما اترفعتش', /لسه ما 
 await pg.locator('#bn_c td', {hasText:'كرافت لاين'}).first().click(); await pg.waitForTimeout(200);
 await pg.fill('#bn_rate','2.5'); await pg.locator('#sheet .btn-save').click(); await pg.waitForTimeout(200);
 md=await pg.evaluate(()=> bonusModel());
-ck('النسبة اتعدلت 2.5%', JSON.stringify(row('كرافت لاين'))===JSON.stringify(['كرافت لاين',1750000,'2.5%',43750]), JSON.stringify(row('كرافت لاين')));
+ck('النسبة اتعدلت 2.5%', JSON.stringify(row('كرافت لاين').slice(0,4))===JSON.stringify(['كرافت لاين',1750000,'2.5%',43750]), JSON.stringify(row('كرافت لاين')));
 await pg.evaluate(()=>{ bonusLineSheet('خارج البونص'); bonusMoveItem('فرش 5*7 باللفه','اكسسوارات عام','خارج البونص'); });
 md=await pg.evaluate(()=> bonusModel());
 ck('نقل الفرش لعام', !row('خارج البونص') && row('اكسسوارات عام')[1]===310000, JSON.stringify(md.body));

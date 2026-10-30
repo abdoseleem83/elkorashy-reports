@@ -26,7 +26,7 @@ await pg.waitForTimeout(500);
 const md = await pg.evaluate(()=>payModel());
 // ── الأعمدة بالترتيب اللي في الورقة
 check('أعمدة الكشف بالترتيب الصح',
-  md.header.join('|')==='م|الموظف|الفرع|راتب النصف|غياب بإذن (أيام)|غياب بدون إذن (أيام)|تأخيرات (ساعات)|إضافي (ساعات)|سلف (جنيه)|تأمينات|حوافز (جنيه)|صافي الراتب|ملاحظات',
+  md.header.join('|')==='م|الموظف|الفرع|راتب النصف|غياب بإذن (أيام)|غياب بدون إذن (أيام)|تأخيرات (ساعات)|إضافي (ساعات)|إضافي (أيام)|ماموريات (أيام)|سلف (جنيه)|تأمينات|حوافز (جنيه)|صافي الراتب|ملاحظات',
   md.header.join('|'));
 check('الساعات والأيام خام مش مبالغ محسوبة', md.header.includes('إضافي (ساعات)') && !md.header.includes('مبلغ إضافي'));
 check('فيه عمود ملاحظات', md.header[md.header.length-1]==='ملاحظات');
@@ -40,28 +40,29 @@ check('الفرع عمود جنب الموظف', md.body[0].cells[2]==='pvc');
 
 // ── القيم
 const row = n=> md.body.find(r=> r.cells[1]===n);
+const C = {sal:3, abP:4, otH:7, adv:10, ins:11, bonus:12, net:13, note:14};
 check('عبدالخالق: ١٠٬٠٠٠ ناقص ٢٬٠٠٠ سلف = ٨٬٠٠٠',
-  row('عبدالخالق عادل').cells[3]===10000 && row('عبدالخالق عادل').cells[8]===2000 && row('عبدالخالق عادل').cells[11]===8000,
+  row('عبدالخالق عادل').cells[3]===10000 && row('عبدالخالق عادل').cells[C.adv]===2000 && row('عبدالخالق عادل').cells[C.net]===8000,
   JSON.stringify(row('عبدالخالق عادل').cells));
-check('حاتم: ٦٬٠٠٠ + ٢٠٠ حوافز = ٦٬٢٠٠', row('حاتم سمير').cells[11]===6200);
-check('الملاحظة بتظهر في سطرها', row('حاتم سمير').cells[12]==='حاويه');
+check('حاتم: ٦٬٠٠٠ + ٢٠٠ حوافز = ٦٬٢٠٠', row('حاتم سمير').cells[C.net]===6200);
+check('الملاحظة بتظهر في سطرها', row('حاتم سمير').cells[C.note]==='حاويه');
 check('علاء: غياب بإذن ٢ يوم مسجّل', row('علاء شعبان').cells[4]===2);
-check('ممدوح: تأمينات ٣٥٠ وحوافز ٢٬٠٠٠', row('ممدوح باز').cells[9]===350 && row('ممدوح باز').cells[10]===2000);
+check('ممدوح: تأمينات ٣٥٠ وحوافز ٢٬٠٠٠', row('ممدوح باز').cells[C.ins]===350 && row('ممدوح باز').cells[C.bonus]===2000);
 
 // ── الخانات الفاضية تفضل فاضية مش صفر
-check('الخانة اللي مافيهاش حاجة فاضية مش صفر', row('حاتم سمير').cells[4]==='' && row('حاتم سمير').cells[8]==='',
+check('الخانة اللي مافيهاش حاجة فاضية مش صفر', row('حاتم سمير').cells[C.abP]==='' && row('حاتم سمير').cells[C.adv]==='',
   JSON.stringify(row('حاتم سمير').cells));
-check('الراتب والصافي أرقام دايمًا', typeof row('محمد فوزي').cells[3]==='number' && typeof row('محمد فوزي').cells[11]==='number');
+check('الراتب والصافي أرقام دايمًا', typeof row('محمد فوزي').cells[3]==='number' && typeof row('محمد فوزي').cells[C.net]==='number');
 
 // ── الإجمالي
 const tot = md.body[md.body.length-1].cells;
 const dataRows = md.body.filter(r=>r.type==='row');
 const colSum = i=> dataRows.reduce((a,r)=> a + (Number(r.cells[i])||0), 0);
 check('إجمالي راتب النصف = مجموع السطور', tot[3]===colSum(3) && tot[3]===43000, tot[3]+' / '+colSum(3));
-check('إجمالي الصافي = مجموع السطور', tot[11]===colSum(11), tot[11]+' / '+colSum(11));
-check('إجمالي السلف والتأمينات والحوافز', tot[8]===2000 && tot[9]===350 && tot[10]===2200,
-  [tot[8],tot[9],tot[10]].join('/'));
-check('إجمالي الساعات والأيام', tot[7]===8 && tot[4]===2, [tot[4],tot[7]].join('/'));
+check('إجمالي الصافي = مجموع السطور', tot[C.net]===colSum(C.net), tot[C.net]+' / '+colSum(C.net));
+check('إجمالي السلف والتأمينات والحوافز', tot[C.adv]===2000 && tot[C.ins]===350 && tot[C.bonus]===2200,
+  [tot[C.adv],tot[C.ins],tot[C.bonus]].join('/'));
+check('إجمالي الساعات والأيام', tot[C.otH]===8 && tot[C.abP]===2, [tot[C.abP],tot[C.otH]].join('/'));
 
 // ── العنوان بشكل الورقة
 check('العنوان: الفترة ١٦ الى آخر الشهر', /كشف مرتبات النصف الثاني/.test(md.title) && /١٦ الى آخر الشهر/.test(md.title), md.title);
@@ -92,7 +93,7 @@ const x = await pg.evaluate(()=>{
 check('الإكسل مفيهوش عنوان مكرر', x.d[0][0]==='م', String(x.d[0][0]));
 check('الإكسل من غير خلفيات', x.o.plain===true && !x.o.colFill, JSON.stringify({plain:x.o.plain,cf:x.o.colFill}));
 check('إشارات الأحمر والأخضر متمرّرة للإكسل',
-  x.o.sign[4]==='minus' && x.o.sign[7]==='plus' && x.o.sign[8]==='minus' && x.o.sign[10]==='plus',
+  x.o.sign[4]==='minus' && x.o.sign[7]==='plus' && x.o.sign[10]==='minus' && x.o.sign[12]==='plus',
   JSON.stringify(x.o.sign));
 check('عرض الأعمدة مطابق للعدد', x.w.length===x.d[0].length, x.w.length+' vs '+x.d[0].length);
 
@@ -105,10 +106,10 @@ await pg.evaluate(()=>{ save('_payTab_',1); render(true); });
 await pg.waitForTimeout(400);
 const th = await pg.evaluate(()=>[...document.querySelectorAll('#pay_c table.payin tr:first-child th')].map(x=>x.textContent.trim()));
 check('شاشة الحضور بقت جدول بأعمدة جنب بعض',
-  th.join('|')==='الموظف|راتب النصف|غياب بإذن (أيام)|غياب بدون إذن (أيام)|تأخيرات (ساعات)|إضافي (ساعات)|جزاءات (أيام)|سلف (جنيه)|تأمينات (جنيه)|حوافز (جنيه)|ملاحظات|الصافي',
+  th.join('|')==='الموظف|راتب النصف|غياب بإذن (أيام)|غياب بدون إذن (أيام)|تأخيرات (ساعات)|إضافي (ساعات)|إضافي (أيام)|ماموريات (أيام)|جزاءات (أيام)|سلف (جنيه)|تأمينات (جنيه)|حوافز (جنيه)|ملاحظات|الصافي',
   th.join('|'));
 const nInputs = await pg.evaluate(()=>document.querySelectorAll('#pay_c table.payin input').length);
-check('لكل موظف خانة في كل عمود', nInputs===6*9, nInputs+' خانة');
+check('لكل موظف خانة في كل عمود', nInputs===6*11, nInputs+' خانة');
 check('مفيش قوايم منسدلة تفتح لكل موظف', (await pg.evaluate(()=>document.querySelectorAll('#pay_c .grp').length))===0);
 check('اسم الموظف ثابت وانت بتسحب',
   await pg.evaluate(()=>getComputedStyle(document.querySelector('#pay_c table.payin td')).position)==='sticky');

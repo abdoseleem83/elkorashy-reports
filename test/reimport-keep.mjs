@@ -27,9 +27,14 @@ ck('العميل الموجود فضل بتصنيفه والجديد اتضاف'
 ck('الموظف بنفس الـid فالحضور فضل', r.eid==='e1' && r.sal===9500 && r.ot===5, JSON.stringify(r));
 
 // حذف صنف بيشيله من الفهرس (كان بيفضل يتلقى في المقارنات والاستيراد)
-const d=await pg.evaluate(()=>{ items=[{id:'i1',name:'صنف للحذف',mainGroup:'x'}]; reindexItems();
-  const before=!!itemFind('صنف  للحذف'); window.confirm=()=>true; delItem('i1');
-  return {before, after: !!itemsByName['صنف للحذف'] || !!itemFind('صنف للحذف')}; });
+// الحذف بقى محمي برقم سري (askDelPin) — من غيره الصنف مايتشالش
+const before=await pg.evaluate(()=>{ items=[{id:'i1',name:'صنف للحذف',mainGroup:'x'}]; reindexItems(); window.confirm=()=>true;
+  const f=!!itemFind('صنف  للحذف'); delItem('i1'); return f; });
+await pg.waitForTimeout(150);
+ck('الحذف بيطلب الرقم السري ومابيحذفش قبله', await pg.evaluate(()=> items.length===1 && !!document.querySelector('#del_pw')));
+await pg.evaluate(()=>{ document.querySelector('#del_pw').value=FIN_PASS; delPinOk(); }); await pg.waitForTimeout(250);
+const after=await pg.evaluate(()=> !!itemsByName['صنف للحذف'] || !!itemFind('صنف للحذف'));
+const d={before, after};
 ck('الصنف المحذوف ما بقاش بيتلقى', d.before && !d.after, JSON.stringify(d));
 
 // تغيير اسم عميل بينقل مبيعاته، والاسم المكرر مرفوض
