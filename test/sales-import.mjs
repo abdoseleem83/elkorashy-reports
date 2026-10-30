@@ -50,13 +50,17 @@ check('الأكواد اتستخرجت من أسماء الأصناف',
 await pg.evaluate(()=>{ customers.slice(0,10).forEach(c=>c.cls='موزع'); save('customers_v1',customers); });
 await pg.waitForTimeout(300);
 const dc = await pg.evaluate(()=>repModel('doorcode'));
-const dcTot = dc.body[dc.body.length-1].cells;
-check('تقرير الأبواب بالكود = نفس المخزّن', Math.round(dcTot[4])===d.v, dcTot[4]+' vs '+d.v);
+const dcCells = dc.body.filter(r=>r.type==='tot')[0].cells;   // سطر «كمية» بيجي بعد الإجمالي فمنخدش آخر سطر
+const dcVal = dcCells[dcCells.length-1];
+// التقرير بيستبعد الإكسسوارات والخدمات والأصناف من غير كود، فمجموعه أقل من أو يساوي المخزّن
+check('تقرير الأبواب بالكود جزء من المخزّن', Math.round(dcVal)>0 && Math.round(dcVal)<=d.v, dcVal+' vs '+d.v);
 const dd = await pg.evaluate(()=>repModel('distdoor'));
-const ddTot = dd.body[dd.body.length-1].cells;
-check('أبواب الموزعين جزء من إجمالي الأبواب', ddTot[3]>0 && ddTot[3]<=dcTot[4], ddTot[3]+' / '+dcTot[4]);
+const ddCells = (dd.body.filter(r=>r.type==='tot')[0]||dd.body[dd.body.length-1]).cells;
+const ddVal = ddCells[ddCells.length-1];
+// «موزعين أبواب» = كل عميل اشترى أبواب (الأصناف من غير كود داخلة) فأكبر من أو يساوي «بالكود» وأقل من المخزّن
+check('أبواب العملاء بين تقرير الكود وإجمالي المخزّن', ddVal>=dcVal && Math.round(ddVal)<=d.v, ddVal+' / '+dcVal+' / '+d.v);
 const dt = await pg.evaluate(()=>repModel('dist'));
-check('تقرير الإجمالي فيه الشهر عمود', dt.header.includes('2026-01'), dt.header.join('|'));
+check('تقرير الإجمالي فيه الشهر عمود', dt.header.some(h=>/يناير 2026/.test(h)), dt.header.join('|'));
 
 check('مفيش أخطاء جافاسكريبت', errs.length===0, errs.join(' | '));
 console.log(`\n${pass} نجح · ${fail} فشل`);

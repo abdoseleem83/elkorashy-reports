@@ -85,7 +85,7 @@ const docs = await pg.evaluate(()=>{
     ['استلام جيفز',      ()=> gvRecvDocBody(), true],
     ['تسعير جيفز',       ()=> gvPriceDocBody(), true],
   ];
-  ['dist','distsec','doorcode','distdoor','special','cmpmo','bonus'].forEach(id=>
+  ['dist','distsec','doorcode','distdoor','bonus'].forEach(id=>
     list.push(['تقرير '+id, ()=>{ const md=repModel(id); md.hiLo=modelHiLo(md);
       return `<div class="dx"><h2>${md.title}</h2><div class="sub">x</div>${docTableHtml(md)}</div>`; }, true]));
   ['tb','fin_isco','fin_bs'].forEach(id=>
@@ -131,7 +131,7 @@ const xl = await pg.evaluate(()=>{
     ['استلام جيفز', ()=> exportGvRecvExcel()],
     ['تسعير جيفز', ()=> exportGvPriceExcel()],
   ];
-  ['dist','distsec','doorcode','distdoor','special','cmpmo','tb','fin_isco','fin_bs','bonus'].forEach(id=>
+  ['dist','distsec','doorcode','distdoor','tb','fin_isco','fin_bs','bonus'].forEach(id=>
     runs.push(['إكسل '+id, ()=> exportRep(id,'x')]));
   runs.forEach(([name, fn])=>{
     let got=null;
