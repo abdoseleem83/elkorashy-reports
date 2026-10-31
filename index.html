@@ -6,7 +6,11 @@
 <title>تقارير القرشي</title>
 <!-- xlsx-js-style = نفس SheetJS 0.18.5 بالظبط + دعم تنسيق الخلايا (ألوان/برواز/تجميد).
      القراءة والكتابة ما اتغيروش، اللي زاد هو خاصية s على الخلية. -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1d4ed8">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<!-- المكتبة محلية (lib/) عشان الإكسل يشتغل من غير نت؛ لو الملف مش موجود بنرجع للـCDN -->
+<script src="lib/xlsx.bundle.js" onerror="document.write('<script src=&quot;'+'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js'+'&quot;><\/script>')"></script>
 <style>
 :root{
   --blue:#1d4ed8; --blue-d:#173fb0; --bg:#f4f6fb; --panel:#ffffff; --panel2:#eef2fb;
@@ -521,6 +525,16 @@ function save(k,v){
 let _toastT=null;
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(_toastT); _toastT=setTimeout(()=>t.classList.remove('show'),2000); }
 function openSheet(html){ $('#sheet').innerHTML=html; $('#overlay').classList.add('show'); }
+/* أي خطأ مفاجئ: بنسجّله ونقول للمستخدم بدل ما الزرار يبان «ميت» من غير سبب.
+   آخر خطأ بيظهر في ⚙️ عشان نقدر نعرف السبب. */
+let _errToastAt=0;
+function logAppError(msg){
+  try{ localStorage.setItem('_lastJsErr_', JSON.stringify({at:Date.now(), msg:String(msg).slice(0,300)})); }catch(e){}
+  if(Date.now()-_errToastAt>4000){ _errToastAt=Date.now(); try{ toast('حصل خطأ غير متوقع — بياناتك محفوظة، جرّب تاني'); }catch(e){} }
+}
+window.addEventListener('error', e=>{ if(e && e.message) logAppError(e.message); });
+window.addEventListener('unhandledrejection', e=>{ const r=e&&e.reason; logAppError((r&&r.message)||r||'promise'); });
+
 function closeSheet(){ $('#overlay').classList.remove('show'); }
 $('#overlay').addEventListener('click', e=>{ if(e.target.id==='overlay') closeSheet(); });
 
@@ -1234,6 +1248,17 @@ function openSyncSheet(){
     <div id="connMsg" style="margin-top:8px;font-size:12.5px;line-height:1.9;white-space:pre-wrap"></div>
     <hr style="border-color:var(--border);margin:14px 0">
     <div style="font-size:12.5px;color:var(--muted);line-height:1.8;margin-bottom:8px">
+      <b>💾 نسخة احتياطية على ملف</b> — احتفظ بيها برّه التطبيق (واتساب / درايف).
+      آخر نسخة: <b>${load('_lastBackup_',0)? new Date(load('_lastBackup_',0)).toLocaleString('ar-EG') : 'لسه ما اتعملتش'}</b>
+      ${load('_lastJsErr_',null)? '<br>آخر خطأ تقني: <span style="color:var(--danger)">'+esc(load('_lastJsErr_',{}).msg||'')+'</span>' : ''}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+      <button onclick="backupDownload()" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--fg);font-weight:700;cursor:pointer">⬇️ نزّل نسخة</button>
+      <button onclick="backupPick()" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--fg);font-weight:700;cursor:pointer">♻️ استرجع من ملف</button>
+    </div>
+    <input type="file" id="bk_file" accept=".json,application/json" style="display:none" onchange="backupFileChosen(this)">
+    <hr style="border-color:var(--border);margin:14px 0">
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.8;margin-bottom:8px">
       <b>مساحة الجهاز</b> — مستعمل دلوقتي <b>${fmtKB(lsTotal())}</b>${oldBytes? ' · منها <b style="color:var(--danger)">'+fmtKB(oldBytes)+'</b> بقايا التطبيق القديم' : ''}.<br>
       المتصفح بيدي الموقع مساحة محدودة، ولو اتملت الحفظ بيفشل.
     </div>
@@ -1243,6 +1268,48 @@ function openSyncSheet(){
       <b>مش</b> بتاعة النسخة الجديدة. بيسألك قبل ما يمسح ويوريك العدد.</div>
     <button onclick="wipeOldServerData()" style="width:100%;padding:11px;border-radius:10px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-weight:700;cursor:pointer">🧹 امسح بيانات التطبيق القديم من السيرفر</button>
     <div id="wipeMsg" style="margin-top:8px;font-size:12.5px"></div>`);
+}
+/* ═══ نسخة احتياطية كاملة على ملف + استرجاع منها ═══
+   البيانات متخزنة في المتصفح والسيرفر بس؛ الملف ده بيدّي نسخة مستقلة تحتفظ بيها
+   (واتساب / درايف) لو حصل مسح للمتصفح أو مزامنة بوّظت حاجة. */
+function backupBuild(){
+  const data={};
+  SYNC_KEYS.forEach(k=>{ const raw=localStorage.getItem(k); if(raw==null) return; try{ data[k]=JSON.parse(raw); }catch(e){} });
+  return {app:'elkorashy-reports', v:1, at:new Date().toISOString(), data};
+}
+function backupDownload(){
+  const b=backupBuild(), n=Object.keys(b.data).length;
+  if(!n){ toast('مفيش بيانات تتحفظ'); return; }
+  const d=new Date(), p=x=>String(x).padStart(2,'0');
+  const name='elkorashy-backup-'+d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes())+'.json';
+  const url=URL.createObjectURL(new Blob([JSON.stringify(b)],{type:'application/json'}));
+  const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),4000);
+  save('_lastBackup_', Date.now());
+  toast('اتنزّلت النسخة ('+n+' قسم)');
+}
+let _bkPending=null;
+function backupPick(){ const f=$('#bk_file'); if(f){ f.value=''; f.click(); } }
+function backupFileChosen(inp){
+  const f=inp.files&&inp.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    let o=null; try{ o=JSON.parse(r.result); }catch(e){}
+    if(!o || o.app!=='elkorashy-reports' || !o.data || typeof o.data!=='object'){ toast('الملف ده مش نسخة احتياطية من التطبيق'); return; }
+    const keys=Object.keys(o.data).filter(k=> SYNC_KEYS.indexOf(k)>=0);
+    if(!keys.length){ toast('النسخة فاضية'); return; }
+    _bkPending={keys, data:o.data, at:o.at};
+    askDelPin(backupRestoreRun, 'استرجاع '+keys.length+' قسم من نسخة '+(o.at? new Date(o.at).toLocaleDateString('ar-EG') : '')+' — الحالي هيتبدل');
+  };
+  r.readAsText(f);
+}
+function backupRestoreRun(){
+  const p=_bkPending; _bkPending=null; if(!p) return;
+  // نسخة من الحالي قبل ما نكتب فوقه، عشان لو اتلخبط نقدر نرجّع
+  try{ localStorage.setItem('_preRestore_', JSON.stringify(backupBuild())); }catch(e){}
+  p.keys.forEach(k=> save(k, p.data[k]));
+  toast('اتسترجعت البيانات — بيعيد التحميل');
+  setTimeout(()=>location.reload(), 900);
 }
 function saveSyncCfg(){
   const cur = load('_sync_', {});
@@ -3190,17 +3257,23 @@ function commitImport(){
 }
 
 // ===================== تصدير حقيقي (PDF يتنزّل + صورة) =====================
-const LIB_URLS={
-  html2canvas:'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
-  jspdf:'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  exceljs:'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js'
+const LIB_URLS={       // [المحلي أولاً، وبعده CDN لو الملف المحلي مش موجود]
+  html2canvas:['lib/html2canvas.min.js','https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'],
+  jspdf:['lib/jspdf.umd.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'],
+  exceljs:['lib/exceljs.min.js','https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js']
 };
 function loadLib(key, test){
   return new Promise((res,rej)=>{
     if(test()) return res();
-    const s=document.createElement('script'); s.src=LIB_URLS[key];
-    s.onload=()=>test()?res():rej(new Error('lib '+key)); s.onerror=()=>rej(new Error('net '+key));
-    document.head.appendChild(s);
+    const urls=[].concat(LIB_URLS[key]);
+    const next=i=>{
+      if(i>=urls.length) return rej(new Error('net '+key));
+      const s=document.createElement('script'); s.src=urls[i];
+      s.onload=()=> test()? res() : next(i+1);
+      s.onerror=()=>{ s.remove(); next(i+1); };
+      document.head.appendChild(s);
+    };
+    next(0);
   });
 }
 const DOC_CSS=`<style>
@@ -6751,6 +6824,10 @@ function delPinOk(){
   });
 })();
 try{ autoCleanDupWarehouses(); }catch(e){}
+/* تشغيل من غير نت: الصفحة والمكتبات بتتحفظ بعد أول فتح (بيشتغل على https أو localhost بس) */
+if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
 </script>
 </body>
 </html>
