@@ -3,7 +3,8 @@
 import {chromium} from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import {existsSync} from 'fs';
 let bad=0; const ck=(n,ok,x='')=>{ console.log((ok?'✅':'❌')+' '+n+(x?'  — '+x:'')); if(!ok) bad++; };
-const LIB='/tmp/fin/lib';
+import {fileURLToPath} from 'url'; import {dirname, join} from 'path';
+const LIB=join(dirname(fileURLToPath(import.meta.url)),'..','lib');   // المكتبات المحلية اللي جوه المشروع
 if(!existsSync(LIB+'/jspdf.umd.min.js')){ console.log('⏭️  مكتبات الـPDF مش موجودة محليًا — تخطّي'); process.exit(0); }
 const b=await chromium.launch(); const pg=await b.newPage({viewport:{width:412,height:880}});
 pg.on('pageerror',e=>{bad++;console.log('❌ JS:',e.message)});
