@@ -3551,21 +3551,33 @@ function shortRowUnits(whId, name){
   if(r.q2) o[r.u2]=r.q2;
   return o;
 }
+/* مستند طلبية النواقص (PDF / صورة): خط كبير بولد، من غير ملاحظة ولا ملخص،
+   والأصناف على نصين جنب بعض (زي ورقتين في ورقة واحدة) عشان الطلبية الطويلة تدخل في صفحة. */
 function shortDocBody(whId){
   const w=warehouses.find(x=>x.id===whId), list=Object.entries(whShortage[whId]||{});
-  const t=shortTotals(whId), cols=shortUnitCols(whId);
-  const line=cols.map(u=> u+': '+fmtN(t.byUnit[u])).join(' · ');
-  return `<div class="dx"><h2>طلبية نواقص ${esc(w.name)}</h2>
-    <div class="sub">بتاريخ ${getOrderDate(whId)} — ${t.items} صنف${line? ' · '+esc(line) : ''}</div>
-    <table><tr><th>الصنف</th>${cols.map(u=>`<th>${esc(u)}</th>`).join('')}<th>ملاحظة</th></tr>
-    ${list.map(([n])=>{ const q=shortRowUnits(whId,n); const r=shortRec(whId,n);
-      if(!Object.keys(q).length) return '';
-      return `<tr class="z"><td>${esc(n)}</td>${cols.map(u=>`<td>${esc(q[u]||'')}</td>`).join('')}<td>${esc(r.note||'—')}</td></tr>`; }).join('')}
-    <tr class="m"><td><b>الإجمالي</b></td>${cols.map(u=>`<td><b>${fmtN(t.byUnit[u])}</b></td>`).join('')}<td>${t.items} صنف</td></tr></table>
-    <h3>ملخص الإجمالي حسب المجموعة</h3>${breakdownTableHtml(buildGroupBreakdown(list, whId), cols)}</div>`;
+  const cols=shortUnitCols(whId);
+  const rows=list.map(([n])=>({n, q:shortRowUnits(whId,n)})).filter(r=>Object.keys(r.q).length);
+  const h=Math.ceil(rows.length/2), A=rows.slice(0,h), B=rows.slice(h);
+  const half=r=> r
+    ? `<td class="n">${esc(r.n)}</td>${cols.map(u=>`<td>${esc(r.q[u]||'')}</td>`).join('')}`
+    : `<td class="n"></td>${cols.map(()=>'<td></td>').join('')}`;
+  const head=`<th>الصنف</th>${cols.map(u=>`<th>${esc(u)}</th>`).join('')}`;
+  return `<div class="dx sh"><style>
+      .dx.sh{font-size:22px;font-weight:800}
+      .dx.sh h2{font-size:30px}
+      .dx.sh .sub{font-size:19px;font-weight:700}
+      .dx.sh th{font-size:21px;font-weight:800;padding:10px 8px}
+      .dx.sh td{font-size:22px;font-weight:800;padding:10px 8px;white-space:normal;line-height:1.35}
+      .dx.sh td.n{text-align:right;min-width:0;width:34%}
+      .dx.sh th.gap,.dx.sh td.gap{width:14px;min-width:14px;padding:0;border:none;background:#fff}
+    </style><h2>طلبية نواقص ${esc(w.name)}</h2>
+    <div class="sub">بتاريخ ${getOrderDate(whId)}</div>
+    <table><tr>${head}<th class="gap"></th>${head}</tr>
+    ${A.map((r,i)=>`<tr class="z">${half(r)}<td class="gap"></td>${half(B[i])}</tr>`).join('')}
+    </table></div>`;
 }
-function exportShortPdf(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocPdf(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),false); }
-function exportShortImage(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocImage(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),false); }
+function exportShortPdf(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocPdf(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),true); }
+function exportShortImage(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocImage(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),true); }
 function exportOrderSummary(whId){
   const w=warehouses.find(x=>x.id===whId), list=Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد طلبات'); return; }
