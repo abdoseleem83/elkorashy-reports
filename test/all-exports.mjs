@@ -75,7 +75,7 @@ await pg.waitForTimeout(300);
 // ═══ ١) كل مستندات الـPDF/الصورة: مفيش جدول بيتقص
 const docs = await pg.evaluate(()=>{
   const list=[
-    ['نواقص',            ()=> shortDocBody('w1'), false],
+    ['نواقص',            ()=> shortDocBody('w1'), true],
     ['مقارنة الفروع',    ()=> compareDocBody(), false],
     ['مقارنة الألوان',   ()=> colorsDocBody(), true],
     ['جيفز بالكراتين',   ()=> gvCompareDocBody(), true],

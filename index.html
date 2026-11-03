@@ -242,8 +242,6 @@ table.rep td.lo{background:rgba(192,32,47,.16) !important}
 .warn{background:#fff4e5;color:#8a5a00;border:1px solid #f0c36d;border-inline-start:4px solid #e8a33d;
   border-radius:13px;padding:11px 13px;font-size:12.5px;font-weight:700;line-height:1.75;margin-bottom:10px}
 @media (prefers-color-scheme:dark){ .warn{background:#332a12;color:#f0c36d;border-color:#5a4a1f} }
-.pill{display:inline-block;background:var(--panel);border:1px solid var(--border);border-radius:999px;padding:8px 13px;margin:0 6px 8px 0;font-size:12.5px;font-weight:700;cursor:pointer}
-.pill.on{background:var(--blue);color:#fff;border-color:var(--blue)}
 table.rep{width:100%;border-collapse:collapse;font-size:14.5px;font-weight:700;background:var(--panel);
   border-radius:14px;overflow:hidden;border:1px solid var(--border)}
 table.rep th,table.rep td{padding:7px 5px;border-bottom:1px solid var(--border);text-align:center;
@@ -273,7 +271,7 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
 .dd summary::after{content:'▾';position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)}
 .ddl{font-size:11px;color:var(--muted)}
 .ddv{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ddp{position:absolute;top:calc(100% + 4px);z-index:60;width:min(330px,88vw);max-height:52vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:6px}
+.ddp{position:absolute;top:calc(100% + 4px);z-index:30;width:min(330px,88vw);max-height:52vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:6px}
 .ddp label{display:flex;align-items:center;gap:8px;padding:10px 8px;font-size:13.5px;border-bottom:1px solid var(--border)}
 .ddp label:last-child{border-bottom:none}
 .ddp input[type=checkbox]{width:18px;height:18px;flex-shrink:0}
@@ -301,7 +299,7 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
   --sec:#5b6784;--okt:#15803d;--hit:#166534;--lot:#b91c1c;--track:rgba(20,40,90,.09);--gold-tx:#b45309;--sb:#c3cde3}
 :root[data-theme="light"] .htile,:root[data-theme="light"] .card,:root[data-theme="light"] .panelbox,
 :root[data-theme="light"] .hchart,:root[data-theme="light"] .hqa button,:root[data-theme="light"] table.rep,
-:root[data-theme="light"] .pill,:root[data-theme="light"] .hnote{box-shadow:0 3px 12px rgba(30,50,100,.10)}
+:root[data-theme="light"] .hnote{box-shadow:0 3px 12px rgba(30,50,100,.10)}
 :root[data-theme="light"] header{box-shadow:0 4px 16px rgba(30,50,100,.22)}
 :root[data-theme="light"] #bnav{box-shadow:0 -4px 16px rgba(30,50,100,.10)}
 body{background:var(--body-bg)}
@@ -321,10 +319,6 @@ nav{background:var(--nav-bg)}
 .fab{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#241700;box-shadow:0 6px 18px rgba(245,158,11,.45)}
 .toast{background:#1c2a4d;border:1px solid var(--border)}
 input,select,textarea{color-scheme:dark}
-:root[data-theme="light"] input,:root[data-theme="light"] select,:root[data-theme="light"] textarea{color-scheme:light}
-input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
-.ddp input[type=checkbox]{appearance:auto;-webkit-appearance:checkbox;background:var(--panel2);border:1px solid var(--muted)}
-.dd summary::after{color:var(--text);font-size:15px;font-weight:900}
 /* اختصارات سريعة + رسم بياني في الرئيسية */
 .hqa{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 2px}
 .hqa button{background:var(--card-bg);border:1px solid var(--border);color:var(--text);
@@ -375,9 +369,6 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold) !i
 input::placeholder,textarea::placeholder{color:var(--muted);opacity:.7}
 button{-webkit-tap-highlight-color:transparent}
 /* تبويبات وأزرار */
-.pill{background:var(--card-bg);box-shadow:0 3px 10px rgba(0,0,0,.22);transition:transform .12s,background .15s}
-.pill:active{transform:scale(.96)}
-.pill.on{background:linear-gradient(135deg,#2563eb,#4f46e5);border-color:#4f6ff0;box-shadow:0 5px 16px rgba(37,99,235,.45)}
 .btn-save{background:linear-gradient(135deg,#2563eb,#4f46e5);box-shadow:0 5px 16px rgba(37,99,235,.38)}
 .btn-save:active,.btn-cancel:active{transform:scale(.97)}
 /* الجداول */
@@ -431,6 +422,35 @@ table.dbt td{vertical-align:middle}
 .dbpick:first-of-type{border-top:0}
 .dbpick label{display:flex;align-items:center;gap:8px;cursor:pointer}
 .dbpick b{font-variant-numeric:tabular-nums;color:var(--okt)}
+/* ═══ طبقة التصميم: ألوان وظلال أنعم (آخر حاجة في الـCSS عشان تغلب اللي قبلها) ═══ */
+:root{--blue:#2563eb;--blue-d:#1d4ed8;--accent:#6d28d9;--bg:#f2f5fb;--panel:#ffffff;--panel2:#eaeff9;--border:#d6dff0;
+  --text:#16203a;--muted:#5f6b87;--danger:#e11d48;--ok:#059669;
+  --shadow:0 1px 2px rgba(20,32,70,.06),0 8px 22px rgba(20,32,70,.07);--ring:0 0 0 3px rgba(37,99,235,.20)}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){--bg:#0b0f1d;--panel:#141a2e;--panel2:#1c2441;--border:#28325a;--text:#eef1fb;--muted:#97a3c6;--ok:#34d399;--danger:#fb7185;
+  --shadow:0 1px 0 rgba(255,255,255,.04) inset,0 8px 22px rgba(0,0,0,.35);--ring:0 0 0 3px rgba(96,140,255,.28)} }
+:root[data-theme="dark"]{--bg:#0b0f1d;--panel:#141a2e;--panel2:#1c2441;--border:#28325a;--text:#eef1fb;--muted:#97a3c6;--ok:#34d399;--danger:#fb7185;
+  --shadow:0 1px 0 rgba(255,255,255,.04) inset,0 8px 22px rgba(0,0,0,.35);--ring:0 0 0 3px rgba(96,140,255,.28)}
+header{background:linear-gradient(135deg,#1e40af 0%,#2563eb 55%,#4f46e5 100%);box-shadow:0 2px 14px rgba(30,64,175,.28)}
+:root[data-theme="dark"] header{background:linear-gradient(135deg,#111c4a 0%,#1e3a8a 60%,#2e2a7a 100%);box-shadow:0 2px 14px rgba(0,0,0,.4)}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) header{background:linear-gradient(135deg,#111c4a 0%,#1e3a8a 60%,#2e2a7a 100%);box-shadow:0 2px 14px rgba(0,0,0,.4)} }
+.card{border-radius:16px;box-shadow:var(--shadow)}
+.stab{border-radius:14px;transition:background .15s,transform .1s}
+.stab:active,.f-actions button:active,.nav-btn:active{transform:scale(.97)}
+.stab.on{background:linear-gradient(135deg,var(--blue),#4f46e5);border-color:transparent;box-shadow:0 5px 14px rgba(37,99,235,.32)}
+.nav-btn.active{background:linear-gradient(135deg,var(--blue),#4f46e5);box-shadow:0 4px 12px rgba(37,99,235,.30)}
+.stat{background:linear-gradient(160deg,color-mix(in srgb,var(--c,#1e3a8a) 82%,#fff),var(--c,#1e3a8a));
+  box-shadow:0 6px 16px color-mix(in srgb,var(--c,#1e3a8a) 35%,transparent)}
+.hero{background:linear-gradient(135deg,#2563eb,#6d28d9);box-shadow:0 10px 26px rgba(79,70,229,.30)}
+:root[data-theme="dark"] .hero{background:linear-gradient(135deg,#1e3a8a,#4c1d95)}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) .hero{background:linear-gradient(135deg,#1e3a8a,#4c1d95)} }
+.btn-save{background:linear-gradient(135deg,var(--blue),#4f46e5);box-shadow:0 6px 16px rgba(37,99,235,.30)}
+.f-actions button{border-radius:14px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !important;box-shadow:var(--ring)}
+.srch-in:focus{box-shadow:var(--ring)}
+::selection{background:rgba(37,99,235,.28)}
+/* زرار 🔍 العايم: على اليمين (أزرار الصفوف على الشمال) وصغّرناه وبيستخبى وانت بتسكرول */
+.rsbtn{left:auto;right:12px;width:42px;height:42px;font-size:18px;opacity:.82;transition:opacity .2s;box-shadow:0 4px 12px rgba(0,0,0,.22)}
+.rsbtn.away{opacity:0;pointer-events:none}
 </style>
 <script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("theme_v1")==="light"?"light":"dark")}catch(e){}</script>
 <meta name="theme-color" content="#0d1733">
@@ -566,7 +586,6 @@ let monthlyItems = load('monthlyItems_v1', {});      // الشهر ← الصن�
 let salesArchive = load('salesArchive_v1', []);      // شهور مؤرشفة — برّه التقارير
 let custAlias = load('custAlias_v1', {});            // اسم قديم ← الاسم الجديد بعد الدمج
 let secCfg = load('secCfg_v1', {});                  // القطاع ← {name: اسم بديل, hide: مخفي}
-let bktMove = load('bktMove_v1', {});                // صنف ← عمود/بند مخصص في ملخص الأوردر
 let secMove = load('secMove_v1', {});                // مجموعة رئيسية ← العمود اللي تروحه
 let secMerge = load('secMerge_v1', {});              // عمود ← العمود اللي اتدمج فيه (دمج أعمدة بالاسم الموحّد)
 let doorCodeMap = load('doorCodeMap_v1', {});        // اسم صنف الباب ← كود بالإيد
@@ -594,7 +613,6 @@ const secMergeAcc = c => (/[اإأ]كسس|حشو|تصنيع/.test(c) && !/جيف
 function secColOf(key){
   const k=String(key||'');
   let c = secMove[k] ? secMergeAcc(secMove[k]) : (SECTOR_MAP[k] ? SECTOR_MAP[k] : secMergeAcc(secName(k)));
-  if(!secMove[k] && /^(ابواب|أبواب)/.test(c) && !/اكسسوار|إكسسوار/.test(c)) c='ابواب';   // «ابواب خاصة» وأي أبواب تانية = عمود الأبواب
   for(let i=0; i<8 && secMerge[c]; i++) c = secMerge[c];      // عمود اتدمج في عمود تاني
   return c;
 }
@@ -887,7 +905,7 @@ let shortMain=new Set(), shortSub=new Set();
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','whStockAt_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
-  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','secMerge_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','finAdj_v1','bonusAksa_v1','distBonus_v1','whTrash_v1','bktMove_v1'];
+  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','secMerge_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','finAdj_v1','bonusAksa_v1','distBonus_v1','whTrash_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
 /* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
@@ -1430,7 +1448,7 @@ function setTheme(t){
   const mt=document.querySelector('meta[name="theme-color"]'); if(mt) mt.setAttribute('content', t==='light' ? '#1d4ed8' : '#0d1733');
   renderNav();
 }
-function bnGo(id){ toggleMenu(false); if(module!==id) bumpUse(id); module=id; q=''; openGroups=new Set(); render(true); }
+function bnGo(id){ toggleMenu(false); module=id; q=''; openGroups=new Set(); render(true); }
 function renderBottomNav(){
   const b=$('#bnav'); if(!b) return;
   const it=(on,ic,tx,go)=>`<button class="${on?'on':''}" onclick="${go}"><span class="i">${ic}</span>${tx}</button>`;
@@ -1443,8 +1461,7 @@ function renderBottomNav(){
 }
 /* ☰ على الموبايل: الدرج بيقفل لوحده أول ما تختار حاجة (render بيقفله) */
 function toggleMenu(on){ document.body.classList.toggle('menu-open', on===undefined ? !document.body.classList.contains('menu-open') : !!on); }
-function bumpUse(id){ try{ const u=JSON.parse(localStorage.getItem('homeUse_v1')||'{}'); u[id]=(u[id]||0)+1; localStorage.setItem('homeUse_v1',JSON.stringify(u)); }catch(e){} }
-function switchModule(m){ toggleMenu(false); if(module!==m) bumpUse(m); module=(module===m)?null:m; q=''; openGroups=new Set(); render(true); }
+function switchModule(m){ toggleMenu(false); module=(module===m)?null:m; q=''; openGroups=new Set(); render(true); }
 function goHome(){ toggleMenu(false); module=null; q=''; openGroups=new Set(); render(true); }
 $('#fab').addEventListener('click', ()=>{
   if(module==='items'){ const t=load('_itemsTab_',null); if(t===1) editGvCode(''); else if(t===2) promptAddUnit(); else editItem(null); }
@@ -2006,7 +2023,7 @@ function renderWhShortage(m, whId){
   if(shortSub.size) list = list.filter(i=>shortSub.has(i.subGroup));
   if(q) list = list.filter(i=>i.name.includes(q));
   if(!showZero) list = list.filter(i=>qtyOf(whId, i.name) > 0);
-  if(shortMain.size>1) list = list.slice().sort((x,y)=> x.name.localeCompare(y.name,'ar',{numeric:true}));   // أكتر من قطاع: ترتيب أبجدي عشان الحلوق تبقى تحت بعض
+  list.sort(byNameAr);   // أبجدي عبر كل القطاعات المختارة
   const dates = load('whOrderDate_v1',{});
   const today = todayStr();
   const orderDate = dates[whId] || today;
@@ -2031,7 +2048,7 @@ function renderWhShortage(m, whId){
               style="width:62px;padding:7px;border-radius:8px;border:1px solid ${val? color : 'var(--border)'};background:var(--panel2);color:var(--text);font-size:13.5px;text-align:center;font-weight:${val?'700':'400'}">
           </label>`;
         return `<div class="card"><div class="info"><div class="name">${esc(it.name)}</div>
-          <div class="sub">الرصيد: <b style="color:${qtyOf(whId, it.name)>0?'#2563eb':'#dc2626'};font-weight:800">${esc(balText(it.name, stockOf(whId, it.name)))}</b></div></div>
+          <div class="sub">الرصيد: ${esc(balText(it.name, stockOf(whId, it.name)))}</div></div>
           ${box('q1', rec.u1, rec.q1, 'var(--blue)')}
           ${box('q2', rec.u2, rec.q2, 'var(--ok)')}
           ${(rec.q1||rec.q2)? `<button title="شيله من الطلب" onclick="unmarkShort('${whId}',${jsArg(it.name)})"
@@ -2050,10 +2067,7 @@ function renderWhShortage(m, whId){
         <button onclick="exportShortExcel('${whId}')">📊 إكسل</button>
         <button onclick="exportShortImage('${whId}')">🖼️ صورة</button>
       </div>
-      <div style="display:flex;gap:6px">
-        <button onclick="bkSheet()" title="إضافة عمود ونقل أصناف ليه" style="flex:0 0 auto;padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:700;font-size:13px">🧩 عمود</button>
-        <button onclick="exportOrderSummary('${whId}')" style="flex:1;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">📄 ملخّص الأوردر بالمجموعات (PDF)</button>
-      </div>
+      <button onclick="exportOrderSummary('${whId}')" style="width:100%;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">📄 ملخّص الأوردر بالمجموعات (PDF)</button>
     </div>
   `;
   $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderWhShortage(m, whId)); };
@@ -2068,7 +2082,7 @@ function buildGroupBreakdown(list, whId){
     const a=Number(r.q1)||0, b=Number(r.q2)||0;
     if(!a && !b) return;
     const it=itemsByName[name]||{};
-    const bucket=bktMove[name] || exportBucket(it.mainGroup);
+    const bucket=exportBucket(it.mainGroup);
     const sub=it.subGroup||'بدون';
     buckets[bucket]=buckets[bucket]||{byUnit:{}, subs:{}};
     add(buckets[bucket].byUnit, r.u1, a); add(buckets[bucket].byUnit, r.u2, b);
@@ -2079,70 +2093,24 @@ function buildGroupBreakdown(list, whId){
 }
 function exportShortExcel(whId){
   const w=warehouses.find(x=>x.id===whId);
-  const list = Object.entries(whShortage[whId]||{});
-  if(!list.length){ toast('لا يوجد نواقص'); return; }
-  const cols=shortUnitCols(whId), G=shortGrouped(whId), q=o=>cols.map(u=> o&&o[u]? nz(o[u]) : '');
-  const data=[['الصنف', ...cols, 'ملاحظة']];
-  G.mains.forEach(m=>{
-    data.push([m.name, ...q(m.total), '']);
-    m.subs.forEach(s=>{
-      if(s.name) data.push(['   '+s.name, ...q(s.total), '']);
-      s.rows.forEach(r=>data.push(['      '+r.n, ...q(r.q), r.note]));
+  const G=shortGroups(whId);
+  if(!G.length){ toast('لا يوجد نواقص'); return; }
+  const cols=shortUnitCols(whId), line=(label,q,note)=>[label, ...cols.map(u=> q[u]? nz(q[u]) : ''), note||''];
+  const data=[['الصنف', ...cols, 'ملاحظة']], grand={};
+  G.forEach(g=>{
+    data.push(line(g.main, g.tot, g.cnt+' صنف'));                       // عنوان المجموعة الرئيسية + إجماليها
+    g.subs.forEach(sb=>{
+      if(sb.sub) data.push(line('  '+sb.sub, {}, ''));
+      sb.items.forEach(x=> data.push(line(x.n, x.q, x.note)));
+      if(sb.sub && g.subs.length>1 && sb.items.length>1) data.push(line('  إجمالي '+sb.sub, sb.tot, ''));
     });
+    for(const u in g.tot) grand[u]=(grand[u]||0)+g.tot[u];
+    data.push([]);
   });
-  data.push(['الإجمالي', ...q(G.grand), shortTotals(whId).items+' صنف']);
-  const buckets=buildGroupBreakdown(list, whId);
-  data.push([],['ملخص الإجمالي حسب المجموعة', ...cols]);
-  Object.entries(buckets).forEach(([bucket,b])=>{
-    data.push([bucket, ...cols.map(u=> b.byUnit[u]||'')]);
-    Object.entries(b.subs).forEach(([sub,x])=>{ data.push(['- '+sub, ...cols.map(u=> x[u]||'')]); });
-  });
+  const t=shortTotals(whId);
+  data.push(['الإجمالي العام', ...cols.map(u=> grand[u]||''), t.items+' صنف']);
   saveAoaXlsx(data, 'نواقص', 'نواقص_'+w.name+'.xlsx', [46, ...cols.map(()=>11), 28],
     {title:'طلبية نواقص '+w.name+' بتاريخ '+getOrderDate(whId)});
-}
-
-/* ═══ 🧩 عمود جديد ونقل أصناف ليه (في ملخص الأوردر PDF / إكسل) ═══
-   بتكتب اسم العمود (مثلاً «ضلف فقط»)، وتختار أصناف (بمجموعة أو بحث) وتنقلها.
-   الأصناف المنقولة بتظهر تحت العمود ده بدل مجموعتها الأصلية. */
-let bkSel=new Set(), bkQ='', bkMain='', bkSubG='', bkName='';
-function bkSheet(){
-  const mains=[...new Set(items.map(i=>i.mainGroup).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'));
-  const subs=bkMain? [...new Set(items.filter(i=>i.mainGroup===bkMain).map(i=>i.subGroup).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar')) : [];
-  let list=items.filter(i=> (!bkMain||i.mainGroup===bkMain) && (!bkSubG||i.subGroup===bkSubG) && (!bkQ||rsMatch(i.name+' '+(i.code||''),bkQ)));
-  const tot=list.length; list=list.slice().sort((a,b)=>a.name.localeCompare(b.name,'ar',{numeric:true})).slice(0,80);
-  const cols={}; Object.keys(bktMove).forEach(n=>{ cols[bktMove[n]]=(cols[bktMove[n]]||0)+1; });
-  const inp='border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--panel2);color:var(--text);font-size:13px;width:100%';
-  openSheet(`<h3>🧩 عمود جديد ونقل أصناف</h3>
-    <div style="font-size:12.5px;color:var(--muted);margin:6px 0 4px">اسم العمود</div>
-    <input id="bk_name" list="bk_dl" value="${esc(bkName)}" placeholder="مثلاً: ضلف فقط" onchange="bkName=this.value" style="${inp}">
-    <datalist id="bk_dl">${Object.keys(cols).map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0 6px">
-      <select onchange="bkMain=this.value;bkSubG='';bkSheet()" style="${inp}"><option value="">كل المجموعات</option>${mains.map(m=>`<option ${m===bkMain?'selected':''}>${esc(m)}</option>`).join('')}</select>
-      <select onchange="bkSubG=this.value;bkSheet()" style="${inp}"><option value="">كل الفرعية</option>${subs.map(m=>`<option ${m===bkSubG?'selected':''}>${esc(m)}</option>`).join('')}</select>
-    </div>
-    <input value="${esc(bkQ)}" placeholder="بحث بالاسم أو الكود..." onchange="bkQ=this.value;bkSheet()" style="${inp}">
-    <div style="display:flex;gap:8px;align-items:center;font-size:12.5px;margin:8px 0"><span style="flex:1">${tot} صنف${tot>80?' (أول 80 — ضيّق البحث)':''} · متحدد: <b>${bkSel.size}</b></span>
-      <button onclick="bkAll()" style="border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:4px 10px">تحديد اللي ظاهر</button>
-      <button onclick="bkSel.clear();bkSheet()" style="border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:4px 10px">مسح</button></div>
-    <div style="max-height:34vh;overflow:auto;border:1px solid var(--border);border-radius:8px">${list.map(i=>`<label style="display:flex;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);font-size:13px"><input type="checkbox" ${bkSel.has(i.name)?'checked':''} onchange="bkTog(${jsArg(i.name)})"><span style="flex:1">${esc(i.name)}</span>${bktMove[i.name]?`<span style="color:var(--blue);font-size:11.5px">${esc(bktMove[i.name])}</span>`:''}</label>`).join('')||'<div class="empty">لا توجد أصناف</div>'}</div>
-    ${Object.keys(cols).length? `<div style="font-size:12.5px;color:var(--muted);margin:10px 0 4px">الأعمدة الحالية</div>`+Object.keys(cols).map(c=>`<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px"><b style="flex:1">${esc(c)}</b><span>${cols[c]} صنف</span><button onclick="bkDrop(${jsArg(c)})" style="border:1px solid var(--danger);background:transparent;color:var(--danger);border-radius:8px;padding:3px 9px;cursor:pointer">رجّعهم</button></div>`).join('') : ''}
-    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">قفل</button><button class="btn-save" onclick="bkMoveSel()">نقل المحدد للعمود</button></div>`);
-}
-function bkTog(n){ if(bkSel.has(n)) bkSel.delete(n); else bkSel.add(n); bkSheet(); }
-function bkAll(){
-  items.filter(i=> (!bkMain||i.mainGroup===bkMain) && (!bkSubG||i.subGroup===bkSubG) && (!bkQ||rsMatch(i.name+' '+(i.code||''),bkQ))).slice(0,80).forEach(i=>bkSel.add(i.name)); bkSheet();
-}
-function bkMoveSel(){
-  const nm=(($('#bk_name')||{}).value||bkName||'').trim();
-  if(!nm) return toast('اكتب اسم العمود الأول');
-  if(!bkSel.size) return toast('اختار أصناف الأول');
-  bkSel.forEach(n=>{ bktMove[n]=nm; });
-  save('bktMove_v1',bktMove); const c=bkSel.size; bkSel.clear(); bkName=nm; bkSheet(); toast('اتنقل '+c+' صنف لعمود «'+nm+'»');
-}
-function bkDrop(col){
-  if(!confirm('ترجّع كل أصناف «'+col+'» لمجموعاتها الأصلية؟')) return;
-  Object.keys(bktMove).forEach(n=>{ if(bktMove[n]===col) delete bktMove[n]; });
-  save('bktMove_v1',bktMove); bkSheet();
 }
 // ===== مقارنة الفروع (هرمية) + مقارنة بالألوان =====
 let cmpMain=new Set(), cmpSub=new Set(), cmpZero=false, colMain=new Set(), colZero=false;
@@ -2763,15 +2731,14 @@ function exportDistBlk(kind){
       المقاس بيتقرا من اسم الصنف، والبرور والحلق مع بعض في عمود واحد. */
 /* التقرير ده للأبواب نفسها بس: البرور والحلوق والخدمات والإكسسوارات
    مستبعدين حتى لو عليهم أكواد، فمفيش سطر «بدون كود» من الأصل. */
-const DOOR_SIZES=['70','80','90','متر','ضلف فقط','باقي'];
+const DOOR_SIZES=['70','80','90','متر','باقي'];
 const NOT_A_DOOR=/برور|حلق|حلوق|خدم|كالون|مفصل|جوان|سليكون|مسمار|اكسسوار|إكسسوار|عتب/;
 function isDoorItem(name, sub){
   if(NOT_A_DOOR.test(String(name||''))) return false;
   return isDoorSub(name, sub);
 }
-function doorCol(name, sub){
+function doorCol(name){
   const n=String(name||'');
-  if(/ضلف/.test(n) || /ضلف/.test(String(sub||''))) return 'ضلف فقط';      // ضلفة من غير حلق وبرور
   const m2=n.match(/(^|[\s(])(\d{2,3})(\s*سم)?([\s)]|$)/);
   if(m2){ const v=parseInt(m2[2],10);
     if(v===70) return '70'; if(v===80) return '80'; if(v===90) return '90';
@@ -2790,7 +2757,7 @@ function buildDoorsByCode(){
         if(!code){ noCode[name]=(noCode[name]||0)+(d.val||0); return; }
         const r = rows[code] = rows[code] || {code, names:new Set(), cells:{}, qtys:{}, qty:0, val:0};
         r.names.add(name);
-        const c = doorCol(name, d.sub);
+        const c = doorCol(name);
         r.cells[c]=(r.cells[c]||0)+(d.val||0);
         r.qtys[c]=(r.qtys[c]||0)+(d.qty||0);
         r.qty += (d.qty||0); r.val += (d.val||0);
@@ -2899,14 +2866,13 @@ function noCodeSave(names){
   toast(n? ('اتحفظ '+n+' كود') : 'مفيش أكواد اتكتبت');
 }
 /* الضغط على الكود: يوري الأصناف اللي تحته وتقدر تغيّر كود أي صنف */
-let dcNames=[];
 
 /* ٤) الأبواب لكل عميل اشترى أبواب (مش الموزعين بس) — كمية وقيمة.
       الأبواب نفسها بس: القطاع الفرعي «أبواب» — من غير كالون ولا مفصلة ولا خدمات. */
 const NOT_DOOR=/اكسسوار|إكسسوار|خدم|كالون|مفصل|جوان|سليكون|مسمار|عتب/;
 function isDoorSub(name, sub){
   if(NOT_DOOR.test(String(sub||''))) return false;       // «اكسسوارات ابواب WPC» مش باب
-  if(sub) return /ابواب|أبواب|ضلف/.test(sub);        // «ابواب خاصة» جوه /ابواب/، والضلف لوحدها كمان
+  if(sub) return /ابواب|أبواب/.test(sub);
   return !NOT_DOOR.test(String(name||''));               // بيانات قديمة من غير قطاع فرعي
 }
 function buildDistDoors(){
@@ -3200,7 +3166,7 @@ function importSales(file){
       /* الصنف يعتبر باب من **مجموعته الرئيسية** (ابواب WPC) — دي المرجع.
          الاسم بيتستخدم كاحتياطي بس لو الصنف نفسه مش موجود في قايمة
          الأصناف أصلاً، عشان مبيعات الأبواب ما تضيعش في صمت. */
-      const isDoor = (it, nm)=> it ? (/ابواب|أبواب/.test(it.mainGroup||'') || /ضلف/.test(it.subGroup||''))
+      const isDoor = (it, nm)=> it ? /ابواب|أبواب/.test(it.mainGroup||'')
                                    : /(^|\s)(باب|ابواب|أبواب)/.test(nm||'');
       const dataRows = rows.slice(hdrRow+1).filter(r=>r[ci]);
       const custMap={}, sectorMap={}, doorMap={}, itemMap={};
@@ -3460,7 +3426,8 @@ async function doExportDocPdf(bodyHtml, filename, landscape){
     const sc=(pw-2*mg)/canvas.width, pageH=(ph-2*mg)/sc;
     const er=el.getBoundingClientRect(), k=canvas.width/er.width;
     const trs=[...el.querySelectorAll('tr')];
-    const bounds=trs.map(r=>Math.round((r.getBoundingClientRect().bottom-er.top)*k));
+    // الصفوف اللي عليها kn (عنوان المجموعة وعناوين أعمدتها) ما بنقطعش بعدها عشان ما تفضلش لوحدها آخر الورقة
+    const bounds=trs.filter(r=>!r.classList.contains('kn')).map(r=>Math.round((r.getBoundingClientRect().bottom-er.top)*k));
     const Y=(r,edge)=> Math.round((r.getBoundingClientRect()[edge]-er.top)*k);
     /* الرأس = من فوق لحد صف عناوين الجدول الرئيسي، والذيل = صفوف إجماليه.
        بنبص على أول جدول بس — لو في جدول تاني تحته (زي الحاويات في طلبية
@@ -3481,8 +3448,12 @@ async function doExportDocPdf(bodyHtml, filename, landscape){
       sl.width=canvas.width; sl.height=h;
       sl.getContext('2d').drawImage(canvas,0,top,canvas.width,h,0,0,canvas.width,h);
       return sl.toDataURL('image/jpeg',0.92); };
+    // الأفضل نقطع بين جدولين (مجموعة كاملة في ورقة)، ولو مفيش بنقطع على حدود صف
+    const tEnds=[...el.querySelectorAll('table')].map(t=>Y(t,'bottom'));
     const cut=(y,cap,lim)=>{ let end=Math.min(y+cap, lim);
-      if(end<lim){ const cand=bounds.filter(b=>b>y+cap*0.4 && b<=end); if(cand.length) end=cand[cand.length-1]; }
+      if(end<lim){ const tc=tEnds.filter(b=>b>y+cap*0.8 && b<=end);   // نقطع بين جدولين بس لو ده بيملا ٨٠٪ من الورقة على الأقل
+        if(tc.length) end=tc[tc.length-1];
+        else { const cand=bounds.filter(b=>b>y+cap*0.4 && b<=end); if(cand.length) end=cand[cand.length-1]; } }
       if(end<=y) end=Math.min(y+cap, lim); return end; };
     let first=true;
     const newPage=()=>{ if(!first) pdf.addPage(); first=false; };
@@ -3596,74 +3567,101 @@ function breakdownTableHtml(buckets, cols){
 /* عمود لكل وحدة اتطلبت فعلاً (لفة · عود · كرتونة · قطعة). كده الوحدة
    مكتوبة فوق الرقم بالظبط، ومجموع كل وحدة لوحده في آخر الجدول. */
 function shortRowUnits(whId, name){
-  const r=shortRec(whId,name), o={}, a=Number(r.q1)||0, b=Number(r.q2)||0;   // «0» النصّية مش كمية
-  if(a>0) o[r.u1]=(o[r.u1]||0)+a;
-  if(b>0) o[r.u2]=(o[r.u2]||0)+b;
+  const r=shortRec(whId,name), o={}, a=Number(r.q1)||0, b=Number(r.q2)||0;   // «0» مكتوبة كنص ما تتحسبش
+  if(a) o[r.u1]=a;
+  if(b) o[r.u2]=b;
   return o;
 }
-/* النواقص متجمّعة: مجموعة رئيسية ← فرعية ← أصناف، وإجمالي الكمية لكل مستوى (بالوحدة) */
-function shortGrouped(whId){
-  const list=Object.entries(whShortage[whId]||{}), mains={}, grand={};
-  const add=(o,q)=>{ Object.keys(q).forEach(u=>{ o[u]=(o[u]||0)+q[u]; }); };
-  list.forEach(([n])=>{
+/* ═══ طلبية النواقص بالتسلسل: مجموعة رئيسية ← مجموعة فرعية ← الأصناف، وإجمالي الكميات في كل مستوى ═══
+   كله أبجدي. الـPDF والصورة والإكسل بيستخدموا نفس التجميع. */
+function shortGroups(whId){
+  const add=(o,q)=>{ for(const u in q) o[u]=(o[u]||0)+q[u]; };
+  const M=new Map();
+  Object.keys(whShortage[whId]||{}).forEach(n=>{
     const q=shortRowUnits(whId,n); if(!Object.keys(q).length) return;
-    const it=itemsByName[n]||{}, mg=bktMove[n]||it.mainGroup||'غير مصنف', sg=it.subGroup||'';
-    const m=mains[mg]=mains[mg]||{name:mg,total:{},subs:{}};
-    const s=m.subs[sg]=m.subs[sg]||{name:sg,total:{},rows:[]};
-    s.rows.push({n,q,note:shortRec(whId,n).note||''}); add(s.total,q); add(m.total,q); add(grand,q);
+    const it=itemsByName[n]||{}, mg=it.mainGroup||'غير مصنف', sg=it.subGroup||'';
+    if(!M.has(mg)) M.set(mg,{main:mg,tot:{},cnt:0,subs:new Map()});
+    const g=M.get(mg); if(!g.subs.has(sg)) g.subs.set(sg,{sub:sg,tot:{},items:[]});
+    const sb=g.subs.get(sg); sb.items.push({n,q,note:shortRec(whId,n).note||''}); add(sb.tot,q); add(g.tot,q); g.cnt++;
   });
-  const ar=(a,b)=>a.localeCompare(b,'ar',{numeric:true});
-  const out=Object.values(mains).sort((a,b)=>ar(a.name,b.name)).map(m=>({name:m.name,total:m.total,
-    subs:Object.values(m.subs).sort((a,b)=>ar(a.name,b.name)).map(s=>({name:s.name,total:s.total,rows:s.rows.sort((a,b)=>ar(a.n,b.n))}))}));
-  return {mains:out, grand};
+  const key=(a,b)=>nameKeyAr(a).localeCompare(nameKeyAr(b),'ar',{numeric:true});
+  return [...M.values()].sort((a,b)=>key(a.main,b.main)).map(g=>({main:g.main,tot:g.tot,cnt:g.cnt,
+    subs:[...g.subs.values()].sort((a,b)=>key(a.sub,b.sub)).map(sb=>({sub:sb.sub,tot:sb.tot,
+      items:sb.items.sort((a,b)=>key(a.n,b.n))}))}));
 }
-/* مستند طلبية النواقص (PDF / صورة): خط كبير بولد، من غير ملاحظة ولا ملخص،
-   والأصناف على نصين جنب بعض (زي ورقتين في ورقة واحدة) عشان الطلبية الطويلة تدخل في صفحة. */
-function shortDocBody(whId){
-  const w=warehouses.find(x=>x.id===whId), cols=shortUnitCols(whId), G=shortGrouped(whId);
-  const tc=o=> cols.map(u=>`<td>${o&&o[u]?nz(o[u]):''}</td>`).join('');
-  // سطور مسطّحة: رئيسية / فرعية / صنف — بعدين بتتقسم نصّين جنب بعض
-  const L=[];
-  G.mains.forEach(m=>{
-    L.push({t:'m',n:m.name,q:m.total,m:m.name});
-    m.subs.forEach(s=>{
-      if(s.name) L.push({t:'s',n:s.name,q:s.total,m:m.name,s:s.name});
-      s.rows.forEach(r=>L.push({t:'i',n:r.n,q:r.q,m:m.name,s:s.name}));
+/* كل مجموعة رئيسية = جدول منفصل (عنوان بإجماليها ← مجموعات فرعية ← أصناف). الصفوف جواه:
+   main-less seq من sub / item / subtot. */
+function shortBlocks(whId){
+  const G=shortGroups(whId), grand={};
+  const blocks=G.map(g=>{
+    const seq=[];
+    g.subs.forEach(sb=>{
+      if(sb.sub) seq.push({t:'sub',label:sb.sub});
+      sb.items.forEach(x=>seq.push({t:'item',label:x.n,q:x.q,note:x.note}));
+      if(sb.sub && g.subs.length>1 && sb.items.length>1) seq.push({t:'subtot',label:'إجمالي '+sb.sub,q:sb.tot});
     });
+    for(const u in g.tot) grand[u]=(grand[u]||0)+g.tot[u];
+    return {main:g.main, tot:g.tot, cnt:g.cnt, seq};
   });
-  // نقطة التقسيم: قريبة من النص، ومش بعد عنوان على طول
-  let h=Math.ceil(L.length/2);
-  while(h<L.length && h>0 && L[h-1].t!=='i') h++;
-  const A=L.slice(0,h); let B=L.slice(h);
-  if(B.length && B[0].t==='i'){                               // تكملة مجموعة اتقسمت: نكرر عنوانها
-    const f=B[0], pre=[{t:'m',n:f.m+' (تابع)',q:null}]; if(f.s) pre.push({t:'s',n:f.s+' (تابع)',q:null});
-    B=pre.concat(B);
+  return {blocks, grand};
+}
+/* الجدول الطويل بيتقسم نصين جنب بعض (ورقتين في ورقة) عند أقرب بداية مجموعة فرعية لنصه؛ ولو مفيش
+   نقطة مناسبة بنقسم في النص ونكرر اسم المجموعة الفرعية فوق العمود التاني. */
+function shortSplit(seq){
+  const n=seq.length;
+  if(seq.filter(r=>r.t==='item').length<14) return [seq];
+  let best=-1, bd=1e9;
+  for(let i=1;i<n;i++){ if(seq[i].t==='sub'){ const d=Math.abs(i-n/2); if(d<bd){ bd=d; best=i; } } }
+  if(best>=n*0.38 && best<=n*0.62) return [seq.slice(0,best), seq.slice(best)];
+  best=Math.ceil(n/2);
+  while(best<n-1 && seq[best].t==='subtot') best++;
+  let B=seq.slice(best);
+  if(B.length && B[0].t!=='sub'){
+    let sb=null; for(let i=best-1;i>=0;i--){ if(seq[i].t==='sub'){ sb=seq[i].label; break; } }
+    if(sb) B=[{t:'sub',label:sb}].concat(B);
   }
-  const half=r=> r
-    ? `<td class="n">${esc(r.n)}</td>${tc(r.t==='i'? r.q : r.q)}`
-    : `<td class="n"></td>${cols.map(()=>'<td></td>').join('')}`;
-  const cls=r=> r? (r.t==='m'?'gm':r.t==='s'?'gs':'z') : 'z';
-  const head=`<th>الصنف</th>${cols.map(u=>`<th>${esc(u)}</th>`).join('')}`;
-  const n=Math.max(A.length,B.length), rowsHtml=[];
-  for(let i=0;i<n;i++) rowsHtml.push(`<tr class="${cls(A[i])}">${half(A[i])}<td class="gap"></td>${half(B[i])}</tr>`);
+  return [seq.slice(0,best), B];
+}
+const shortQtyTxt=(q,cols)=> cols.filter(u=>q[u]).map(u=>q[u]+' '+u).join(' · ');
+/* مستند طلبية النواقص (PDF / صورة): خط كبير بولد، من غير ملاحظة، وكل مجموعة رئيسية جدول منفصل
+   (رئيسية ← فرعية ← صنف + إجماليات). المجموعة الطويلة بتتقسم نصين جنب بعض جوه جدولها. */
+function shortDocBody(whId){
+  const w=warehouses.find(x=>x.id===whId), allCols=shortUnitCols(whId);
+  const {blocks,grand}=shortBlocks(whId);
+  const cell=(r,cols,span)=>{
+    if(!r) return `<td class="n"></td>${cols.map(()=>'<td></td>').join('')}`;
+    if(r.t==='sub') return `<td class="gs" colspan="${span}">${esc(r.label)}</td>`;
+    const c=r.t==='item'?'':r.t, tc=c?` class="${c}"`:'';
+    return `<td class="n${c?' '+c:''}">${esc(r.label)}</td>${cols.map(u=>`<td${tc}>${esc(r.q[u]||'')}</td>`).join('')}`;
+  };
+  const tables=blocks.map(b=>{
+    const cols=allCols.filter(u=>b.tot[u]), span=1+cols.length;      // كل جدول بيعرض الوحدات اللي فيه بس
+    const hd=`<td class="hd">الصنف</td>${cols.map(u=>`<td class="hd">${esc(u)}</td>`).join('')}`;
+    const halves=shortSplit(b.seq), H=halves.length, N=Math.max(...halves.map(h=>h.length));
+    const total=span*H+(H-1);
+    let rows=''; for(let i=0;i<N;i++) rows+=`<tr>${halves.map(h=>cell(h[i],cols,span)).join('<td class="gap"></td>')}</tr>`;
+    return `<table><tr class="kn"><td class="gm" colspan="${total}"><span class="gt">${esc(shortQtyTxt(b.tot,cols))}</span>${esc(b.main)}</td></tr>
+      <tr class="kn">${halves.map(()=>hd).join('<td class="gap"></td>')}</tr>${rows}</table>`;
+  }).join('');
+  const grandBar = blocks.length>1
+    ? `<table><tr><td class="grand"><span class="gt">${esc(shortQtyTxt(grand,allCols))}</span>الإجمالي العام</td></tr></table>` : '';
   return `<div class="dx sh"><style>
       .dx.sh{font-size:22px;font-weight:800}
       .dx.sh h2{font-size:30px}
       .dx.sh .sub{font-size:19px;font-weight:700}
-      .dx.sh th{font-size:21px;font-weight:800;padding:10px 8px}
-      .dx.sh td{font-size:22px;font-weight:800;padding:10px 8px;white-space:normal;line-height:1.35}
+      .dx.sh table{margin:0 0 22px;width:100%}
+      .dx.sh td{font-size:22px;font-weight:800;padding:9px 8px;white-space:normal;line-height:1.35}
       .dx.sh td.n{text-align:right;min-width:0;width:34%}
-      .dx.sh th.gap,.dx.sh td.gap{width:14px;min-width:14px;padding:0;border:none;background:#fff}
-      .dx.sh tr.gm td{background:#1d4ed8;color:#fff;font-size:23px}
-      .dx.sh tr.gs td{background:#dbe5fb;color:#173fb0}
-      .dx.sh tr.gt td{background:#0f172a;color:#fff;font-size:24px}
-      .dx.sh tr.gt td.gap{background:#fff}
+      .dx.sh td.hd{background:#2f5fd6;color:#fff;font-size:20px;padding:9px 8px}
+      .dx.sh td.gm{background:#1e3a8a;color:#fff;font-size:25px;text-align:right;padding:12px 12px}
+      .dx.sh .gt{float:left;font-size:22px;font-weight:800;color:#dbe7ff}
+      .dx.sh td.gs{background:#dbe7ff;color:#1e3a8a;font-size:22px;text-align:right}
+      .dx.sh td.subtot{background:#f1f5ff;color:#1e3a8a}
+      .dx.sh td.grand{background:#0f172a;color:#fff;font-size:25px;text-align:right;padding:13px 12px}
+      .dx.sh td.grand .gt{color:#fff}
+      .dx.sh td.gap{width:14px;min-width:14px;padding:0;border:none;background:#fff}
     </style><h2>طلبية نواقص ${esc(w.name)}</h2>
-    <div class="sub">بتاريخ ${getOrderDate(whId)}</div>
-    <table><tr>${head}<th class="gap"></th>${head}</tr>
-    ${rowsHtml.join('')}
-    <tr class="gt"><td class="n">الإجمالي</td>${tc(G.grand)}<td class="gap"></td><td class="n"></td>${cols.map(()=>'<td></td>').join('')}</tr>
-    </table></div>`;
+    <div class="sub">بتاريخ ${getOrderDate(whId)}</div>${tables}${grandBar}</div>`;
 }
 function exportShortPdf(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocPdf(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),true); }
 function exportShortImage(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocImage(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),true); }
@@ -4136,10 +4134,10 @@ function renderWhInventory(m, whId){
   if(invSub.size) list=list.filter(i=>invSub.has(i.subGroup));
   if(q) list=list.filter(i=>rsMatch(i.name, q));
   if(invHideZero) list=list.filter(i=>qtyOf(whId, i.name)>0);
-  if(invMain.size>1 || q) list=list.slice().sort((x,y)=> x.name.localeCompare(y.name,'ar',{numeric:true}));   // أكتر من قطاع: ترتيب أبجدي
   const sel = invMain.size>0 && !q, tot = list.length;
   /* اللي اتجرد بيروح تبويب «تم الجرد» ويفضل هنا اللي لسه — إلا وقت البحث بيظهر الاتنين عشان تلاقي أي صنف */
   if(!q) list=list.filter(i=>!inv.counts[i.name]);
+  if(invMain.size) list.sort(byNameAr);   // أبجدي عبر كل القطاعات المختارة (البحث بيفضل بترتيب الصلة)
   const RS_CAP=80, capped = !!q && !invMain.size && list.length>RS_CAP;
   if(capped) list=list.slice(0,RS_CAP);
   rsInfo = q? (capped? 'أول '+RS_CAP+' — كمّل كتابة' : list.length+' نتيجة') : '';
@@ -4269,6 +4267,10 @@ function ordNorm(n){
     .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه')
     .replace(/[\s\-_.،,/\\()]+/g,'');
 }
+/* ترتيب أبجدي عربي (أ=ا، ى=ي، ة=ه، والأرقام بقيمتها): الأصناف المتشابهة (الحلوق مثلاً)
+   بتتجمّع تحت بعض حتى لو اتختار أكتر من قطاع. */
+function nameKeyAr(n){ return String(n||'').trim().toLowerCase().replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' '); }
+function byNameAr(a,b){ return nameKeyAr(a.name).localeCompare(nameKeyAr(b.name),'ar',{numeric:true}); }
 function ordTheirName(our){
   const k = ordNorm(our);
   return Object.prototype.hasOwnProperty.call(ordMap, k) ? ordMap[k] : undefined;
@@ -6922,6 +6924,8 @@ try{ autoCleanDupWarehouses(); }catch(e){}
 if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
   window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
 }
+(function(){ const m=document.querySelector('main'), b=document.getElementById('rsBtn'); if(!m||!b) return; let t;
+  m.addEventListener('scroll',()=>{ b.classList.add('away'); clearTimeout(t); t=setTimeout(()=>b.classList.remove('away'),700); },{passive:true}); })();
 </script>
 </body>
 </html>
