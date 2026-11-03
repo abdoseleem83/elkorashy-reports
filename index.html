@@ -273,7 +273,7 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
 .dd summary::after{content:'▾';position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)}
 .ddl{font-size:11px;color:var(--muted)}
 .ddv{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ddp{position:absolute;top:calc(100% + 4px);z-index:30;width:min(330px,88vw);max-height:52vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:6px}
+.ddp{position:absolute;top:calc(100% + 4px);z-index:60;width:min(330px,88vw);max-height:52vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:6px}
 .ddp label{display:flex;align-items:center;gap:8px;padding:10px 8px;font-size:13.5px;border-bottom:1px solid var(--border)}
 .ddp label:last-child{border-bottom:none}
 .ddp input[type=checkbox]{width:18px;height:18px;flex-shrink:0}
@@ -321,6 +321,10 @@ nav{background:var(--nav-bg)}
 .fab{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#241700;box-shadow:0 6px 18px rgba(245,158,11,.45)}
 .toast{background:#1c2a4d;border:1px solid var(--border)}
 input,select,textarea{color-scheme:dark}
+:root[data-theme="light"] input,:root[data-theme="light"] select,:root[data-theme="light"] textarea{color-scheme:light}
+input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
+.ddp input[type=checkbox]{appearance:auto;-webkit-appearance:checkbox;background:var(--panel2);border:1px solid var(--muted)}
+.dd summary::after{color:var(--text);font-size:15px;font-weight:900}
 /* اختصارات سريعة + رسم بياني في الرئيسية */
 .hqa{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 2px}
 .hqa button{background:var(--card-bg);border:1px solid var(--border);color:var(--text);
@@ -2028,7 +2032,7 @@ function renderWhShortage(m, whId){
               style="width:62px;padding:7px;border-radius:8px;border:1px solid ${val? color : 'var(--border)'};background:var(--panel2);color:var(--text);font-size:13.5px;text-align:center;font-weight:${val?'700':'400'}">
           </label>`;
         return `<div class="card"><div class="info"><div class="name">${esc(it.name)}</div>
-          <div class="sub">الرصيد: ${esc(balText(it.name, stockOf(whId, it.name)))}</div></div>
+          <div class="sub">الرصيد: <b style="color:${qtyOf(whId, it.name)>0?'#2563eb':'#dc2626'};font-weight:800">${esc(balText(it.name, stockOf(whId, it.name)))}</b></div></div>
           ${box('q1', rec.u1, rec.q1, 'var(--blue)')}
           ${box('q2', rec.u2, rec.q2, 'var(--ok)')}
           ${(rec.q1||rec.q2)? `<button title="شيله من الطلب" onclick="unmarkShort('${whId}',${jsArg(it.name)})"
