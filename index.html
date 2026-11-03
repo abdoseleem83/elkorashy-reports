@@ -562,6 +562,7 @@ let monthlyItems = load('monthlyItems_v1', {});      // الشهر ← الصن�
 let salesArchive = load('salesArchive_v1', []);      // شهور مؤرشفة — برّه التقارير
 let custAlias = load('custAlias_v1', {});            // اسم قديم ← الاسم الجديد بعد الدمج
 let secCfg = load('secCfg_v1', {});                  // القطاع ← {name: اسم بديل, hide: مخفي}
+let bktMove = load('bktMove_v1', {});                // صنف ← عمود/بند مخصص في ملخص الأوردر
 let secMove = load('secMove_v1', {});                // مجموعة رئيسية ← العمود اللي تروحه
 let secMerge = load('secMerge_v1', {});              // عمود ← العمود اللي اتدمج فيه (دمج أعمدة بالاسم الموحّد)
 let doorCodeMap = load('doorCodeMap_v1', {});        // اسم صنف الباب ← كود بالإيد
@@ -859,7 +860,7 @@ const EXPORT_GROUP_MAP={
   'قطاعات PVC كومبن':'اكسسوارات وكومبن','اكسسورات pvc اكسا':'اكسسوارات وكومبن',
   'اكسسوارات خارجيه':'اكسسوارات وكومبن','جيفيز':'اكسسوارات وكومبن'
 };
-function exportBucket(mainGroup){ return EXPORT_GROUP_MAP[mainGroup] || mainGroup || 'غير مصنف'; }
+function exportBucket(mainGroup){ if(/ابواب|أبواب/.test(String(mainGroup||''))) return 'ابواب'; return EXPORT_GROUP_MAP[mainGroup] || mainGroup || 'غير مصنف'; }   // الأبواب الخاصة + العادية = بند واحد
 
 /* أول ما تفتح التطبيق تبدأ من الصفحة الرئيسية دايمًا — مش من آخر شاشة
    كنت فيها. الأقسام الفرعية كمان بترجع مقفولة. */
@@ -881,7 +882,7 @@ let shortMain=new Set(), shortSub=new Set();
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','whStockAt_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
-  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','secMerge_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','finAdj_v1','bonusAksa_v1','distBonus_v1','whTrash_v1'];
+  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','secMerge_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','finAdj_v1','bonusAksa_v1','distBonus_v1','whTrash_v1','bktMove_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
 /* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
@@ -2001,6 +2002,7 @@ function renderWhShortage(m, whId){
   if(shortSub.size) list = list.filter(i=>shortSub.has(i.subGroup));
   if(q) list = list.filter(i=>i.name.includes(q));
   if(!showZero) list = list.filter(i=>qtyOf(whId, i.name) > 0);
+  if(shortMain.size>1) list = list.slice().sort((x,y)=> x.name.localeCompare(y.name,'ar',{numeric:true}));   // أكتر من قطاع: ترتيب أبجدي عشان الحلوق تبقى تحت بعض
   const dates = load('whOrderDate_v1',{});
   const today = todayStr();
   const orderDate = dates[whId] || today;
@@ -2044,7 +2046,10 @@ function renderWhShortage(m, whId){
         <button onclick="exportShortExcel('${whId}')">📊 إكسل</button>
         <button onclick="exportShortImage('${whId}')">🖼️ صورة</button>
       </div>
-      <button onclick="exportOrderSummary('${whId}')" style="width:100%;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">📄 ملخّص الأوردر بالمجموعات (PDF)</button>
+      <div style="display:flex;gap:6px">
+        <button onclick="bkSheet()" title="إضافة عمود ونقل أصناف ليه" style="flex:0 0 auto;padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:700;font-size:13px">🧩 عمود</button>
+        <button onclick="exportOrderSummary('${whId}')" style="flex:1;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">📄 ملخّص الأوردر بالمجموعات (PDF)</button>
+      </div>
     </div>
   `;
   $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderWhShortage(m, whId)); };
@@ -2059,7 +2064,7 @@ function buildGroupBreakdown(list, whId){
     const a=Number(r.q1)||0, b=Number(r.q2)||0;
     if(!a && !b) return;
     const it=itemsByName[name]||{};
-    const bucket=exportBucket(it.mainGroup);
+    const bucket=bktMove[name] || exportBucket(it.mainGroup);
     const sub=it.subGroup||'بدون';
     buckets[bucket]=buckets[bucket]||{byUnit:{}, subs:{}};
     add(buckets[bucket].byUnit, r.u1, a); add(buckets[bucket].byUnit, r.u2, b);
@@ -2086,6 +2091,50 @@ function exportShortExcel(whId){
   });
   saveAoaXlsx(data, 'نواقص', 'نواقص_'+w.name+'.xlsx', [46, ...cols.map(()=>11), 28],
     {title:'طلبية نواقص '+w.name+' بتاريخ '+getOrderDate(whId)});
+}
+
+/* ═══ 🧩 عمود جديد ونقل أصناف ليه (في ملخص الأوردر PDF / إكسل) ═══
+   بتكتب اسم العمود (مثلاً «ضلف فقط»)، وتختار أصناف (بمجموعة أو بحث) وتنقلها.
+   الأصناف المنقولة بتظهر تحت العمود ده بدل مجموعتها الأصلية. */
+let bkSel=new Set(), bkQ='', bkMain='', bkSubG='', bkName='';
+function bkSheet(){
+  const mains=[...new Set(items.map(i=>i.mainGroup).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'));
+  const subs=bkMain? [...new Set(items.filter(i=>i.mainGroup===bkMain).map(i=>i.subGroup).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar')) : [];
+  let list=items.filter(i=> (!bkMain||i.mainGroup===bkMain) && (!bkSubG||i.subGroup===bkSubG) && (!bkQ||rsMatch(i.name+' '+(i.code||''),bkQ)));
+  const tot=list.length; list=list.slice().sort((a,b)=>a.name.localeCompare(b.name,'ar',{numeric:true})).slice(0,80);
+  const cols={}; Object.keys(bktMove).forEach(n=>{ cols[bktMove[n]]=(cols[bktMove[n]]||0)+1; });
+  const inp='border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--panel2);color:var(--text);font-size:13px;width:100%';
+  openSheet(`<h3>🧩 عمود جديد ونقل أصناف</h3>
+    <div style="font-size:12.5px;color:var(--muted);margin:6px 0 4px">اسم العمود</div>
+    <input id="bk_name" list="bk_dl" value="${esc(bkName)}" placeholder="مثلاً: ضلف فقط" onchange="bkName=this.value" style="${inp}">
+    <datalist id="bk_dl">${Object.keys(cols).map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0 6px">
+      <select onchange="bkMain=this.value;bkSubG='';bkSheet()" style="${inp}"><option value="">كل المجموعات</option>${mains.map(m=>`<option ${m===bkMain?'selected':''}>${esc(m)}</option>`).join('')}</select>
+      <select onchange="bkSubG=this.value;bkSheet()" style="${inp}"><option value="">كل الفرعية</option>${subs.map(m=>`<option ${m===bkSubG?'selected':''}>${esc(m)}</option>`).join('')}</select>
+    </div>
+    <input value="${esc(bkQ)}" placeholder="بحث بالاسم أو الكود..." onchange="bkQ=this.value;bkSheet()" style="${inp}">
+    <div style="display:flex;gap:8px;align-items:center;font-size:12.5px;margin:8px 0"><span style="flex:1">${tot} صنف${tot>80?' (أول 80 — ضيّق البحث)':''} · متحدد: <b>${bkSel.size}</b></span>
+      <button onclick="bkAll()" style="border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:4px 10px">تحديد اللي ظاهر</button>
+      <button onclick="bkSel.clear();bkSheet()" style="border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:4px 10px">مسح</button></div>
+    <div style="max-height:34vh;overflow:auto;border:1px solid var(--border);border-radius:8px">${list.map(i=>`<label style="display:flex;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);font-size:13px"><input type="checkbox" ${bkSel.has(i.name)?'checked':''} onchange="bkTog(${jsArg(i.name)})"><span style="flex:1">${esc(i.name)}</span>${bktMove[i.name]?`<span style="color:var(--blue);font-size:11.5px">${esc(bktMove[i.name])}</span>`:''}</label>`).join('')||'<div class="empty">لا توجد أصناف</div>'}</div>
+    ${Object.keys(cols).length? `<div style="font-size:12.5px;color:var(--muted);margin:10px 0 4px">الأعمدة الحالية</div>`+Object.keys(cols).map(c=>`<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px"><b style="flex:1">${esc(c)}</b><span>${cols[c]} صنف</span><button onclick="bkDrop(${jsArg(c)})" style="border:1px solid var(--danger);background:transparent;color:var(--danger);border-radius:8px;padding:3px 9px;cursor:pointer">رجّعهم</button></div>`).join('') : ''}
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">قفل</button><button class="btn-save" onclick="bkMoveSel()">نقل المحدد للعمود</button></div>`);
+}
+function bkTog(n){ if(bkSel.has(n)) bkSel.delete(n); else bkSel.add(n); bkSheet(); }
+function bkAll(){
+  items.filter(i=> (!bkMain||i.mainGroup===bkMain) && (!bkSubG||i.subGroup===bkSubG) && (!bkQ||rsMatch(i.name+' '+(i.code||''),bkQ))).slice(0,80).forEach(i=>bkSel.add(i.name)); bkSheet();
+}
+function bkMoveSel(){
+  const nm=(($('#bk_name')||{}).value||bkName||'').trim();
+  if(!nm) return toast('اكتب اسم العمود الأول');
+  if(!bkSel.size) return toast('اختار أصناف الأول');
+  bkSel.forEach(n=>{ bktMove[n]=nm; });
+  save('bktMove_v1',bktMove); const c=bkSel.size; bkSel.clear(); bkName=nm; bkSheet(); toast('اتنقل '+c+' صنف لعمود «'+nm+'»');
+}
+function bkDrop(col){
+  if(!confirm('ترجّع كل أصناف «'+col+'» لمجموعاتها الأصلية؟')) return;
+  Object.keys(bktMove).forEach(n=>{ if(bktMove[n]===col) delete bktMove[n]; });
+  save('bktMove_v1',bktMove); bkSheet();
 }
 // ===== مقارنة الفروع (هرمية) + مقارنة بالألوان =====
 let cmpMain=new Set(), cmpSub=new Set(), cmpZero=false, colMain=new Set(), colZero=false;
@@ -4047,6 +4096,7 @@ function renderWhInventory(m, whId){
   if(invSub.size) list=list.filter(i=>invSub.has(i.subGroup));
   if(q) list=list.filter(i=>rsMatch(i.name, q));
   if(invHideZero) list=list.filter(i=>qtyOf(whId, i.name)>0);
+  if(invMain.size>1 || q) list=list.slice().sort((x,y)=> x.name.localeCompare(y.name,'ar',{numeric:true}));   // أكتر من قطاع: ترتيب أبجدي
   const sel = invMain.size>0 && !q, tot = list.length;
   /* اللي اتجرد بيروح تبويب «تم الجرد» ويفضل هنا اللي لسه — إلا وقت البحث بيظهر الاتنين عشان تلاقي أي صنف */
   if(!q) list=list.filter(i=>!inv.counts[i.name]);
