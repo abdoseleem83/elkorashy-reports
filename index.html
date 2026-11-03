@@ -3410,11 +3410,12 @@ function mkDoc(bodyHtml, landscape){
   if(over > 2) el.style.width = Math.min(el.scrollWidth + 8, 3400) + 'px';
   return el;
 }
-async function docToCanvas(el){
+async function docToCanvas(el, maxScale, maxPixels){
   await loadLib('html2canvas',()=>window.html2canvas);
-  // نقلل الدقة تلقائيًا للجداول الطويلة عشان متعدّيش حد الذاكرة في الموبايل
-  const area=Math.max(1,el.offsetWidth*el.offsetHeight); let sc=2;
-  while(area*sc*sc>12e6 && sc>0.7) sc=Math.round((sc-0.1)*10)/10;
+  // الدقة: الصورة ×٤ عشان تتكبّر من غير ما تتبكسل، والـPDF ×٢. وبننزّلها تلقائيًا
+  // للجداول الطويلة عشان متعدّيش حد الذاكرة في الموبايل (iOS حوالي ١٦ مليون بكسل).
+  const area=Math.max(1,el.offsetWidth*el.offsetHeight); let sc=maxScale||2; const cap=maxPixels||12e6;
+  while(area*sc*sc>cap && sc>0.7) sc=Math.round((sc-0.1)*10)/10;
   return window.html2canvas(el,{scale:sc,backgroundColor:'#fff',useCORS:true});
 }
 /* الصورة بتفتح شاشة المشاركة بتاعة الموبايل على طول (واتس/تيليجرام/ميل)
@@ -3438,7 +3439,7 @@ async function shareOrDownload(blob, filename, title){
 async function exportDocImage(bodyHtml, filename, landscape, forceDownload){
   toast('جاري تجهيز الصورة...'); const el=mkDoc(bodyHtml,landscape);
   try{
-    const c = await docToCanvas(el);
+    const c = await docToCanvas(el, 4, 16e6);   // صورة: دقة عالية (حد iOS ~١٦ مليون بكسل)
     const blob = await canvasToBlob(c);
     if(!blob) throw new Error('no blob');
     let how;
