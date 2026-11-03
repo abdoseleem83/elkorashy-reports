@@ -1444,7 +1444,6 @@ function renderBottomNav(){
 /* ☰ على الموبايل: الدرج بيقفل لوحده أول ما تختار حاجة (render بيقفله) */
 function toggleMenu(on){ document.body.classList.toggle('menu-open', on===undefined ? !document.body.classList.contains('menu-open') : !!on); }
 function bumpUse(id){ try{ const u=JSON.parse(localStorage.getItem('homeUse_v1')||'{}'); u[id]=(u[id]||0)+1; localStorage.setItem('homeUse_v1',JSON.stringify(u)); }catch(e){} }
-function homeUse(){ try{ return JSON.parse(localStorage.getItem('homeUse_v1')||'{}')||{}; }catch(e){ return {}; } }
 function switchModule(m){ toggleMenu(false); if(module!==m) bumpUse(m); module=(module===m)?null:m; q=''; openGroups=new Set(); render(true); }
 function goHome(){ toggleMenu(false); module=null; q=''; openGroups=new Set(); render(true); }
 $('#fab').addEventListener('click', ()=>{
@@ -2082,12 +2081,16 @@ function exportShortExcel(whId){
   const w=warehouses.find(x=>x.id===whId);
   const list = Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد نواقص'); return; }
-  const t=shortTotals(whId), cols=shortUnitCols(whId);
-  const data=[['الصنف', ...cols, 'ملاحظة'],
-    ...list.map(([n])=>{ const q=shortRowUnits(whId,n); const r=shortRec(whId,n);
-      if(!Object.keys(q).length) return null;
-      return [n, ...cols.map(u=> q[u]? nz(q[u]) : ''), r.note||'']; }).filter(Boolean)];
-  data.push(['الإجمالي', ...cols.map(u=> t.byUnit[u]||''), t.items+' صنف']);
+  const cols=shortUnitCols(whId), G=shortGrouped(whId), q=o=>cols.map(u=> o&&o[u]? nz(o[u]) : '');
+  const data=[['الصنف', ...cols, 'ملاحظة']];
+  G.mains.forEach(m=>{
+    data.push([m.name, ...q(m.total), '']);
+    m.subs.forEach(s=>{
+      if(s.name) data.push(['   '+s.name, ...q(s.total), '']);
+      s.rows.forEach(r=>data.push(['      '+r.n, ...q(r.q), r.note]));
+    });
+  });
+  data.push(['الإجمالي', ...q(G.grand), shortTotals(whId).items+' صنف']);
   const buckets=buildGroupBreakdown(list, whId);
   data.push([],['ملخص الإجمالي حسب المجموعة', ...cols]);
   Object.entries(buckets).forEach(([bucket,b])=>{
@@ -2897,14 +2900,6 @@ function noCodeSave(names){
 }
 /* الضغط على الكود: يوري الأصناف اللي تحته وتقدر تغيّر كود أي صنف */
 let dcNames=[];
-function doorCodeSave(names){
-  (names||dcNames).forEach((n,i)=>{
-    const el=document.getElementById('dc_'+i); if(!el) return;
-    const v=(el.value||'').trim().toUpperCase();
-    if(v) doorCodeMap[n]=v; else delete doorCodeMap[n];
-  });
-  save('doorCodeMap_v1',doorCodeMap); closeSheet(); render(true); toast('اتحفظ');
-}
 
 /* ٤) الأبواب لكل عميل اشترى أبواب (مش الموزعين بس) — كمية وقيمة.
       الأبواب نفسها بس: القطاع الفرعي «أبواب» — من غير كالون ولا مفصلة ولا خدمات. */
@@ -3601,22 +3596,56 @@ function breakdownTableHtml(buckets, cols){
 /* عمود لكل وحدة اتطلبت فعلاً (لفة · عود · كرتونة · قطعة). كده الوحدة
    مكتوبة فوق الرقم بالظبط، ومجموع كل وحدة لوحده في آخر الجدول. */
 function shortRowUnits(whId, name){
-  const r=shortRec(whId,name), o={};
-  if(r.q1) o[r.u1]=r.q1;
-  if(r.q2) o[r.u2]=r.q2;
+  const r=shortRec(whId,name), o={}, a=Number(r.q1)||0, b=Number(r.q2)||0;   // «0» النصّية مش كمية
+  if(a>0) o[r.u1]=(o[r.u1]||0)+a;
+  if(b>0) o[r.u2]=(o[r.u2]||0)+b;
   return o;
+}
+/* النواقص متجمّعة: مجموعة رئيسية ← فرعية ← أصناف، وإجمالي الكمية لكل مستوى (بالوحدة) */
+function shortGrouped(whId){
+  const list=Object.entries(whShortage[whId]||{}), mains={}, grand={};
+  const add=(o,q)=>{ Object.keys(q).forEach(u=>{ o[u]=(o[u]||0)+q[u]; }); };
+  list.forEach(([n])=>{
+    const q=shortRowUnits(whId,n); if(!Object.keys(q).length) return;
+    const it=itemsByName[n]||{}, mg=bktMove[n]||it.mainGroup||'غير مصنف', sg=it.subGroup||'';
+    const m=mains[mg]=mains[mg]||{name:mg,total:{},subs:{}};
+    const s=m.subs[sg]=m.subs[sg]||{name:sg,total:{},rows:[]};
+    s.rows.push({n,q,note:shortRec(whId,n).note||''}); add(s.total,q); add(m.total,q); add(grand,q);
+  });
+  const ar=(a,b)=>a.localeCompare(b,'ar',{numeric:true});
+  const out=Object.values(mains).sort((a,b)=>ar(a.name,b.name)).map(m=>({name:m.name,total:m.total,
+    subs:Object.values(m.subs).sort((a,b)=>ar(a.name,b.name)).map(s=>({name:s.name,total:s.total,rows:s.rows.sort((a,b)=>ar(a.n,b.n))}))}));
+  return {mains:out, grand};
 }
 /* مستند طلبية النواقص (PDF / صورة): خط كبير بولد، من غير ملاحظة ولا ملخص،
    والأصناف على نصين جنب بعض (زي ورقتين في ورقة واحدة) عشان الطلبية الطويلة تدخل في صفحة. */
 function shortDocBody(whId){
-  const w=warehouses.find(x=>x.id===whId), list=Object.entries(whShortage[whId]||{});
-  const cols=shortUnitCols(whId);
-  const rows=list.map(([n])=>({n, q:shortRowUnits(whId,n)})).filter(r=>Object.keys(r.q).length);
-  const h=Math.ceil(rows.length/2), A=rows.slice(0,h), B=rows.slice(h);
+  const w=warehouses.find(x=>x.id===whId), cols=shortUnitCols(whId), G=shortGrouped(whId);
+  const tc=o=> cols.map(u=>`<td>${o&&o[u]?nz(o[u]):''}</td>`).join('');
+  // سطور مسطّحة: رئيسية / فرعية / صنف — بعدين بتتقسم نصّين جنب بعض
+  const L=[];
+  G.mains.forEach(m=>{
+    L.push({t:'m',n:m.name,q:m.total,m:m.name});
+    m.subs.forEach(s=>{
+      if(s.name) L.push({t:'s',n:s.name,q:s.total,m:m.name,s:s.name});
+      s.rows.forEach(r=>L.push({t:'i',n:r.n,q:r.q,m:m.name,s:s.name}));
+    });
+  });
+  // نقطة التقسيم: قريبة من النص، ومش بعد عنوان على طول
+  let h=Math.ceil(L.length/2);
+  while(h<L.length && h>0 && L[h-1].t!=='i') h++;
+  const A=L.slice(0,h); let B=L.slice(h);
+  if(B.length && B[0].t==='i'){                               // تكملة مجموعة اتقسمت: نكرر عنوانها
+    const f=B[0], pre=[{t:'m',n:f.m+' (تابع)',q:null}]; if(f.s) pre.push({t:'s',n:f.s+' (تابع)',q:null});
+    B=pre.concat(B);
+  }
   const half=r=> r
-    ? `<td class="n">${esc(r.n)}</td>${cols.map(u=>`<td>${esc(r.q[u]||'')}</td>`).join('')}`
+    ? `<td class="n">${esc(r.n)}</td>${tc(r.t==='i'? r.q : r.q)}`
     : `<td class="n"></td>${cols.map(()=>'<td></td>').join('')}`;
+  const cls=r=> r? (r.t==='m'?'gm':r.t==='s'?'gs':'z') : 'z';
   const head=`<th>الصنف</th>${cols.map(u=>`<th>${esc(u)}</th>`).join('')}`;
+  const n=Math.max(A.length,B.length), rowsHtml=[];
+  for(let i=0;i<n;i++) rowsHtml.push(`<tr class="${cls(A[i])}">${half(A[i])}<td class="gap"></td>${half(B[i])}</tr>`);
   return `<div class="dx sh"><style>
       .dx.sh{font-size:22px;font-weight:800}
       .dx.sh h2{font-size:30px}
@@ -3625,10 +3654,15 @@ function shortDocBody(whId){
       .dx.sh td{font-size:22px;font-weight:800;padding:10px 8px;white-space:normal;line-height:1.35}
       .dx.sh td.n{text-align:right;min-width:0;width:34%}
       .dx.sh th.gap,.dx.sh td.gap{width:14px;min-width:14px;padding:0;border:none;background:#fff}
+      .dx.sh tr.gm td{background:#1d4ed8;color:#fff;font-size:23px}
+      .dx.sh tr.gs td{background:#dbe5fb;color:#173fb0}
+      .dx.sh tr.gt td{background:#0f172a;color:#fff;font-size:24px}
+      .dx.sh tr.gt td.gap{background:#fff}
     </style><h2>طلبية نواقص ${esc(w.name)}</h2>
     <div class="sub">بتاريخ ${getOrderDate(whId)}</div>
     <table><tr>${head}<th class="gap"></th>${head}</tr>
-    ${A.map((r,i)=>`<tr class="z">${half(r)}<td class="gap"></td>${half(B[i])}</tr>`).join('')}
+    ${rowsHtml.join('')}
+    <tr class="gt"><td class="n">الإجمالي</td>${tc(G.grand)}<td class="gap"></td><td class="n"></td>${cols.map(()=>'<td></td>').join('')}</tr>
     </table></div>`;
 }
 function exportShortPdf(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocPdf(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),true); }
@@ -4133,12 +4167,6 @@ function invStatsHtml(r){
     ${box('أصناف مجرودة',fmtN(r.counted))}${box('أصناف عجز',fmtN(r.def.length),'var(--danger)')}${box('أصناف زيادة',fmtN(r.exc.length),'var(--ok)')}
     ${box('إجمالي العجز',fmtN(r.defTotal),'var(--danger)')}${box('إجمالي الزيادة',fmtN(r.excTotal),'var(--ok)')}${box('نسبة المطابقة',Math.round(r.pct*100)+'%')}</div>`;
 }
-function invListHtml(list, kind){
-  if(!list.length) return `<div class="empty" style="padding:14px">${kind==='def'?'لا يوجد عجز':'لا يوجد زيادة'}</div>`;
-  return list.map(x=>`<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(x.name)}</div>
-    <div class="sub">${esc(x.mg)} · برنامج: ${fmtN(x.prog)} · فعلي: ${fmtN(x.act)}</div></div>
-    <b style="color:${kind==='def'?'var(--danger)':'var(--ok)'}">${kind==='def'?'-':'+'}${fmtN(Math.abs(x.diff))}</b></div>`).join('');
-}
 /* النتيجة متجمّعة بالمجموعة: كل مجموعة (كرافت / نيو / …) فيها عجزها وزيادتها مع بعض */
 let invFlt={kind:'all', secs:new Set()}, invFltNames=[];      // فلتر النتيجة: النوع (الكل/عجز/زيادة) + القطاعات
 const invFltOn = () => invFlt.kind!=='all' || invFlt.secs.size>0;
@@ -4575,7 +4603,6 @@ const rsNorm = s => String(s==null?'':s).toLowerCase()
   .replace(/[\u064B-\u065F\u0670\u0640]/g,'').replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه')
   .replace(/[٠-٩]/g, d=> '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
 function rsMatch(hay, qry){ const h=rsNorm(hay); return rsNorm(qry).split(/\s+/).filter(Boolean).every(t=> h.includes(t)); }
-function rsPanelOpen(){ const p=$('#rsPanel'); return !!p && p.style.display!=='none'; }
 function rsSync(){
   const btn=$('#rsBtn'), pan=$('#rsPanel'), inp=$('#rsq'); if(!btn||!pan) return;
   const owner = rsCtx? rsCtx.k+':'+(rsCtx.whId||'') : '';
@@ -5560,7 +5587,6 @@ function payColsSheet(){
     <div class="f-actions"><button class="btn-save" onclick="closeSheet()">تم</button></div>`);
 }
 let payExportBranch = load('_payExportBranch_','');
-function paySendToggle(key){ if(paySendVisible.has(key)) paySendVisible.delete(key); else paySendVisible.add(key); save('paySendCols_v1',[...paySendVisible]); render(); }
 function setPayExportBranch(v){ payExportBranch=v; save('_payExportBranch_',v); render(); }
 /* الفترة بالشكل اللي في الكشف المطبوع: «١٦ الى آخر الشهر» مش «16 – 30» */
 const toArabicDigits = n=> String(n).replace(/[0-9]/g, d=> '٠١٢٣٤٥٦٧٨٩'[+d]);
