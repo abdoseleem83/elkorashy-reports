@@ -1,4 +1,6 @@
 // تاريخ ووقت آخر رفعة رصيد: بيتسجّل لكل مخزن وقت الحفظ، ويظهر في الأرصدة والمقارنات.
+import { existsSync } from 'fs';
+if(!existsSync(new URL('./fixtures/stock-raw-tanta.xls', import.meta.url).pathname)){ console.log('⏭️  ملف المثال test/fixtures/stock-raw-tanta.xls مش موجود — تخطّي'); process.exit(0); }
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 let pass=0, fail=0;
 const check=(n,ok,x='')=>{ console.log((ok?'✅':'❌')+' '+n+(x?'  — '+x:'')); ok?pass++:fail++; };

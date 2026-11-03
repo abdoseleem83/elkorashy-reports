@@ -44,7 +44,7 @@ check('الأبواب (الافتراضي) → كرتونة/قطعة', u.door.jo
 // ── العناوين على الشاشة
 const labels = await pg.evaluate(()=>[...document.querySelectorAll('#wh_sub label span')].map(s=>s.textContent));
 check('العناوين في الشاشة صح',
-  labels.join(',')==='لفة,عود,لفة,عود,كرتونة,قطعة,لفة,عود,كرتونة,قطعة', labels.join(','));
+  labels.join(',')==='كرتونة,قطعة,كرتونة,قطعة,لفة,عود,لفة,عود,لفة,عود'   /* الأصناف دلوقتي أبجدي: باب · زاوية · كرافت · كومبن · نيو */, labels.join(','));
 check('مفيش قايمة وحدات منسدلة', (await pg.evaluate(()=>document.querySelectorAll('#wh_sub select').length))===0);
 
 // ── السجل القديم اتقرا صح (كرتونة = الخانة الأولى للأبواب)
@@ -83,12 +83,16 @@ check('الشريط بيتحدّث لحظيًا', /لفة: 18/.test(await pg.eva
 
 // ── المستند: عمود لكل وحدة
 const doc = await pg.evaluate(()=>shortDocBody('w1'));
-check('أعمدة المستند بالترتيب: لفة عود كرتونة قطعة',
-  /<th>الصنف<\/th><th>لفة<\/th><th>عود<\/th><th>كرتونة<\/th><th>قطعة<\/th>/.test(doc),
-  (doc.match(/<tr><th>الصنف[^]*?<\/tr>/)||[''])[0]);
-check('الكرافت في عمود اللفة والعود مش الكرتونة', /<td>كرافت لاين 25 ابيض<\/td><td>3<\/td><td>12<\/td><td><\/td><td><\/td>/.test(doc));
-check('الاكسسوار في عمود الكرتونة والقطعة', /<td>زاوية اكسا<\/td><td><\/td><td><\/td><td>4<\/td><td>30<\/td>/.test(doc));
-check('سطر الإجمالي في المستند', /<b>18<\/b><\/td><td><b>12<\/b>/.test(doc));
+check('كل مجموعة رئيسية جدول منفصل بعنوانها',
+  [...doc.matchAll(/class="gm"[^>]*><span class="gt">[^<]*<\/span>([^<]+)</g)].length>=3 && (doc.match(/<table>/g)||[]).length>=4 && doc.includes('قطاعات كرافت لاين</td>') && doc.includes('اكسسورات pvc اكسا</td>'),
+  String((doc.match(/<table>/g)||[]).length));
+check('كل جدول بيعرض وحداته بس (الكرافت: لفة وعود)',
+  /<td class="hd">الصنف<\/td><td class="hd">لفة<\/td><td class="hd">عود<\/td><\/tr>/.test(doc));
+check('الكرافت في عمود اللفة والعود مش الكرتونة', /<td class="n">كرافت لاين 25 ابيض<\/td><td>3<\/td><td>12<\/td><\/tr>/.test(doc));
+check('الاكسسوار في عمود الكرتونة والقطعة', /<td class="n">زاوية اكسا<\/td><td>4<\/td><td>30<\/td>/.test(doc));
+check('المستند من غير عمود ملاحظة', !/ملاحظة/.test(doc));
+check('فيه الإجمالي العام في الآخر', /الإجمالي العام/.test(doc));
+check('الخط بولد وكبير', /font-weight:800/.test(doc) && /\.dx\.sh td\{font-size:2\d+px/.test(doc));
 
 // ── الإكسل
 const aoa = await pg.evaluate(()=>{
@@ -102,7 +106,7 @@ check('رأس الإكسل: الصنف + الوحدات + ملاحظة',
 check('عدد أعمدة العرض مطابق', aoa.w.length===aoa.d[0].length, aoa.w.length+' vs '+aoa.d[0].length);
 const rowAcc = aoa.d.find(r=> r[0]==='زاوية اكسا');
 check('سطر الاكسسوار: ٤ كرتونة و٣٠ قطعة', rowAcc && rowAcc[1]==='' && rowAcc[3]===4 && rowAcc[4]===30, JSON.stringify(rowAcc));
-const rowTot = aoa.d.find(r=> r[0]==='الإجمالي');
+const rowTot = aoa.d.find(r=> r[0]==='الإجمالي العام');
 check('سطر الإجمالي في الإكسل', rowTot && rowTot[1]===18 && rowTot[2]===12 && rowTot[3]===11 && rowTot[4]===30, JSON.stringify(rowTot));
 
 // ── التصفير

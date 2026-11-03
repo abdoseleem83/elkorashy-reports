@@ -29,9 +29,12 @@ const seg = n => pg.locator('.stab', {hasText:n}).first();
 check('البداية: الـ٣ أصناف ظاهرين', JSON.stringify(await names())===JSON.stringify(['صنف أ','صنف ب','صنف ج لفة']), (await names()).join('|'));
 check('تبويب «تم الجرد (0)» موجود', (await seg('تم الجرد').innerText()).includes('0'));
 
-// جرد صنف عادي: يكتب الكمية ويضغط برّه → يروح تم الجرد
+const saveBtn = n => pg.locator(`.invc[data-nm="${n}"] button[title^="حفظ"]`);
+// جرد صنف عادي: يكتب الكمية ويضغط زرار «حفظ» → يروح تم الجرد (الكتابة لوحدها ما بتنقلهوش)
 await pg.locator('.invc[data-nm="صنف أ"] input').fill('8');
 await pg.locator('.invc[data-nm="صنف أ"] input').blur(); await pg.waitForTimeout(200);
+check('الكتابة لوحدها ما نقلتش الصنف', (await names()).includes('صنف أ'));
+await saveBtn('صنف أ').click(); await pg.waitForTimeout(250);
 check('صنف أ اختفى من قايمة الإدخال وفضل ب وج', JSON.stringify(await names())===JSON.stringify(['صنف ب','صنف ج لفة']), (await names()).join('|'));
 check('الشارة بقت ١ والمتبقي ٢', (await badge())==='1' && (await pg.locator('#invProg').innerText()).includes('2'), await pg.locator('#invProg').innerText());
 
@@ -40,11 +43,13 @@ const jf = pg.locator('.invc[data-nm="صنف ج لفة"] input');
 await jf.nth(0).fill('2'); await jf.nth(1).focus(); await pg.waitForTimeout(200);
 check('صنف ج لسه ظاهر وانت بتدخل خانة العود', (await names()).includes('صنف ج لفة'));
 await jf.nth(1).fill('3'); await jf.nth(1).blur(); await pg.waitForTimeout(200);
+await saveBtn('صنف ج لفة').click(); await pg.waitForTimeout(250);
 check('بعد ما تخلّص الخانتين يروح تم الجرد', !(await names()).includes('صنف ج لفة') && (await badge())==='2');
 check('الفعلي اتحسب ٢×١٠+٣ = ٢٣', (await pg.evaluate(()=>invCounts.w1.counts['صنف ج لفة'].actual))===23);
 
 // صنف من غير كمية: ما يتنقلش لو سبته فاضي
 await pg.locator('.invc[data-nm="صنف ب"] input').focus(); await pg.locator('.invc[data-nm="صنف ب"] input').blur(); await pg.waitForTimeout(200);
+await saveBtn('صنف ب').click(); await pg.waitForTimeout(200);   // من غير كمية → «اكتب الكمية الأول»
 check('صنف ب (من غير كمية) لسه ظاهر', JSON.stringify(await names())===JSON.stringify(['صنف ب']));
 
 // تبويب تم الجرد
@@ -59,13 +64,14 @@ await pg.locator('.invc[data-nm="صنف أ"] input').fill('10'); await pg.locato
 check('التعديل بيحدّث الفرق → مطابق', (await pg.locator('.invc[data-nm="صنف أ"]').innerText()).includes('مطابق'));
 
 // رجّعه للجرد ↩️
+await pg.locator('.invc[data-nm="صنف أ"]').evaluate(e=>e.scrollIntoView({block:'center'})); await pg.waitForTimeout(150);
 await pg.locator('.invc[data-nm="صنف أ"] button').click(); await pg.waitForTimeout(200);
 check('↩️ شال صنف أ من تم الجرد ومسح كميته', !(await pg.evaluate(()=>!!invCounts.w1.counts['صنف أ'])) && (await badge())==='1');
 await seg('إدخال الجرد').click(); await pg.waitForTimeout(300);
 check('صنف أ رجع لقايمة الإدخال مع ب', JSON.stringify(await names())===JSON.stringify(['صنف أ','صنف ب']), (await names()).join('|'));
 
 // كل الأصناف تتجرد → رسالة «اتجردت»
-for(const n of ['صنف أ','صنف ب']){ const i=pg.locator(`.invc[data-nm="${n}"] input`); await i.fill('1'); await i.blur(); await pg.waitForTimeout(150); }
+for(const n of ['صنف أ','صنف ب']){ const i=pg.locator(`.invc[data-nm="${n}"] input`); await i.fill('1'); await i.blur(); await saveBtn(n).click(); await pg.waitForTimeout(250); }
 check('لما الكل يتجرد بتظهر رسالة «كل أصناف الاختيار ده اتجردت»', await pg.locator('#invAllDone').isVisible());
 
 // بعد إعادة التحميل: اللي اتجرد لسه في تم الجرد

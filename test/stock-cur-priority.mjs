@@ -1,4 +1,6 @@
 // عمود cur له الأولوية على أي عمود تاني فيه «رصيد/كمية»، وشيت الإسكندرية (اسم الصنف / الرصيد) لسه بيتقرا.
+import { existsSync } from 'fs';
+if(!existsSync(new URL('./fixtures/stock-alex.xlsx', import.meta.url).pathname)){ console.log('⏭️  ملف المثال test/fixtures/stock-alex.xlsx مش موجود — تخطّي'); process.exit(0); }
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import fs from 'fs';
 let pass=0, fail=0;

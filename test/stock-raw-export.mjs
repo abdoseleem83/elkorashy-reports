@@ -1,4 +1,6 @@
 // شيت الأرصدة اللي بيتصدّر خام من برنامج الحسابات (Item_Name / cur وفي أوله صف فاضي)
+import { existsSync } from 'fs';
+if(!existsSync(new URL('./fixtures/stock-raw-tanta.xls', import.meta.url).pathname)){ console.log('⏭️  ملف المثال test/fixtures/stock-raw-tanta.xls مش موجود — تخطّي'); process.exit(0); }
 // لازم يتقرا في مخزن طنطا ومخزن الاسكندرية زي الشيت العربي بالظبط.
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import fs from 'fs';
