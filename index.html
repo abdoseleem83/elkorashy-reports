@@ -2032,7 +2032,7 @@ function renderWhShortage(m, whId){
               style="width:62px;padding:7px;border-radius:8px;border:1px solid ${val? color : 'var(--border)'};background:var(--panel2);color:var(--text);font-size:13.5px;text-align:center;font-weight:${val?'700':'400'}">
           </label>`;
         return `<div class="card"><div class="info"><div class="name">${esc(it.name)}</div>
-          <div class="sub">الرصيد: ${esc(balText(it.name, stockOf(whId, it.name)))}</div></div>
+          <div class="sub">الرصيد: <b style="color:${qtyOf(whId, it.name)>0?'#2563eb':'#dc2626'};font-weight:800">${esc(balText(it.name, stockOf(whId, it.name)))}</b></div></div>
           ${box('q1', rec.u1, rec.q1, 'var(--blue)')}
           ${box('q2', rec.u2, rec.q2, 'var(--ok)')}
           ${(rec.q1||rec.q2)? `<button title="شيله من الطلب" onclick="unmarkShort('${whId}',${jsArg(it.name)})"
