@@ -590,6 +590,7 @@ const secMergeAcc = c => (/[اإأ]كسس|حشو|تصنيع/.test(c) && !/جيف
 function secColOf(key){
   const k=String(key||'');
   let c = secMove[k] ? secMergeAcc(secMove[k]) : (SECTOR_MAP[k] ? SECTOR_MAP[k] : secMergeAcc(secName(k)));
+  if(!secMove[k] && /^(ابواب|أبواب)/.test(c) && !/اكسسوار|إكسسوار/.test(c)) c='ابواب';   // «ابواب خاصة» وأي أبواب تانية = عمود الأبواب
   for(let i=0; i<8 && secMerge[c]; i++) c = secMerge[c];      // عمود اتدمج في عمود تاني
   return c;
 }
@@ -860,7 +861,7 @@ const EXPORT_GROUP_MAP={
   'قطاعات PVC كومبن':'اكسسوارات وكومبن','اكسسورات pvc اكسا':'اكسسوارات وكومبن',
   'اكسسوارات خارجيه':'اكسسوارات وكومبن','جيفيز':'اكسسوارات وكومبن'
 };
-function exportBucket(mainGroup){ if(/ابواب|أبواب/.test(String(mainGroup||''))) return 'ابواب'; return EXPORT_GROUP_MAP[mainGroup] || mainGroup || 'غير مصنف'; }   // الأبواب الخاصة + العادية = بند واحد
+function exportBucket(mainGroup){ return EXPORT_GROUP_MAP[mainGroup] || mainGroup || 'غير مصنف'; }
 
 /* أول ما تفتح التطبيق تبدأ من الصفحة الرئيسية دايمًا — مش من آخر شاشة
    كنت فيها. الأقسام الفرعية كمان بترجع مقفولة. */
@@ -2755,14 +2756,15 @@ function exportDistBlk(kind){
       المقاس بيتقرا من اسم الصنف، والبرور والحلق مع بعض في عمود واحد. */
 /* التقرير ده للأبواب نفسها بس: البرور والحلوق والخدمات والإكسسوارات
    مستبعدين حتى لو عليهم أكواد، فمفيش سطر «بدون كود» من الأصل. */
-const DOOR_SIZES=['70','80','90','متر','باقي'];
+const DOOR_SIZES=['70','80','90','متر','ضلف فقط','باقي'];
 const NOT_A_DOOR=/برور|حلق|حلوق|خدم|كالون|مفصل|جوان|سليكون|مسمار|اكسسوار|إكسسوار|عتب/;
 function isDoorItem(name, sub){
   if(NOT_A_DOOR.test(String(name||''))) return false;
   return isDoorSub(name, sub);
 }
-function doorCol(name){
+function doorCol(name, sub){
   const n=String(name||'');
+  if(/ضلف/.test(n) || /ضلف/.test(String(sub||''))) return 'ضلف فقط';      // ضلفة من غير حلق وبرور
   const m2=n.match(/(^|[\s(])(\d{2,3})(\s*سم)?([\s)]|$)/);
   if(m2){ const v=parseInt(m2[2],10);
     if(v===70) return '70'; if(v===80) return '80'; if(v===90) return '90';
@@ -2781,7 +2783,7 @@ function buildDoorsByCode(){
         if(!code){ noCode[name]=(noCode[name]||0)+(d.val||0); return; }
         const r = rows[code] = rows[code] || {code, names:new Set(), cells:{}, qtys:{}, qty:0, val:0};
         r.names.add(name);
-        const c = doorCol(name);
+        const c = doorCol(name, d.sub);
         r.cells[c]=(r.cells[c]||0)+(d.val||0);
         r.qtys[c]=(r.qtys[c]||0)+(d.qty||0);
         r.qty += (d.qty||0); r.val += (d.val||0);
@@ -2905,7 +2907,7 @@ function doorCodeSave(names){
 const NOT_DOOR=/اكسسوار|إكسسوار|خدم|كالون|مفصل|جوان|سليكون|مسمار|عتب/;
 function isDoorSub(name, sub){
   if(NOT_DOOR.test(String(sub||''))) return false;       // «اكسسوارات ابواب WPC» مش باب
-  if(sub) return /ابواب|أبواب/.test(sub);
+  if(sub) return /ابواب|أبواب|ضلف/.test(sub);        // «ابواب خاصة» جوه /ابواب/، والضلف لوحدها كمان
   return !NOT_DOOR.test(String(name||''));               // بيانات قديمة من غير قطاع فرعي
 }
 function buildDistDoors(){
@@ -3199,7 +3201,7 @@ function importSales(file){
       /* الصنف يعتبر باب من **مجموعته الرئيسية** (ابواب WPC) — دي المرجع.
          الاسم بيتستخدم كاحتياطي بس لو الصنف نفسه مش موجود في قايمة
          الأصناف أصلاً، عشان مبيعات الأبواب ما تضيعش في صمت. */
-      const isDoor = (it, nm)=> it ? /ابواب|أبواب/.test(it.mainGroup||'')
+      const isDoor = (it, nm)=> it ? (/ابواب|أبواب/.test(it.mainGroup||'') || /ضلف/.test(it.subGroup||''))
                                    : /(^|\s)(باب|ابواب|أبواب)/.test(nm||'');
       const dataRows = rows.slice(hdrRow+1).filter(r=>r[ci]);
       const custMap={}, sectorMap={}, doorMap={}, itemMap={};
