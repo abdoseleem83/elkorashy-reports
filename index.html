@@ -273,7 +273,7 @@ table.rep.bon.stk td:first-child,table.rep.bon.stk th:first-child{min-width:0;ma
 .dd summary::after{content:'▾';position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)}
 .ddl{font-size:11px;color:var(--muted)}
 .ddv{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ddp{position:absolute;top:calc(100% + 4px);z-index:30;width:min(330px,88vw);max-height:52vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:6px}
+.ddp{position:absolute;top:calc(100% + 4px);z-index:60;width:min(330px,88vw);max-height:52vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:6px}
 .ddp label{display:flex;align-items:center;gap:8px;padding:10px 8px;font-size:13.5px;border-bottom:1px solid var(--border)}
 .ddp label:last-child{border-bottom:none}
 .ddp input[type=checkbox]{width:18px;height:18px;flex-shrink:0}
@@ -321,6 +321,10 @@ nav{background:var(--nav-bg)}
 .fab{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#241700;box-shadow:0 6px 18px rgba(245,158,11,.45)}
 .toast{background:#1c2a4d;border:1px solid var(--border)}
 input,select,textarea{color-scheme:dark}
+:root[data-theme="light"] input,:root[data-theme="light"] select,:root[data-theme="light"] textarea{color-scheme:light}
+input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
+.ddp input[type=checkbox]{appearance:auto;-webkit-appearance:checkbox;background:var(--panel2);border:1px solid var(--muted)}
+.dd summary::after{color:var(--text);font-size:15px;font-weight:900}
 /* اختصارات سريعة + رسم بياني في الرئيسية */
 .hqa{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 2px}
 .hqa button{background:var(--card-bg);border:1px solid var(--border);color:var(--text);
