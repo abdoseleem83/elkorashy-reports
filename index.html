@@ -3422,30 +3422,65 @@ async function docToCanvas(el, maxScale, maxPixels){
    بدل ما تنزّلها وتروح تدوّر عليها في الملفات. لو الجهاز مش بيدعم
    المشاركة (كمبيوتر مثلاً) بتتنزّل عادي. */
 function canvasToBlob(c){ return new Promise(r=> c.toBlob(r, 'image/png')); }
-async function shareOrDownload(blob, filename, title){
-  const file = new File([blob], filename, {type:'image/png'});
-  try{
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title: title||filename});
-      return 'share';
+/* واتساب (والمشاركة عموماً) بيصغّر أي صورة طويلة لحوالي ١٦٠٠–٢٠٠٠ بكسل ويضغطها، فالصورة العالية
+   بتتبكسل لما تتكبّر. عشان كده بنطلّع صور «صفحات»: عرضها ~١٨٠٠ بكسل وطولها لحد ~٢٢٠٠،
+   بتتقطع بين الجداول أو عند حدود الصفوف، وكل صفحة عليها رقمها. المستند القصير بيطلع صورة واحدة. */
+const IMG_W=1800, IMG_PAGE_H=2200;
+async function docImagePages(el, title){
+  const W=Math.max(1,el.offsetWidth), sc=Math.max(1, Math.min(4, IMG_W/W));
+  const canvas=await docToCanvas(el, sc, 16e6);
+  const k=canvas.width/W, er=el.getBoundingClientRect();
+  const Y=(n,edge)=> Math.round((n.getBoundingClientRect()[edge]-er.top)*k);
+  const foot=Math.round(46*canvas.width/IMG_W);                        // مكان رقم الصفحة
+  const capAll=Math.round(IMG_PAGE_H*canvas.width/IMG_W);
+  const slice=(y,h)=>{ const c=document.createElement('canvas'); c.width=canvas.width; c.height=h;
+    const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,h); x.drawImage(canvas,0,y,canvas.width,h,0,0,canvas.width,h); return c; };
+  if(canvas.height <= capAll*1.12) return [canvas];
+  const trs=[...el.querySelectorAll('tr')].filter(r=>!r.classList.contains('kn'));
+  const bounds=trs.map(r=>Y(r,'bottom')), tEnds=[...el.querySelectorAll('table')].map(t=>Y(t,'bottom'));
+  // شريط العنوان (اسم الطلبية + التاريخ) بيتكرر فوق الصفحات اللي بعد الأولى
+  const h2=el.querySelector('h2'), sub=el.querySelector('.sub'); let tb=null;
+  if(h2){ const t0=Y(h2,'top'), t1=Y(sub||h2,'bottom')+8; if(t1>t0 && t1-t0<canvas.height*0.2) tb=[t0,t1-t0]; }
+  const pages=[]; let y=0;
+  while(y<canvas.height-2){
+    const head = pages.length&&tb? tb[1] : 0, cap=capAll-foot-head;
+    let end=Math.min(y+cap, canvas.height);
+    if(end<canvas.height){
+      const tc=tEnds.filter(b=>b>y+cap*0.8 && b<=end), rc=bounds.filter(b=>b>y+cap*0.5 && b<=end);
+      if(tc.length) end=tc[tc.length-1]; else if(rc.length) end=rc[rc.length-1];
     }
-  }catch(e){
-    // المستخدم قفل شاشة المشاركة — مش غلط، ما ننزّلش ورا ظهره
-    if(e && e.name === 'AbortError') return 'cancel';
+    if(end<=y) end=Math.min(y+cap, canvas.height);
+    pages.push([y,end]); y=end;
   }
-  downloadBlob(blob, filename);
+  const N=pages.length, fh=foot;
+  return pages.map(([a,b],i)=>{
+    const head = i&&tb? tb[1]:0, c=document.createElement('canvas'); c.width=canvas.width; c.height=head+(b-a)+fh;
+    const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height);
+    if(head) x.drawImage(canvas,0,tb[0],canvas.width,tb[1],0,0,canvas.width,head);
+    x.drawImage(canvas,0,a,canvas.width,b-a,0,head,canvas.width,b-a);
+    x.fillStyle='#667'; x.font='bold '+Math.round(fh*0.5)+'px Tahoma, Arial, sans-serif'; x.textAlign='center'; x.textBaseline='middle'; x.direction='rtl';
+    x.fillText('صفحة '+(i+1)+' من '+N, c.width/2, head+(b-a)+fh/2);
+    return c;
+  });
+}
+async function shareOrDownloadMany(blobs, base, title){
+  const files=blobs.map((b,i)=> new File([b], base+(blobs.length>1?'_'+(i+1):'')+'.png', {type:'image/png'}));
+  try{
+    if(navigator.canShare && navigator.canShare({files})){ await navigator.share({files, title:title||base}); return 'share'; }
+  }catch(e){ if(e && e.name==='AbortError') return 'cancel'; }
+  for(let i=0;i<files.length;i++){ downloadBlob(files[i], files[i].name); await new Promise(r=>setTimeout(r,350)); }
   return 'download';
 }
 async function exportDocImage(bodyHtml, filename, landscape, forceDownload){
   toast('جاري تجهيز الصورة...'); const el=mkDoc(bodyHtml,landscape);
   try{
-    const c = await docToCanvas(el, 4, 16e6);   // صورة: دقة عالية (حد iOS ~١٦ مليون بكسل)
-    const blob = await canvasToBlob(c);
-    if(!blob) throw new Error('no blob');
+    const pages=await docImagePages(el, filename);
+    const blobs=[]; for(const c of pages){ const b=await canvasToBlob(c); if(!b) throw new Error('no blob'); blobs.push(b); }
     let how;
-    if(forceDownload){ downloadBlob(blob, filename+'.png'); how='download'; }
-    else how = await shareOrDownload(blob, filename+'.png', filename);
-    toast(how === 'share' ? 'اتبعتت' : (how === 'cancel' ? '' : 'تم تنزيل الصورة'));
+    if(forceDownload){ blobs.forEach((b,i)=> downloadBlob(b, filename+(blobs.length>1?'_'+(i+1):'')+'.png')); how='download'; }
+    else how = await shareOrDownloadMany(blobs, filename, filename);
+    const n=blobs.length;
+    toast(how==='share' ? (n>1? 'اتبعتت '+n+' صور':'اتبعتت') : (how==='cancel' ? '' : (n>1? 'تم تنزيل '+n+' صور':'تم تنزيل الصورة')));
   }
   catch(e){ console.error(e); toast('تعذر التصدير — تأكد من الاتصال بالإنترنت'); }
   finally{ el.remove(); }
@@ -3663,12 +3698,14 @@ function shortBlocks(whId){
 /* الجدول الطويل بيتقسم نصين جنب بعض (ورقتين في ورقة) عند أقرب بداية مجموعة فرعية لنصه؛ ولو مفيش
    نقطة مناسبة بنقسم في النص ونكرر اسم المجموعة الفرعية فوق العمود التاني. */
 function shortSplit(seq){
-  const n=seq.length;
+  const wt=r=> r.t==='item'? (r.label.length>34? 2 : 1) : 1.15;       // الاسم الطويل بياخد سطرين
+  const n=seq.length, W=seq.reduce((t,r)=>t+wt(r),0);
   if(seq.filter(r=>r.t==='item').length<14) return [seq];
-  let best=-1, bd=1e9;
-  for(let i=1;i<n;i++){ if(seq[i].t==='sub'){ const d=Math.abs(i-n/2); if(d<bd){ bd=d; best=i; } } }
-  if(best>=n*0.38 && best<=n*0.62) return [seq.slice(0,best), seq.slice(best)];
-  best=Math.ceil(n/2);
+  let best=-1, bd=1e9, acc=0;
+  for(let i=0;i<n;i++){ if(i>0 && seq[i].t==='sub'){ const d=Math.abs(acc-W/2); if(d<bd){ bd=d; best=i; } } acc+=wt(seq[i]); }
+  let before=0; for(let i=0;i<best;i++) before+=wt(seq[i]);
+  if(best>0 && before>=W*0.38 && before<=W*0.62) return [seq.slice(0,best), seq.slice(best)];
+  acc=0; best=n-1; for(let i=0;i<n;i++){ acc+=wt(seq[i]); if(acc>=W/2){ best=i+1; break; } }
   while(best<n-1 && seq[best].t==='subtot') best++;
   let B=seq.slice(best);
   if(B.length && B[0].t!=='sub'){
@@ -3684,7 +3721,7 @@ function shortDocBody(whId){
   const w=warehouses.find(x=>x.id===whId), allCols=shortUnitCols(whId);
   const {blocks,grand}=shortBlocks(whId);
   const cell=(r,cols,span)=>{
-    if(!r) return `<td class="n"></td>${cols.map(()=>'<td></td>').join('')}`;
+    if(!r) return `<td class="n e"></td>${cols.map(()=>'<td class="e"></td>').join('')}`;
     if(r.t==='sub') return `<td class="gs" colspan="${span}">${esc(r.label)}</td>`;
     const c=r.t==='item'?'':r.t, tc=c?` class="${c}"`:'';
     return `<td class="n${c?' '+c:''}">${esc(r.label)}</td>${cols.map(u=>`<td${tc}>${esc(r.q[u]||'')}</td>`).join('')}`;
@@ -3695,26 +3732,32 @@ function shortDocBody(whId){
     const halves=shortSplit(b.seq), H=halves.length, N=Math.max(...halves.map(h=>h.length));
     const total=span*H+(H-1);
     let rows=''; for(let i=0;i<N;i++) rows+=`<tr>${halves.map(h=>cell(h[i],cols,span)).join('<td class="gap"></td>')}</tr>`;
-    return `<table><tr class="kn"><td class="gm" colspan="${total}"><span class="gt">${esc(shortQtyTxt(b.tot,cols))}</span>${esc(b.main)}</td></tr>
+    return `<table${H===1?' class="one"':''}><tr class="kn"><td class="gm" colspan="${total}"><span class="gt">${esc(shortQtyTxt(b.tot,cols))}</span>${esc(b.main)}</td></tr>
       <tr class="kn">${halves.map(()=>hd).join('<td class="gap"></td>')}</tr>${rows}</table>`;
   }).join('');
   const grandBar = blocks.length>1
     ? `<table><tr><td class="grand"><span class="gt">${esc(shortQtyTxt(grand,allCols))}</span>الإجمالي العام</td></tr></table>` : '';
   return `<div class="dx sh"><style>
-      .dx.sh{font-size:22px;font-weight:800}
-      .dx.sh h2{font-size:30px}
-      .dx.sh .sub{font-size:19px;font-weight:700}
-      .dx.sh table{margin:0 0 22px;width:100%}
-      .dx.sh td{font-size:22px;font-weight:800;padding:9px 8px;white-space:normal;line-height:1.35}
-      .dx.sh td.n{text-align:right;min-width:0;width:34%}
-      .dx.sh td.hd{background:#2f5fd6;color:#fff;font-size:20px;padding:9px 8px}
-      .dx.sh td.gm{background:#1e3a8a;color:#fff;font-size:25px;text-align:right;padding:12px 12px}
-      .dx.sh .gt{float:left;font-size:22px;font-weight:800;color:#dbe7ff}
-      .dx.sh td.gs{background:#dbe7ff;color:#1e3a8a;font-size:22px;text-align:right}
-      .dx.sh td.subtot{background:#f1f5ff;color:#1e3a8a}
-      .dx.sh td.grand{background:#0f172a;color:#fff;font-size:25px;text-align:right;padding:13px 12px}
-      .dx.sh td.grand .gt{color:#fff}
-      .dx.sh td.gap{width:14px;min-width:14px;padding:0;border:none;background:#fff}
+      .dx.sh{font-size:22px;font-weight:700;color:#14213d}
+      .dx.sh h2{font-size:34px;font-weight:900;color:#0f2468;margin:6px 0 4px}
+      .dx.sh h2{text-align:center}
+      .dx.sh .sub{display:block;width:fit-content;font-size:19px;font-weight:700;color:#1e3a8a;background:#e8efff;border-radius:999px;padding:5px 18px;margin:0 auto 22px}
+      .dx.sh table.one td.n{width:70%}
+      .dx.sh table{width:100%;margin:0 0 28px;border-collapse:separate;border-spacing:0;border:1px solid #cfdaf3;border-radius:14px;overflow:hidden}
+      .dx.sh td{font-size:22px;font-weight:800;padding:11px 10px;text-align:center;white-space:normal;line-height:1.45;color:#0f2468;border:none;border-bottom:1px solid #e6ecf8;background:#fff}
+      .dx.sh tr:nth-child(odd) td{background:#fbfcff}
+      .dx.sh td.n{text-align:right;width:36%;color:#14213d;padding-right:14px;border-left:1px solid #edf1fa}
+      .dx.sh td.hd{background:#e8efff !important;color:#1e3a8a;font-size:19px;font-weight:800;border-bottom:2px solid #2f5fd6;padding:9px 10px}
+      .dx.sh td.hd:first-child{text-align:right;padding-right:14px}
+      .dx.sh td.gm{background:linear-gradient(90deg,#2f5fd6,#1e3a8a) !important;color:#fff;font-size:27px;font-weight:900;text-align:right;padding:14px 16px;border:none}
+      .dx.sh .gt{float:left;font-size:21px;font-weight:800;color:#0f2468;background:#dbe7ff;border-radius:999px;padding:3px 14px;margin-top:2px}
+      .dx.sh td.gs{background:#f0f5ff !important;color:#1e3a8a;font-size:22px;font-weight:900;text-align:right;padding:10px 14px;border-right:7px solid #2563eb;border-bottom:1px solid #d6e2fb}
+      .dx.sh td.subtot{background:#eaf1ff !important;color:#1e3a8a;font-weight:900;border-top:1px solid #c9d9f7}
+      .dx.sh td.n.subtot{color:#1e3a8a}
+      .dx.sh td.grand{background:linear-gradient(90deg,#14213d,#0f172a) !important;color:#fff;font-size:27px;font-weight:900;text-align:right;padding:15px 16px}
+      .dx.sh td.grand .gt{color:#fff;background:rgba(255,255,255,.16)}
+      .dx.sh td.e{background:#fff !important;border-bottom-color:transparent;border-left-color:transparent}
+      .dx.sh td.gap{width:16px;min-width:16px;padding:0;background:#eef2fb !important;border:none}
     </style><h2>طلبية نواقص ${esc(w.name)}</h2>
     <div class="sub">بتاريخ ${getOrderDate(whId)}</div>${tables}${grandBar}</div>`;
 }

@@ -84,8 +84,8 @@ check('الشريط بيتحدّث لحظيًا', /لفة: 18/.test(await pg.eva
 // ── المستند: عمود لكل وحدة
 const doc = await pg.evaluate(()=>shortDocBody('w1'));
 check('كل مجموعة رئيسية جدول منفصل بعنوانها',
-  [...doc.matchAll(/class="gm"[^>]*><span class="gt">[^<]*<\/span>([^<]+)</g)].length>=3 && (doc.match(/<table>/g)||[]).length>=4 && doc.includes('قطاعات كرافت لاين</td>') && doc.includes('اكسسورات pvc اكسا</td>'),
-  String((doc.match(/<table>/g)||[]).length));
+  [...doc.matchAll(/class="gm"[^>]*><span class="gt">[^<]*<\/span>([^<]+)</g)].length>=3 && (doc.match(/<table[ >]/g)||[]).length>=4 && doc.includes('قطاعات كرافت لاين</td>') && doc.includes('اكسسورات pvc اكسا</td>'),
+  String((doc.match(/<table[ >]/g)||[]).length));
 check('كل جدول بيعرض وحداته بس (الكرافت: لفة وعود)',
   /<td class="hd">الصنف<\/td><td class="hd">لفة<\/td><td class="hd">عود<\/td><\/tr>/.test(doc));
 check('الكرافت في عمود اللفة والعود مش الكرتونة', /<td class="n">كرافت لاين 25 ابيض<\/td><td>3<\/td><td>12<\/td><\/tr>/.test(doc));
