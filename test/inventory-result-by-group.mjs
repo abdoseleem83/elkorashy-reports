@@ -26,7 +26,7 @@ await pg.goto(APP); await pg.waitForTimeout(1500);
 await pg.evaluate(()=>{ module='warehouses'; save('_whTab_','w1'); save('_whSub_',2); invView=1; render(true); });
 await pg.waitForTimeout(400);
 
-const groups = await pg.locator('.invgrp').evaluateAll(els=>els.map(e=>({head:e.firstElementChild.innerText.replace(/\s+/g,' ').trim(), rows:[...e.querySelectorAll('.card')].map(c=>c.querySelector('.name').innerText+'='+c.querySelector('b').innerText)})));
+const groups = await pg.locator('.invgrp').evaluateAll(els=>els.map(e=>({head:e.firstElementChild.innerText.replace(/\s+/g,' ').trim(), rows:[...e.querySelectorAll('.card')].map(c=>c.querySelector('.name').innerText+'='+c.querySelector(':scope > b').innerText   /* بادج الفرق (مش «الرصيد» اللي بقى بولد جوه السطر) */)})));
 check('٣ مجموعات بس (kom مطابق ما بيظهرش)', groups.length===3, groups.map(g=>g.head).join(' || '));
 check('الترتيب: كرافت ثم نيو ثم «غير مصنف» في الآخر', /كرافت/.test(groups[0].head) && /نيو/.test(groups[1].head) && /غير مصنف/.test(groups[2].head));
 check('كرافت: العجز (٣ و٢) وبعده الزيادة (٤) في نفس المجموعة', JSON.stringify(groups[0].rows)===JSON.stringify(['كرافت أبيض=-3','كرافت بيج=-2','كرافت أسود=+4']), groups[0].rows.join(' | '));
