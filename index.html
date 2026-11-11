@@ -462,7 +462,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px">☰</button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.2</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px">☰</button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.3</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()">🔍</button><button id="syncBtn" title="إعدادات المزامنة" onclick="openSyncSheet()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">⚙️</button><button id="refreshBtn" title="تحديث" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer">🔄</button></span></header>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
 <div id="bnav"></div>
@@ -3294,8 +3294,6 @@ function commitSalesImport(){
   pendingImport=null; closeSheet(); render(); toast('تم حفظ '+moName(month));
 }
 
-// ========== GV & PAYROLL (placeholders) ==========
-
 // ========== MAIN RENDER ==========
 function commitImport(){
   if(!pendingImport) return;
@@ -4431,6 +4429,13 @@ function ordRows(){
   return rows;
 }
 
+// صف صنف جديد يتبعت لبرنامج الطلبات (بيانات الصنف من عندنا، من غير سعر)
+function ordNewRow(name, r){
+  const it = itemFind(name) || {};
+  return {name, main: it.mainGroup || 'أخرى', sub: it.subGroup || '',
+    unit: Number(it.rollQty) || 1, product: it.baseName || name, color: it.color || '',
+    price: '', stock: r ? r.stock : 0, disabled: false};
+}
 let ordOrders = null;        // آخر طلبات اتجابت
 function ordMsg(html){ const el = $('#ordMsg'); if(el) el.innerHTML = html; }
 
@@ -4439,7 +4444,7 @@ async function ordSendStock(){
   const rows = ordRows();
   if(!rows.length) return ordMsg('<b style="color:var(--danger)">مفيش رصيد مرفوع لطنطا.</b>');
   if(!pin) return ordMsg('<b style="color:var(--danger)">اكتب رقم «شاشة الإدارة» بتاع برنامج الطلبات.</b>');
-  if(!confirm('هيتمسح الرصيد اللي في برنامج الطلبات كله، وبعدين يتحط رصيد ' + rows.length + ' صنف من «طنطا». أي صنف هناك مش في رصيد طنطا هيبقى صفر. تكمل؟')) return;
+  if(!confirm('هيتحدّث رصيد ' + rows.length + ' صنف من «طنطا» في برنامج الطلبات، والصنف اللي مش موجود هناك هيتضاف، وأي صنف هناك مش في رصيد طنطا هيبقى صفر. تكمل؟')) return;
   ordSetPin('manage', pin);
   ordMsg('بيسجّل دخول...');
   try{
@@ -4467,12 +4472,28 @@ async function ordSendStock(){
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     if(!d || d.ok === false) throw new Error((d && d.error) || 'برنامج الطلبات رفض الطلب.');
+    // الأصناف اللي مش موجودة عندهم بنفس الاسم: نضيفها هناك (الرصيد بس — السعر بيتحدد من عندهم).
+    // بنستخدم وضع «full» للأصناف الناقصة بس، فمفيش صنف موجود بيتلمس (الأسعار محمية).
     const nf = (d.notFound || []).filter(n=> sent.has(n));
-    ordMsg('<b style="color:var(--ok)">تم: اتمسح الرصيد القديم واتحط رصيد ' + (sendRows.length - nf.length) + ' صنف'
+    let added = 0, addErr = '';
+    if(nf.length){
+      ordMsg('بيضيف ' + nf.length + ' صنف جديد في برنامج الطلبات...');
+      const newRows = nf.map(n=> ordNewRow(n, byName.get(n)));
+      try{
+        const r2 = await fetch(ORD_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+          body: JSON.stringify({action:'manageUploadCatalog', token:tk, mode:'full', rows: newRows})});
+        if(!r2.ok) throw new Error('HTTP ' + r2.status);
+        const d2 = await r2.json();
+        if(!d2 || d2.ok === false) throw new Error((d2 && d2.error) || 'برنامج الطلبات رفض إضافة الأصناف.');
+        added = Number(d2.added) || 0;
+      }catch(e2){ addErr = ordErr(e2); }
+    }
+    ordCat = null;   // الأصناف اتغيّرت عندهم — نجيبها من جديد في المطابقة
+    ordMsg('<b style="color:var(--ok)">تم: اتحدّث رصيد ' + (sendRows.length - nf.length) + ' صنف'
+      + (added ? ' · واتضاف ' + added + ' صنف جديد' : '')
       + (zero.length ? ' · و' + zero.length + ' صنف مش في طنطا اتصفّروا' : '') + '.</b>'
-      + (nf.length ? '<div style="margin-top:6px;color:#b45309"><b>' + nf.length + ' صنف</b> مش موجودين عندهم بنفس الاسم فماتبعتوش:<br>'
-          + esc(nf.slice(0,10).join('، ')) + (nf.length>10?' …':'')
-          + '<br>دوس «🔍 طابق الأسماء» تحت عشان تربطهم مرة واحدة.</div>' : ''));
+      + (added ? '<div style="margin-top:6px;color:#b45309">الأصناف الجديدة اتضافت من غير سعر — حط سعرها من عندهم عشان تظهر للموزعين بسعرها.</div>' : '')
+      + (addErr ? '<div style="margin-top:6px;color:var(--danger)">' + nf.length + ' صنف جديد ماتضافوش: ' + esc(addErr) + '</div>' : ''));
   }catch(e){ ordMsg('<b style="color:var(--danger)">' + esc(ordErr(e)) + '</b>'); }
 }
 
@@ -4571,7 +4592,7 @@ function renderWhOrders(box){
   <div class="panelbox">
     <b style="font-size:13.5px">⬆️ ابعت رصيد طنطا لبرنامج الطلبات</b>
     <div style="color:var(--muted);font-size:12.5px;margin:4px 0 8px">
-      ${rows.length} صنف هيتبعت، والرصيد القديم هناك هيتمسح قبلها.
+      ${rows.length} صنف هيتبعت: الموجود بيتحدّث رصيده، واللي مش موجود هناك بيتضاف.
     </div>
     <input id="ord_mpin" type="password" value="${esc(ordPin('manage'))}" placeholder="رقم شاشة الإدارة"
       style="width:100%;padding:9px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);margin-bottom:8px">
@@ -4630,7 +4651,7 @@ function renderWhOrders(box){
       ${m ? `من ${m.ok.length+m.auto.length+m.none.length+m.skip.length} صنف:
         <b style="color:var(--ok)">${m.ok.length}</b> متطابق ·
         <b>${m.auto.length}</b> اقتراح ·
-        <b style="color:#b45309">${m.none.length}</b> محتاج تحديد ·
+        <b style="color:#b45309">${m.none.length}</b> جديد (هيتضاف) ·
         <b>${m.skip.length}</b> متجاهل.` : 'دوس «طابق تلقائي» عشان نجيب أسماءهم.'}
     </div>
     ${m && (m.none.length || m.skip.length) ? `

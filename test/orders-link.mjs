@@ -10,7 +10,7 @@ const errs=[];
 const ORD = {
   MANAGE_PIN:'1111', ADMIN_PIN:'2222',
   catalog:['باب كامل 80 سم A05','كرافت لاين 25 ابيض','حاجة عندهم بس'],
-  stock:{}, uploads:0,
+  stock:{}, uploads:0, added:{}, fullTouched:[],
   orders:[
     {id:'o1', orderNo:'101', distName:'موزع طنطا', status:'تم استلام الطلب', ts:Date.now(),
      items:[{name:'باب كامل 80 سم A05', qty:3},{name:'كرافت لاين 25 ابيض', qty:10}]},
@@ -32,9 +32,17 @@ await pg.exposeFunction('__ord', async (url, body)=>{
   if(a==='manageUploadCatalog'){
     if(body.token!=='MT') return {ok:false,error:'unauthorized'};
     ORD.uploads++;
-    let updated=0; const notFound=[];
-    (body.rows||[]).forEach(r=> ORD.catalog.includes(r.name) ? (ORD.stock[r.name]=r.stock, updated++) : notFound.push(r.name));
-    return {ok:true, updated, notFound};
+    let updated=0, added=0; const notFound=[];
+    (body.rows||[]).forEach(r=>{
+      if(ORD.catalog.includes(r.name)){
+        // نفس سلوك الباك إند الحقيقي: «stock» بيحدّث الرصيد بس، و«full» بيكتب فوق باقي الأعمدة
+        if(body.mode==='full'){ ORD.fullTouched.push(r.name); }
+        ORD.stock[r.name]=r.stock; updated++;
+      } else if(body.mode==='full'){
+        ORD.catalog.push(r.name); ORD.stock[r.name]=r.stock; ORD.added[r.name]=r; added++;
+      } else notFound.push(r.name);
+    });
+    return {ok:true, updated, added, notFound};
   }
   return {ok:false,error:'unknown action'};
 });
@@ -79,7 +87,19 @@ await pg.evaluate(()=>{ document.querySelector('#ord_mpin').value='1111'; });
 await pg.evaluate(()=>ordSendStock()); await pg.waitForTimeout(800);
 check('الرصيد اترفع', ORD.stock['باب كامل 80 سم A05']===12 && ORD.stock['كرافت لاين 25 ابيض']===100,
   JSON.stringify(ORD.stock));
-check('الصنف اللي مش عندهم اتبلّغ عنه', (await pg.evaluate(()=>document.querySelector('#ordMsg').innerText)).includes('صنف عندنا بس'));
+check('الصنف اللي مش عندهم اتضاف هناك برصيده', ORD.catalog.includes('صنف عندنا بس') && ORD.stock['صنف عندنا بس']===5,
+  JSON.stringify(ORD.added));
+check('الصنف الجديد اتبعت بقطاعه وبدون سعر', (ORD.added['صنف عندنا بس']||{}).main==='كرافت' && (ORD.added['صنف عندنا بس']||{}).price==='');
+check('الأصناف الموجودة ما اتلمستش بوضع full (الأسعار محمية)', ORD.fullTouched.length===0, JSON.stringify(ORD.fullTouched));
+check('الرسالة بتقول اتضاف صنف', (await pg.evaluate(()=>document.querySelector('#ordMsg').innerText)).includes('اتضاف 1 صنف'));
+
+// ── إرسال تاني: الصنف بقى موجود فيتحدّث بس ومايتضافش تاني
+ORD.stock = {}; ORD.added = {};
+await pg.evaluate(()=>{ save('_whSub_',3); render(true); });
+await pg.waitForTimeout(300);
+await pg.evaluate(()=>{ document.querySelector('#ord_mpin').value='1111'; ordSendStock(); }); await pg.waitForTimeout(800);
+check('الصنف اللي اتضاف اتحدّث رصيده من غير إضافة مكررة', ORD.stock['صنف عندنا بس']===5 && Object.keys(ORD.added).length===0
+  && ORD.catalog.filter(n=>n==='صنف عندنا بس').length===1);
 
 // ── 🔍 المطابقة: اربط الصنف اللي مش عندهم أو تجاهله
 await pg.evaluate(()=>ordSkip('صنف عندنا بس')); await pg.waitForTimeout(300);
@@ -87,7 +107,7 @@ ORD.stock = {};
 await pg.evaluate(()=>{ save('_whSub_',3); render(true); });
 await pg.waitForTimeout(300);
 await pg.evaluate(()=>{ document.querySelector('#ord_mpin').value='1111'; ordSendStock(); }); await pg.waitForTimeout(800);
-check('المتجاهَل ما اتبعتش تاني', !(await pg.evaluate(()=>document.querySelector('#ordMsg').innerText)).includes('صنف عندنا بس'));
+check('المتجاهَل ما اتبعتش تاني', ORD.stock['صنف عندنا بس']===0 || ORD.stock['صنف عندنا بس']===undefined);
 
 // ── ⬇️ جلب الطلبات
 await pg.evaluate(()=>{ document.querySelector('#ord_apin').value='2222'; });
