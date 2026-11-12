@@ -38,7 +38,7 @@ ck('دوست عليه ظهرت الأصناف', /قطاع ومنيوم 1/.test(t
 ck('الشيت مش بيعمل سكرول عرضي', await pg.evaluate(()=> document.documentElement.scrollWidth<=362));
 
 // عمود جديد + نقل الومنيوم له
-await pg.locator('#sheet button', {hasText:'➕ عمود جديد'}).first().click(); await pg.waitForTimeout(200);
+await pg.locator('#sheet button', {hasText:'عمود جديد'}).first().click(); await pg.waitForTimeout(200);
 ck('العمود الجديد اتعمل', await pg.evaluate(()=> secCustomCols().join('|'))==='ومنيوم وشاتر');
 ck('وظهر كزرار في الشيت', (await pg.locator('#sheet .clschip', {hasText:'ومنيوم وشاتر'}).count())>0);
 await pg.evaluate(()=>{ secMoveTo('الومنيوم','ومنيوم وشاتر','أخرى'); secMoveTo('شاتر','ومنيوم وشاتر'); });
