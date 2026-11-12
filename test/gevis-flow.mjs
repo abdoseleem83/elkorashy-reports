@@ -27,7 +27,7 @@ check('التطبيق بيفتح على الصفحة الرئيسية', (await p
 
 await pg.evaluate(()=>{ module='gv'; render(true); }); await pg.waitForTimeout(400);
 const tabs = await pg.evaluate(()=>[...document.querySelectorAll('#main button')].map(x=>x.textContent.trim()).filter(t=>/الطلبيات|الاستلام|التسعير/.test(t)));
-check('٣ أيقونات في جيفز', tabs.join('|')==='📋 الطلبيات|📥 الاستلام|💵 التسعير', tabs.join('|'));
+check('٣ أيقونات في جيفز', tabs.join('|')==='الطلبيات|الاستلام|التسعير', tabs.join('|'));
 
 // ── الطلبيات مجمّعة بالتاريخ، والمؤرشفة مخفية
 let g = await pg.evaluate(()=>gvDateGroups().map(x=>({d:x.date,n:x.orders.length})));

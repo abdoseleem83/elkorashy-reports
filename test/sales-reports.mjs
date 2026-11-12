@@ -35,7 +35,7 @@ await pg.evaluate(()=>{ module='sales'; render(true); }); await pg.waitForTimeou
 // ── التلات أيقونات
 const tabs = await pg.evaluate(()=>[...document.querySelectorAll('#main .tabs button')].map(x=>x.textContent.trim()));
 check('٣ أيقونات: رفع · عملاء · تقارير',
-  tabs.join('|')==='📥 رفع شيت المبيعات|👥 العملاء|📊 التقارير', tabs.join('|'));
+  tabs.join('|')==='رفع شيت المبيعات|العملاء|التقارير', tabs.join('|'));
 await pg.evaluate(()=>{ save('_salesTab_',0); render(true); }); await pg.waitForTimeout(300);
 check('أيقونة الرفع فيها زرار الرفع', (await pg.evaluate(()=>document.body.innerText)).includes('رفع مبيعات شهر'));
 await pg.evaluate(()=>{ save('_salesTab_',1); render(true); }); await pg.waitForTimeout(300);
@@ -48,7 +48,7 @@ check('فتح المجموعة بيوري الأسماء', (await pg.evaluate(()
 await pg.evaluate(()=>{ save('_salesTab_',2); render(true); }); await pg.waitForTimeout(350);
 const reps = await pg.evaluate(()=>[...document.querySelectorAll('#st_content > div:first-child button')].map(x=>x.textContent.trim()));
 check('٦ تقارير جوه أيقونة التقارير',
-  reps.join('|')==='📈موزعين إجمالي|🧩موزعين قطاعات|📋موزعين وقطاعات|🚪أبواب بالكود|🚪موزعين أبواب|🛒عملاء جملة', reps.join('|'));
+  reps.join('|')==='موزعين إجمالي|موزعين قطاعات|موزعين وقطاعات|أبواب بالكود|موزعين أبواب|عملاء جملة', reps.join('|'));
 
 // ١) موزعين إجمالي
 const d1 = await pg.evaluate(()=>repModel('dist'));

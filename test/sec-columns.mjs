@@ -70,9 +70,9 @@ ck('صنف غير معروف اتضاف للأصناف بمجموعته', await 
 
 // ── زرار الأعمدة: ظاهر / مخفي / فاضي
 await pg.evaluate(()=>{ closeSheet(); module='sales'; save('_salesTab_',2); save('_salesRep_','distsec'); render(true); }); await pg.waitForTimeout(200);
-const bar=await pg.locator('.morow .mochip', {hasText:'🧩'}).innerText();
-ck('شريط «🧩 الأعمدة» فيه العدد', /🧩 الأعمدة \(\d+ ظاهر/.test(bar) && /فاضي/.test(bar), bar);
-await pg.locator('.morow .mochip', {hasText:'🧩'}).click(); await pg.waitForTimeout(150);
+const bar=await pg.locator('.morow .mochip', {hasText:'الأعمدة'}).innerText();
+ck('شريط «الأعمدة» فيه العدد', /الأعمدة \(\d+ ظاهر/.test(bar) && /فاضي/.test(bar), bar);
+await pg.locator('.morow .mochip', {hasText:'الأعمدة'}).click(); await pg.waitForTimeout(150);
 let sh=await pg.locator('#sheet').innerText();
 ck('الشيت بيوري كل عمود وحالته', /كومبن/.test(sh) && /ظاهر/.test(sh) && /فاضي — مفيش مبيعات/.test(sh), sh.slice(0,300));
 await pg.evaluate(()=> secToggleHide('كومبن')); await pg.waitForTimeout(150);

@@ -25,7 +25,8 @@ ck('كلمة السر الصح بتفتح', (await pg.evaluate(()=>finUnlocked))
 ck("٦ أيقونات جواها", (await pg.locator("#main > .stabs .stab").count())===6);
 const names=await pg.locator('#main > .stabs .stab').allInnerTexts();
 ck('الأسماء صح',
-  names.join('|')==='⚖️ موازين المراجعة|🏢 دخل الشركة|🧱 دخل PVC|🏭 دخل المصنع|📊 المركز المالي|🏷️ توزيع القطاعات',
+  names.map(n=>n.trim()).join('|')==='موازين المراجعة|دخل الشركة|دخل PVC|دخل المصنع|المركز المالي|توزيع القطاعات'
+    && (await pg.locator('#main > .stabs .stab svg.ico').count())===6,   // كل تاب ليه أيقونة SVG
   names.join('|'));
 
 // رفع ميزان مراجعة
