@@ -478,7 +478,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.7</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.9</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
 <div id="bnav"></div>
@@ -602,6 +602,9 @@ let monthlySales = load('monthlySales_v1', {});
 let monthlySector = load('monthlySector_v1', {});
 // تفصيل الأبواب لكل شهر: {شهر: {عميل: {صنف: {qty, val, code}}}}
 let monthlyDoors = load('monthlyDoors_v1', {});
+/* مبيعات كل عميل حسب المخزن: الشهر ← العميل ← مخزن(t طنطا / a اسكندرية / o تانية) ← المجموعة ← القيمة.
+   بتتستخدم لتقسيم «مبيعات جملة» لصف لكل مخزن في تقارير الموزعين. */
+let monthlyWh = load('monthlyWh_v1', {});
 let monthlyItems = load('monthlyItems_v1', {});      // الشهر ← الصنف ← {qty,val}
 let salesArchive = load('salesArchive_v1', []);      // شهور مؤرشفة — برّه التقارير
 let custAlias = load('custAlias_v1', {});            // اسم قديم ← الاسم الجديد بعد الدمج
@@ -612,6 +615,8 @@ let secMerge = load('secMerge_v1', {});              // عمود ← العمو�
 let doorCodeMap = load('doorCodeMap_v1', {});        // اسم صنف الباب ← كود بالإيد
 let doorHide = load('doorHide_v1', []);              // أصناف اتشالت من تقارير الأبواب
 let bonusData = load('bonusAksa_v1', {period:'', files:{}, rates:{}, itemLine:{}});   // بونص اكسا
+let bonusArchive = load('bonusArchive_v1', []);          // أرشيف بونص اكسا — نسخة كاملة من كل فترة (ربع) اتحفظت
+let distBonusArchive = load('distBonusArchive_v1', []);  // أرشيف بونص الموزعين — نفس الفكرة
 let distBonus = load('distBonus_v1', {period:'', files:{}, cfg:{}, show:{}});          // بونص موزعين (شبل · مطروح)
 
 const CLS_OPTS=['موزع','مبيعات جملة','مبيعات خاصة','عميل ابواب','مستبعد'];
@@ -641,6 +646,36 @@ function secColOf(key){
 const secLabel  = k => (secCfg[k]||{}).name || k;
 const secHidden = k => !!(secCfg[k]||{}).hide;
 /* العمود المخفي بيتشال من كل التقارير: صافي العميل = إجمالي مبيعاته − اللي في الأعمدة المخفية */
+/* ===== مبيعات الجملة حسب المخزن (طنطا / اسكندرية) =====
+   عمود المخزن في الشيت (Inv_Name) بيتخزّن مع كل شهر في monthlyWh. صف «مبيعات جملة» في تقارير
+   الموزعين بيتقسّم لصف لكل مخزن — للجملة بس (الموزعين والباقي زي ما هم). الشهور اللي اترفعت
+   من غير عمود المخزن بتفضل صف واحد غير مقسّم. */
+const WS='مبيعات جملة';
+const WH_LABEL={t:'طنطا', a:'الاسكندرية', o:'مخزن آخر'};
+function whKeyOf(v){ const s=String(v||'').trim(); if(/طنط/.test(s)) return 't'; if(/سكندر/.test(s)) return 'a'; return 'o'; }
+// الصف ← {مجموعة: قيمة} لعميل جملة في شهر (أو الصف الواحد غير المقسّم لو الشهر ملوش بيانات مخزن)
+// فيه أي شهر اترفع بعمود المخزن؟ لو أيوه، الشهور القديمة بتتسمّى «غير محدد المخزن» في كل التقارير بنفس الاسم
+const wsAnySplit = ()=> Object.keys(monthlyWh).some(mo=> Object.keys(monthlyWh[mo]||{}).length>0);
+const wsPlain = ()=> wsAnySplit() ? WS+' — غير محدد المخزن' : WS;
+function wholesaleSecParts(mo, cname, bySec){
+  const w=(monthlyWh[mo]||{})[cname]; if(!w) return {[wsPlain()]: bySec||{}};
+  const out={}; Object.keys(w).forEach(wk=>{ out[WS+' — '+WH_LABEL[wk]]=w[wk]; }); return out;
+}
+// الصف ← صافي (بعد استبعاد الأعمدة المخفية، زي saleNet)
+function wholesaleNet(mo, cname){
+  const w=(monthlyWh[mo]||{})[cname]; if(!w) return {[wsPlain()]: saleNet(mo, cname)};
+  const out={}; Object.keys(w).forEach(wk=>{ let t=0;
+    Object.keys(w[wk]).forEach(k=>{ if(!secHidden(secColOf(k))) t+=w[wk][k]||0; });
+    out[WS+' — '+WH_LABEL[wk]]=t; });
+  return out;
+}
+function p0WhNote(wi, whMap){
+  if(wi<0) return `<div class="warn">الملف مفيهوش عمود المخزن (Inv_Name) — مبيعات الجملة مش هتتقسّم على المخازن للشهر ده.</div>`;
+  const tot={}; Object.values(whMap||{}).forEach(byWh=> Object.keys(byWh).forEach(wk=>
+    Object.values(byWh[wk]).forEach(v=>{ tot[wk]=(tot[wk]||0)+v; })));
+  const parts=['t','a','o'].filter(k=> tot[k]).map(k=> WH_LABEL[k]+': '+Math.round(tot[k]).toLocaleString('en-US'));
+  return parts.length? `<p style="font-size:12.5px;color:var(--muted)">المخازن في الملف — ${parts.join(' · ')}</p>` : '';
+}
 function hiddenSecAmt(mo, name){
   if(!Object.keys(secCfg).some(k=> secCfg[k] && secCfg[k].hide)) return 0;
   const bs=(monthlySector[mo]||{})[name]; if(!bs) return 0;
@@ -927,7 +962,7 @@ let shortMain=new Set(), shortSub=new Set();
    ولا نص بيانات. ولو الشبكة وقعت، المزامنة بتفضل «مستنية» وبتتعاد لوحدها. */
 const SYNC_KEYS = ['items_v1','gvcodes_v1','units_v1','warehouses_v1','whStock_v1','whShortage_v1','ordMap_v1','gvMap_v1',
   'whOrderDate_v1','whStockAt_v1','customers_v1','monthlySales_v1','monthlySector_v1','monthlyDoors_v1','employees_v1','payData_v1',
-  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','secMerge_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','finAdj_v1','bonusAksa_v1','distBonus_v1','whTrash_v1','bktMove_v1'];
+  'paySendCols_v1','payFullCols_v1','invCounts_v1','gvOrders_v1','monthlyItems_v1','monthlyWh_v1','salesArchive_v1','custAlias_v1','secCfg_v1','secMove_v1','secMerge_v1','doorCodeMap_v1','doorHide_v1','trialBal_v1','finSeg_v1','finAdj_v1','bonusAksa_v1','distBonus_v1','bonusArchive_v1','distBonusArchive_v1','whTrash_v1','bktMove_v1'];
 const SYNC_PREFIX = 'elk2:';           // بادئة مفاتيح النسخة الجديدة على السيرفر
 const SYNC_INDEX  = SYNC_PREFIX + 'index';
 /* المزامنة شغّالة تلقائي من غير ما تظبط أي حاجة على أي جهاز:
@@ -1043,12 +1078,12 @@ const SYNC_VARS = {
   warehouses_v1: v=>{ warehouses = v; }, whStock_v1: v=>{ whStock = v; },
   whShortage_v1: v=>{ whShortage = v; }, customers_v1: v=>{ customers = v; },
   monthlySales_v1: v=>{ monthlySales = v; }, monthlySector_v1: v=>{ monthlySector = v; }, monthlyDoors_v1: v=>{ monthlyDoors = v; },
-  monthlyItems_v1: v=>{ monthlyItems = v; }, salesArchive_v1: v=>{ salesArchive = v; },
+  monthlyItems_v1: v=>{ monthlyItems = v; }, monthlyWh_v1: v=>{ monthlyWh = v; }, salesArchive_v1: v=>{ salesArchive = v; },
   custAlias_v1: v=>{ custAlias = v; }, secCfg_v1: v=>{ secCfg = v; }, secMove_v1: v=>{ secMove = v; }, secMerge_v1: v=>{ secMerge = v; },
   doorCodeMap_v1: v=>{ doorCodeMap = v; }, doorHide_v1: v=>{ doorHide = v; },
   trialBal_v1: v=>{ trialBal = v; }, finSeg_v1: v=>{ finSeg = v; }, finAdj_v1: v=>{ finAdj = v; },
   bonusAksa_v1: v=>{ bonusData = v; },
-  distBonus_v1: v=>{ distBonus = v; }, whTrash_v1: v=>{ whTrash = v; },
+  distBonus_v1: v=>{ distBonus = v; }, bonusArchive_v1: v=>{ bonusArchive = v; }, distBonusArchive_v1: v=>{ distBonusArchive = v; }, whTrash_v1: v=>{ whTrash = v; },
   employees_v1: v=>{ employees = v; }, payData_v1: v=>{ payData = v; },
   invCounts_v1: v=>{ invCounts = v; }, ordMap_v1: v=>{ ordMap = v; }, gvMap_v1: v=>{ gvMap = v; },
   // ⚠️ التلاتة دول كانوا في SYNC_KEYS بس مش في SYNC_VARS — يعني بيتنزّلوا
@@ -2490,6 +2525,11 @@ function mergeCustomerNames(a, b){
   Object.keys(monthlySector).forEach(mo=>{ const m2=monthlySector[mo];
     if(!m2[a]) return; m2[b]=m2[b]||{};
     Object.entries(m2[a]).forEach(([k,v])=> m2[b][k]=(m2[b][k]||0)+v); delete m2[a]; });
+  Object.keys(monthlyWh).forEach(mo=>{ const m2=monthlyWh[mo];
+    if(!m2[a]) return; m2[b]=m2[b]||{};
+    Object.entries(m2[a]).forEach(([w,bySec])=>{ const t=m2[b][w]=m2[b][w]||{};
+      Object.entries(bySec).forEach(([k,v])=> t[k]=(t[k]||0)+v); });
+    delete m2[a]; });
   Object.keys(monthlyDoors).forEach(mo=>{ const m2=monthlyDoors[mo];
     if(!m2[a]) return; m2[b]=m2[b]||{};
     Object.entries(m2[a]).forEach(([k,v])=>{
@@ -2501,7 +2541,7 @@ function mergeCustomerNames(a, b){
   Object.keys(custAlias).forEach(k=>{ if(custAlias[k]===a) custAlias[k]=b; });
   custAlias[a]=b;
   save('monthlySales_v1',monthlySales); save('monthlySector_v1',monthlySector);
-  save('monthlyDoors_v1',monthlyDoors); save('custAlias_v1',custAlias);
+  save('monthlyDoors_v1',monthlyDoors); save('monthlyWh_v1',monthlyWh); save('custAlias_v1',custAlias);
 }
 function delCustomer(id){ if(!confirm('حذف؟')) return; delete custPend[id]; customers=customers.filter(x=>x.id!==id); save('customers_v1',customers); render(); }
 
@@ -2723,11 +2763,11 @@ function buildDistSectors(){
     Object.entries(monthlySector[mo]||{}).forEach(([cname, bySec])=>{
       const cls=(custByName[cname]||{}).cls||'';
       if(!cls || cls==='مستبعد' || cls==='عميل ابواب' || cls==='مبيعات خاصة') return;
-      const key = cls==='موزع' ? cname : cls;
-      Object.entries(bySec).forEach(([sec0, v])=>{
+      const parts = cls==='موزع' ? {[cname]: bySec} : wholesaleSecParts(mo, cname, bySec);
+      Object.entries(parts).forEach(([key, bs])=> Object.entries(bs).forEach(([sec0, v])=>{
         const sec = secColOf(sec0);
         secs.add(sec); rows[key]=rows[key]||{}; rows[key][sec]=(rows[key][sec]||0)+v;
-      });
+      }));
     });
   });
   // العمود اللي كله أصفار أو اللي أخفيته ما يظهرش
@@ -2764,9 +2804,11 @@ function distBlkAgg(months, cols){
     Object.entries(monthlySector[mo]||{}).forEach(([cname, bySec])=>{
       const cls=(custByName[cname]||{}).cls||'';
       if(!cls || cls==='مستبعد' || cls==='عميل ابواب' || cls==='مبيعات خاصة') return;
-      const key = cls==='موزع' ? cname : cls;
-      const r = rows[key] = rows[key] || {};
-      Object.entries(bySec).forEach(([s0, v])=>{ const sc=secColOf(s0); r[sc]=(r[sc]||0)+v; });
+      const parts = cls==='موزع' ? {[cname]: bySec} : wholesaleSecParts(mo, cname, bySec);
+      Object.entries(parts).forEach(([key, bs])=>{
+        const r = rows[key] = rows[key] || {};
+        Object.entries(bs).forEach(([s0, v])=>{ const sc=secColOf(s0); r[sc]=(r[sc]||0)+v; });
+      });
     });
   });
   const list = Object.keys(rows).map(n=>{
@@ -3219,10 +3261,10 @@ function renderSalesImport(m){
 }
 function delSalesMonth(mo){
   if(!confirm('حذف بيانات '+moName(mo)+' نهائياً؟')) return;
-  delete monthlySales[mo]; delete monthlySector[mo]; delete monthlyDoors[mo]; delete monthlyItems[mo];
+  delete monthlySales[mo]; delete monthlySector[mo]; delete monthlyDoors[mo]; delete monthlyItems[mo]; delete monthlyWh[mo];
   salesArchive=salesArchive.filter(x=>x!==mo);
   save('monthlySales_v1',monthlySales); save('monthlySector_v1',monthlySector);
-  save('monthlyDoors_v1',monthlyDoors); save('monthlyItems_v1',monthlyItems);
+  save('monthlyDoors_v1',monthlyDoors); save('monthlyItems_v1',monthlyItems); save('monthlyWh_v1',monthlyWh);
   save('salesArchive_v1',salesArchive);
   toast('اتحذف '+moName(mo)); render(true);
 }
@@ -3239,7 +3281,7 @@ function buildDistTotal(){
       if(!cls){ unclassified.add(name); return; }
       const k=moCol[mo];
       if(cls==='موزع'){ distRows[name]=distRows[name]||{}; distRows[name][k]=(distRows[name][k]||0)+net; }
-      else { rollup[cls]=rollup[cls]||{}; rollup[cls][k]=(rollup[cls][k]||0)+net; }
+      else { Object.entries(wholesaleNet(mo, name)).forEach(([lab, v])=>{ rollup[lab]=rollup[lab]||{}; rollup[lab][k]=(rollup[lab][k]||0)+v; }); }
     });
   });
   const mk=(label,byCol)=>{
@@ -3247,7 +3289,7 @@ function buildDistTotal(){
     return {name:label, cells, total:cells.reduce((a,b)=>a+b,0)};
   };
   const list=[];
-  ['مبيعات جملة'].forEach(cls=>{ if(rollup[cls]) list.push(mk(cls, rollup[cls])); });
+  Object.keys(rollup).forEach(lab=> list.push(mk(lab, rollup[lab])));
   Object.keys(distRows).forEach(n=> list.push(mk(n, distRows[n])));
   list.sort((a,b)=> b.total-a.total);                       // من الأعلى للأقل
   const tot=cols.map((c,i)=> list.reduce((a,r)=> a+r.cells[i], 0));
@@ -3313,7 +3355,7 @@ function importSales(file){
       const QIN =['qin','q_in','qty_in','qtyin','quantity_in','كمية مرتجع','الكمية المرتجعة'];
       const findCol=(names)=>{ for(const n of names){
         const i=hdr.findIndex(h=> String(h||'').trim().toLowerCase()===n.toLowerCase()); if(i!==-1) return i; } return -1; };
-      const qoi=findCol(QOUT), qii=findCol(QIN), coi=idx('Item_Code');
+      const qoi=findCol(QOUT), qii=findCol(QIN), coi=idx('Item_Code'), wi=idx('Inv_Name');   // Inv_Name = اسم المخزن
       // الملف مفيهوش عمود كود، فبنستخرجه من اسم الصنف: «باب كامل ارو 80 سم A01»
       const codeFromName = n=>{ const m=String(n||'').match(/\b([A-Za-z]\s?\d{1,3})\b/); return m? m[1].replace(/\s/g,'').toUpperCase() : ''; };
       /* الصنف يعتبر باب من **مجموعته الرئيسية** (ابواب WPC) — دي المرجع.
@@ -3322,7 +3364,7 @@ function importSales(file){
       const isDoor = (it, nm)=> it ? (/ابواب|أبواب/.test(it.mainGroup||'') || /ضلف/.test(it.subGroup||''))
                                    : /(^|\s)(باب|ابواب|أبواب)/.test(nm||'');
       const dataRows = rows.slice(hdrRow+1).filter(r=>r[ci]);
-      const custMap={}, sectorMap={}, doorMap={}, itemMap={};
+      const custMap={}, sectorMap={}, doorMap={}, itemMap={}, whMap={};
       const unmatchedCust=new Set(), unmatchedItems=new Set();
       const custByName={}; customers.forEach(c=>custByName[c.name]=c);
       for(const row of dataRows){
@@ -3339,6 +3381,8 @@ function importSales(file){
         const sector = it? (it.mainGroup || 'غير معروف') : 'غير معروف';
         if(!it && iname) unmatchedItems.add(iname);
         sectorMap[cname]=sectorMap[cname]||{}; sectorMap[cname][sector]=(sectorMap[cname][sector]||0)+net;
+        if(wi>=0){ const wk=whKeyOf(row[wi]);
+          const w=(whMap[cname]=whMap[cname]||{})[wk]=whMap[cname][wk]||{}; w[sector]=(w[sector]||0)+net; }
         if(iname){ const im=itemMap[iname]=itemMap[iname]||{qty:0,val:0};
           im.val+=net; im.qty+=(qoi>=0? nz(row[qoi]) : 0)-(qii>=0? nz(row[qii]) : 0); }
         // تفصيل الأبواب: لازم الكمية والكود عشان تقارير الأبواب
@@ -3352,7 +3396,7 @@ function importSales(file){
         }
       }
       const total=Object.values(custMap).reduce((a,b)=>a+b,0);
-      pendingImport={type:'sales', custMap, sectorMap, doorMap, itemMap, hasQty: qoi>=0,
+      pendingImport={type:'sales', custMap, sectorMap, doorMap, itemMap, whMap: wi>=0? whMap : null, hasQty: qoi>=0,
         unmatchedCust:[...unmatchedCust], unmatchedItems:[...unmatchedItems], total};
       openSheet(`<h3>تأكيد المبيعات</h3>
         <div class="f-row"><label>الشهر *</label>
@@ -3364,6 +3408,7 @@ function importSales(file){
           </div></div>
         <p style="font-size:13px">عملاء: ${Object.keys(custMap).length} — إجمالي: ${Math.round(total).toLocaleString('en-US')}
           ${Object.keys(doorMap).length? ` — أبواب: ${Object.keys(doorMap).length} عميل` : ''}</p>
+        ${p0WhNote(wi, whMap)}
         ${qoi<0? `<div class="warn">الملف مفيهوش عمود كمية، فتقارير الأبواب هتطلع بالقيمة بس.</div>`:''}
         ${pendingImport.unmatchedCust.length?`<div class="warn">عملاء جدد: ${pendingImport.unmatchedCust.slice(0,5).join('، ')}</div>`:''}
         <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
@@ -3380,15 +3425,16 @@ function commitSalesImport(){
      من غير ما يسأل، والصيغة القديمة كانت بتفضل جنبه فالشهر يتحسب مرتين */
   const same=Object.keys(monthlySales).filter(k=> moNum(k)===moNum(month));
   if(same.length && !confirm('شهر '+moName(month)+' مرفوع قبل كده — تستبدله بالشيت ده؟')) return;
-  same.filter(k=> k!==month).forEach(k=>{ delete monthlySales[k]; delete monthlySector[k]; delete monthlyDoors[k]; delete monthlyItems[k];
+  same.filter(k=> k!==month).forEach(k=>{ delete monthlySales[k]; delete monthlySector[k]; delete monthlyDoors[k]; delete monthlyItems[k]; delete monthlyWh[k];
     salesArchive=salesArchive.filter(x=> x!==k); });
   p.unmatchedCust.forEach(name=>{ customers.push({id:uid(),name,cls:''}); });
   save('customers_v1',customers);
   monthlySales[month]=p.custMap; monthlySector[month]=p.sectorMap;
   monthlyDoors[month]=p.doorMap||{}; monthlyItems[month]=p.itemMap||{};
+  if(p.whMap) monthlyWh[month]=p.whMap; else delete monthlyWh[month];   // شيت من غير عمود مخزن = الشهر يرجع غير مقسّم
   salesArchive = salesArchive.filter(x=> x!==month);   // شهر مرفوع من جديد يرجع شغّال
   save('monthlySales_v1',monthlySales); save('monthlySector_v1',monthlySector);
-  save('monthlyDoors_v1',monthlyDoors); save('monthlyItems_v1',monthlyItems);
+  save('monthlyDoors_v1',monthlyDoors); save('monthlyItems_v1',monthlyItems); save('monthlyWh_v1',monthlyWh);
   save('salesArchive_v1',salesArchive);
   pendingImport=null; closeSheet(); render(); toast('تم حفظ '+moName(month));
 }
@@ -6391,7 +6437,7 @@ const BONUS_ACC=['اكسسوارات عام','اكسسوارات ( بلسيه )'
 const BONUS_RATE_DEF={'كرافت لاين':.02,'نيو لاين':.02,'كومبن ابيض':.02,'كومبن بيج':.02,
   'اكسسوارات عام':.05,'اكسسوارات ( بلسيه )':.05,'اكسسوارات ( سيلكون وفوم)':.05,'خارج البونص':0};
 const BONUS_ORDER=['كرافت لاين','نيو لاين','كومبن ابيض','كومبن بيج',...BONUS_ACC];
-function bonusSave(){ save('bonusAksa_v1', bonusData); }
+function bonusSave(){ save('bonusAksa_v1', bonusData); bnArchUpsert('aksa'); }
 function bonusFile(k){ return (bonusData.files||{})[k]; }
 function bonusRate(line){
   const r=(bonusData.rates||{})[line];
@@ -6474,7 +6520,12 @@ function bonusClearFile(fk){
   delete bonusData.files[fk]; bonusSave(); render();
 }
 function bonusNewPeriod(){
-  if(!confirm('فترة جديدة؟ هيتمسح كل الملفات المرفوعة وبونص اكسا اللي كتبته (النِسَب بتفضل زي ما هي).')) return;
+  if(!bonusData.period){                                   // من غير اسم فترة مش هيتحفظ — نسأل الأول
+    const nm=prompt('الفترة الحالية مالهاش اسم. اكتب اسمها عشان تتحفظ في الأرشيف (مثلاً: الربع الثاني 2026) — أو سيبها فاضية لو مش عايز تحفظها:');
+    if(nm===null) return;
+    if(nm.trim()){ bonusData.period=nm.trim(); bonusSave(); }
+  }
+  if(!confirm('فترة جديدة؟ الفترة الحالية '+(bonusData.period? 'متحفوظة في الأرشيف، و' : '')+'هيتمسح منها الملفات المرفوعة وبونص اكسا اللي كتبته (النِسَب بتفضل زي ما هي).')) return;
   bonusData.files={}; bonusData.period=''; bonusData.aksa={}; bonusSave(); render(true);
 }
 function bonusSetPeriod(v){ bonusData.period=String(v||'').trim(); bonusSave(); }
@@ -6555,10 +6606,11 @@ function bonusMoveItem(name, to, from){
 function setBonusTab(k){ save('_bonusTab_', k); render(true); }
 function renderBonus(m){
   const tab=load('_bonusTab_','files');
-  m.innerHTML = moduleStats('bonus') + tabStrip([{k:'files',name:'📁 الملفات'},{k:'rep',name:'🎁 البونص'}], tab, k=>`setBonusTab('${k}')`, {grow:true})
+  m.innerHTML = moduleStats('bonus') + tabStrip([{k:'files',name:'📁 الملفات'},{k:'rep',name:'🎁 البونص'}  ,{k:'arch',name:'📚 الأرشيف'}], tab, k=>`setBonusTab('${k}')`, {grow:true})
     + `<div id="bn_c"></div>`;
   const c=$('#bn_c');
   if(tab==='rep') return renderBonusReport(c);
+  if(tab==='arch') return renderBnArchive(c,'aksa');
   const n=BONUS_FILES.filter(f=>bonusFile(f.k)).length;
   c.innerHTML = `<div class="f-row"><label>الفترة (بتظهر في عنوان التقرير)</label>
       <input value="${esc(bonusData.period||'')}" placeholder="مثلاً: الربع الثاني 2026" onchange="bonusSetPeriod(this.value)"></div>
@@ -6621,7 +6673,7 @@ const DB_SUM={col:'#6d28d9', tint:'#e7defb'};      // لون جدول الملخ
 const DB_ORDER=['قطاعات كرافت لاين','قطاعات نيو لاين','قطاعات كومبن','اكسسوارات'];
 const DB_RATE_DEF=0.01;
 const dbSecOf = id=> DB_SECS.find(x=>x.id===id);
-function dbSave(){ save('distBonus_v1', distBonus); }
+function dbSave(){ save('distBonus_v1', distBonus); bnArchUpsert('dist'); }
 function dbSetPeriod(v){ distBonus.period=String(v||'').trim(); dbSave(); }
 function setDbTab(k){ save('_dbTab_',k); render(true); }
 /* أسماء القطاعات في التقرير بتتوحّد على نفس أسماء شيت البونص */
@@ -6782,15 +6834,95 @@ function dbExportBar(which){
     <button onclick="dbExport('${which}','x')">📊 Excel</button></div>
     <div style="font-size:11.5px;color:var(--muted);margin-top:6px">${n? 'التقرير هيطلع فيه '+n+(n>1?' أقسام':' قسم')+' (اللي متعلّم عليها «يظهر»).' : 'مفيش قسم هيظهر — ارفع الملف أو علّم «يظهر في التقرير».'}</div>`;
 }
+/* ===== أرشيف البونص (اكسا + الموزعين) =====
+   أي فترة ليها اسم بتتحفظ نسخة كاملة منها (ملفات + نِسَب + بونص اكسا المكتوب) كل ما تتغيّر البيانات،
+   فكل ربع يفضل متاح تعرضه أو ترجعله في أي وقت. نفس الاسم = نفس النسخة بتتحدّث. */
+const bnClone = o=> JSON.parse(JSON.stringify(o||{}));
+const bnArr = kind=> kind==='aksa' ? bonusArchive : distBonusArchive;
+const bnKey = kind=> kind==='aksa' ? 'bonusArchive_v1' : 'distBonusArchive_v1';
+function bnArchUpsert(kind){
+  const data = kind==='aksa' ? bonusData : distBonus, period=String(data.period||'').trim();
+  if(!period || !Object.keys(data.files||{}).length) return false;
+  const arr=bnArr(kind), i=arr.findIndex(x=> x.period===period);
+  const snap={id: i>=0? arr[i].id : uid(), period, at: todayStr(), data: bnClone(data)};
+  if(i>=0) arr[i]=snap; else arr.push(snap);
+  save(bnKey(kind), arr); return true;
+}
+function withBn(kind, data, fn){
+  if(kind==='aksa'){ const keep=bonusData; bonusData=data; try{ return fn(); } finally{ bonusData=keep; } }
+  const keep=distBonus; distBonus=data; try{ return fn(); } finally{ distBonus=keep; }
+}
+function bnSummary(kind, e){
+  return withBn(kind, e.data, ()=>{
+    if(kind==='aksa'){ const L=bonusLines();
+      return 'صافي '+fmtN(Math.round(L.reduce((a,o)=>a+o.net,0)))+' · بونص '+fmtN(Math.round(L.reduce((a,o)=>a+o.bonus,0))); }
+    return 'شبل '+dbMoney(dbTotal(dbIds('shibl')))+' · مطروح '+dbMoney(dbTotal(dbIds('matrouh')))+' · الإجمالي '+dbMoney(dbTotal(dbIds('all')));
+  });
+}
+function bnTableHtml(md){
+  const R=md.body.map(r=>`<tr class="${r.type==='tot'?'m':''}">${r.cells.map(c=>`<td>${typeof c==='number'? fmtN(c) : esc(c)}</td>`).join('')}</tr>`).join('');
+  return `<div style="overflow-x:auto"><table class="rep"><thead><tr>${md.header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${R}</tbody></table></div>`;
+}
+function renderBnArchive(c, kind){
+  const arr=bnArr(kind).slice().sort((a,b)=> String(b.at).localeCompare(String(a.at)) || String(b.period).localeCompare(String(a.period)));
+  const cur = kind==='aksa' ? bonusData : distBonus, hasCur=Object.keys(cur.files||{}).length>0;
+  c.innerHTML = `<div style="font-size:12.5px;color:var(--muted);line-height:1.8;margin-bottom:10px">أي فترة ليها اسم (مثلاً «الربع الثاني 2026») بتتحفظ هنا لوحدها أول ما ترفع الملفات أو تعدّل، وتقدر تعرضها أو ترجعلها في أي وقت.</div>
+    ${hasCur? `<div class="impbar"><button onclick="bnSaveNow('${kind}')">💾 احفظ الفترة الحالية في الأرشيف${cur.period? ' ('+esc(cur.period)+')' : ''}</button></div>` : ''}
+    ${arr.length? arr.map(e=>`<div class="card"><div class="info"><div class="name">${esc(e.period)}</div>
+        <div class="sub">${esc(bnSummary(kind,e))} · اتحفظ <bdi>${esc(e.at)}</bdi></div></div>
+      <div class="act" style="display:flex;gap:6px;flex-wrap:wrap">
+        <button onclick="bnPreview('${kind}',${jsArg(e.id)})">👁 عرض</button>
+        <button onclick="bnRestore('${kind}',${jsArg(e.id)})">♻️ استرجاع</button>
+        <button onclick="bnDelete('${kind}',${jsArg(e.id)})">🗑️</button></div></div>`).join('')
+      : `<div class="empty">لسه مفيش فترات محفوظة — اكتب اسم الفترة وارفع الملفات وهتتحفظ لوحدها</div>`}`;
+}
+function bnSaveNow(kind){
+  const cur = kind==='aksa' ? bonusData : distBonus;
+  if(!cur.period){
+    const nm=prompt('اكتب اسم الفترة (مثلاً: الربع الثاني 2026):'); if(!nm || !nm.trim()) return;
+    cur.period=nm.trim(); save(kind==='aksa'?'bonusAksa_v1':'distBonus_v1', cur);
+  }
+  bnArchUpsert(kind); toast('اتحفظ «'+cur.period+'» في الأرشيف'); render(true);
+}
+function bnPreview(kind, id){
+  const e=bnArr(kind).find(x=> x.id===id); if(!e) return;
+  const body = withBn(kind, e.data, ()=>{
+    if(kind==='aksa') return bnTableHtml(bonusModel());
+    return dbSummaryHtml(dbIds('all'), false); });
+  openSheet(`<h3>${esc(e.period)}</h3>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">نسخة محفوظة بتاريخ <bdi>${esc(e.at)}</bdi> — للعرض بس، مش بتغيّر شغلك الحالي</div>
+    ${body}
+    <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إغلاق</button>
+      <button class="btn-save" onclick="closeSheet();bnRestore('${kind}',${jsArg(id)})">♻️ استرجاع كشغل حالي</button></div>`);
+}
+function bnRestore(kind, id){
+  const e=bnArr(kind).find(x=> x.id===id); if(!e) return;
+  const cur = kind==='aksa' ? bonusData : distBonus, has=Object.keys(cur.files||{}).length>0;
+  if(has && cur.period!==e.period){
+    const msg = cur.period ? 'الفترة الحالية «'+cur.period+'» متحفوظة في الأرشيف.' : 'الفترة الحالية مالهاش اسم فمش متحفوظة وهتتمسح.';
+    if(!confirm('هتحمّل «'+e.period+'» كشغل حالي. '+msg+' تكمل؟')) return;
+    bnArchUpsert(kind);
+  }
+  if(kind==='aksa'){ bonusData=bnClone(e.data); save('bonusAksa_v1', bonusData); save('_bonusTab_','rep'); }
+  else { distBonus=bnClone(e.data); save('distBonus_v1', distBonus); save('_dbTab_','all'); }
+  toast('اتحمّل «'+e.period+'»'); render(true);
+}
+function bnDelete(kind, id){
+  const e=bnArr(kind).find(x=> x.id===id); if(!e) return;
+  if(!confirm('حذف «'+e.period+'» من الأرشيف نهائياً؟')) return;
+  const arr=bnArr(kind), i=arr.findIndex(x=> x.id===id); arr.splice(i,1);
+  save(bnKey(kind), arr); toast('اتحذفت'); render(true);
+}
 function renderDBonus(m){
   const tab=load('_dbTab_','shibl');
   m.innerHTML = moduleStats('dbonus')
-    + tabStrip([{k:'shibl',name:'🧑‍💼 بونص شبل'},{k:'matrouh',name:'🏪 بونص مطروح'},{k:'all',name:'🧮 تجميع الكل'}], tab, k=>`setDbTab('${k}')`, {grow:true})
+    + tabStrip([{k:'shibl',name:'🧑‍💼 بونص شبل'},{k:'matrouh',name:'🏪 بونص مطروح'},{k:'all',name:'🧮 تجميع الكل'},{k:'arch',name:'📚 الأرشيف'}], tab, k=>`setDbTab('${k}')`, {grow:true})
     + `<div class="f-row"><label>الفترة (بتظهر في التقرير)</label>
         <input value="${esc(distBonus.period||'')}" placeholder="مثلاً: الربع الثاني 2026" onchange="dbSetPeriod(this.value)"></div>
        <div id="db_c"></div>`;
   const c=$('#db_c');
   if(tab==='all') return renderDBAll(c);
+  if(tab==='arch') return renderBnArchive(c,'dist');
   const secs=DB_SECS.filter(s=>s.dist===tab);
   c.innerHTML = dbFileCard(secs[0].fk) + secs.map(s=>dbSecCard(s.id)).join('') + dbExportBar(tab)
     + (tab==='shibl' ? `<div style="font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:6px">شبل بياخد بونصين عن نفس مشتريات الغمري: واحد من اكسا وواحد من القرشي، فالملف بيترفع مرة واحدة وبيتحسب في القسمين. علّم على القطاعات اللي تدخل في كل بونص وعدّل النسبة أو المبلغ لو محتاج.</div>` : '');
