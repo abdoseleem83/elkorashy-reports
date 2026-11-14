@@ -478,7 +478,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.9</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.10</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
 <div id="bnav"></div>
@@ -3459,7 +3459,9 @@ function commitImport(){
     pendingImport=null; closeSheet(); render(); toast(add.length? 'اتضاف '+add.length+' عميل جديد' : 'مفيش عملاء جداد'); return; }
   else if(pendingImport.type==='employees'){
     const byName={}; employees.forEach(e=> byName[ordNorm(e.name)]=e);
-    employees=pendingImport.list.map(e=>{ const old=byName[ordNorm(e.name)]; return old? Object.assign(e,{id:old.id}) : e; });
+    employees=pendingImport.list.map(e=>{ const old=byName[ordNorm(e.name)];
+      if(old && e.job===undefined && old.job) e.job=old.job;          // الشيت من غير عمود وظيفة: وظيفة الموظف المتسجّلة بتفضل
+      return old? Object.assign(e,{id:old.id}) : e; });
     save('employees_v1',employees); }
   else if(pendingImport.type==='gvrows'){ const o=gvGet(); if(o){ o.rows=pendingImport.rows; gvSave(); } }
   else if(pendingImport.type==='stock'){
@@ -4944,7 +4946,7 @@ function signOf(c){
 }
 /* عمود الاسم كان بيتعصر على ٣ سطور والأرقام واخدة المساحة كلها.
    دلوقتي عمود الاسم ليه عرض أدنى مريح، وعمود «م» على قده. */
-const DOC_NAME_COL=/^(اسم الصنف|الصنف|الموظف|العميل|الموزع|بيان|البيان|الحساب|المجموعة)$/;
+const DOC_NAME_COL=/^(اسم الصنف|الصنف|الموظف|العميل|الموزع|بيان|البيان|الحساب|المجموعة|الوظيفة)$/;
 function docColClass(h){ return h==='م' ? 'ix' : (DOC_NAME_COL.test(String(h||'').trim()) ? 'nm' : ''); }
 function docTableHtml(model, extraCss){
   const n=model.header.length;
@@ -5704,11 +5706,13 @@ function renderPayroll(m){
 }
 // ---- العاملين
 function editEmployee(id){
-  const e=id? employees.find(x=>x.id===id) : {id:'',name:'',branch:'',salary:'',h1:true,h2:true};
+  const e=id? employees.find(x=>x.id===id) : {id:'',name:'',branch:'',job:'',salary:'',h1:true,h2:true};
   const branches=[...new Set(employees.map(x=>x.branch).filter(Boolean))];
+  const jobs=[...new Set(employees.map(x=>x.job).filter(Boolean))];
   openSheet(`<h3>${id?'تعديل موظف':'إضافة موظف'}</h3>
     <div class="f-row"><label>اسم الموظف *</label><input id="e_name" value="${esc(e.name)}"></div>
     <div class="f-row"><label>الفرع</label><input id="e_branch" list="dl_br" value="${esc(e.branch)}"></div><datalist id="dl_br">${branches.map(b=>`<option value="${esc(b)}">`).join('')}</datalist>
+    <div class="f-row"><label>الوظيفة</label><input id="e_job" list="dl_job" value="${esc(e.job||'')}" placeholder="مثال: محاسب، سائق، مندوب مبيعات"></div><datalist id="dl_job">${jobs.map(j=>`<option value="${esc(j)}">`).join('')}</datalist>
     <div class="f-row"><label>الراتب الشهري (جنيه) *</label><input id="e_salary" type="number" inputmode="decimal" value="${esc(e.salary)}"></div>
     <label style="display:flex;align-items:center;gap:8px;margin:8px 0"><input type="checkbox" id="e_h1" ${e.h1!==false?'checked':''}> يشتغل في النصف الأول</label>
     <label style="display:flex;align-items:center;gap:8px;margin:8px 0"><input type="checkbox" id="e_h2" ${e.h2!==false?'checked':''}> يشتغل في النصف الثاني</label>
@@ -5718,7 +5722,7 @@ function saveEmployee(id){
   if(id==='null'||id==='undefined') id='';   // زرار + كان بيبعت 'null' نصًا فالموظف الجديد ما كانش بيتضاف
   const name=$('#e_name').value.trim(), salary=$('#e_salary').value;
   if(!name || salary===''){ toast('الاسم والمرتب مطلوبين'); return; }
-  const o={id:id||uid(),name,branch:$('#e_branch').value.trim(),salary:Number(salary),h1:$('#e_h1').checked,h2:$('#e_h2').checked};
+  const o={id:id||uid(),name,branch:$('#e_branch').value.trim(),job:$('#e_job').value.trim(),salary:Number(salary),h1:$('#e_h1').checked,h2:$('#e_h2').checked};
   const i=id? employees.findIndex(x=>x.id===id) : -1; if(i>=0) employees[i]=o; else employees.push(o);
   save('employees_v1',employees); closeSheet(); render(); toast('تم الحفظ');
 }
@@ -5731,9 +5735,12 @@ function importEmployees(file){
       const sn=wb.SheetNames.find(n=>n.includes('الموظفين'))||wb.SheetNames[0];
       const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
       let hi=rows.findIndex(x=>x.some(c=>String(c).includes('اسم الموظف'))); if(hi<0) hi=2;
+      const ji=(rows[hi]||[]).findIndex(c=> /^(ال)?(وظيفة|وظيفه|مسمى|المسمى)/.test(String(c||'').replace(/\s/g,'')));   // عمود الوظيفة (لو الشيت فيه)
       const list=[];
       for(let i=hi+1;i<rows.length;i++){ const x=rows[i]; const name=String(x[1]||'').trim(); if(!name||!nz(x[3])) continue;
-        list.push({id:uid(),name,branch:String(x[2]||'').trim(),salary:nz(x[3]),h1:String(x[4]).includes('✔'),h2:String(x[5]).includes('✔')}); }
+        const o={id:uid(),name,branch:String(x[2]||'').trim(),salary:nz(x[3]),h1:String(x[4]).includes('✔'),h2:String(x[5]).includes('✔')};
+        if(ji>=0) o.job=String(x[ji]||'').trim();
+        list.push(o); }
       if(!list.length){ toast('لم يتم إيجاد موظفين في الملف'); return; }
       pendingImport={type:'employees',list};
       openSheet(`<h3>تأكيد الاستيراد</h3><p style="font-size:13.5px;color:var(--muted)">${list.length} موظف — هيتم استبدال قائمة العاملين الحالية.</p>
@@ -5751,7 +5758,7 @@ function renderPayEmployees(c){
       const rows=employees.filter(e=>(e.branch||'بدون فرع')===b), k='emp:'+b, open=openGroups.has(k);
       return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup(${jsArg(k)})"><span>${esc(b)} <span class="cnt">(${rows.length} · ${fmtN(rows.reduce((a,e)=>a+nz(e.salary),0))} ج)</span></span><span class="arrow">▾</span></div>
         <div class="grp-body">${rows.map(e=>`<div class="card"><div class="info"><div class="name">${esc(e.name)}</div>
-          <div class="sub">${fmtN(nz(e.salary))} ج · الأول ${e.h1!==false?'✔':'—'} · الثاني ${e.h2!==false?'✔':'—'}</div></div>
+          <div class="sub">${e.job? esc(e.job)+' · ' : ''}${fmtN(nz(e.salary))} ج · الأول ${e.h1!==false?'✔':'—'} · الثاني ${e.h2!==false?'✔':'—'}</div></div>
           <div class="act"><button onclick="editEmployee('${e.id}')">✏️</button><button onclick="delEmployee('${e.id}')">🗑️</button></div></div>`).join('')}</div></div>`;
     }).join('') : `<div class="empty">لا يوجد موظفين — استورد شيت المرتبات أو دوس + لإضافة موظف</div>`}`;
   $('#impEmp').onchange=e=>{ if(e.target.files[0]) importEmployees(e.target.files[0]); };
@@ -5792,7 +5799,7 @@ function renderPayEntry(c){
           return `<tr>
             <td style="position:sticky;right:0;z-index:2;background:${bg};padding:6px;border-bottom:1px solid var(--border);text-align:right">
               <div style="font-weight:700">${esc(e.name)}</div>
-              <div style="font-size:11px;color:var(--muted)">${esc(e.branch||'')} · اليوم ${fmt2(r.day)} · الساعة ${fmt2(r.hour)}</div></td>
+              <div style="font-size:11px;color:var(--muted)">${esc(e.branch||'')}${e.job? ' · '+esc(e.job) : ''} · اليوم ${fmt2(r.day)} · الساعة ${fmt2(r.hour)}</div></td>
             <td style="background:${bg};padding:6px 4px;border-bottom:1px solid var(--border);text-align:center;font-weight:700">${fmtN(r.due)}</td>
             ${PAY_FIELDS.map(([f,l])=>`<td style="background:${bg};padding:4px 3px;border-bottom:1px solid var(--border)">
               <input type="number" inputmode="decimal" value="${ent[f]??''}" style="${cell}" title="${esc(l)}" placeholder="${esc(l.replace(/\s*\([^)]*\)/,''))}"
@@ -5873,6 +5880,8 @@ function payModel(){
   if(!cols.length) cols=PAY_COLS[payKind].filter(c=> c[0]==='net');
   // لو مختار فرع واحد، عمود «الفرع» بيتكرر في كل سطر — ملوش لازمة
   const brCol = !payExportBranch;
+  const jobCol = rows.some(r=> r.emp.job);                 // من غير وظايف مسجّلة الكشف بيفضل زي ما هو
+  const jb = r=> jobCol ? [r.emp.job||''] : [];
   const sums=rs=>cols.map(([k,h,f])=>rs.reduce((a,r)=>a+f(r),0));
   const body=[];
   if(payKind==='send'){
@@ -5882,23 +5891,23 @@ function payModel(){
     const blank0 = (v, h)=> (PAY_INPUT_COL.test(h) && !v) ? '' : v;
     rows.forEach((r,i)=>{
       const ent = payEntry(payMonth, payHalf, r.emp.id) || {};
-      body.push({type:'row', cells:[i+1, r.emp.name, ...(brCol?[r.emp.branch||'']:[]),
+      body.push({type:'row', cells:[i+1, r.emp.name, ...jb(r), ...(brCol?[r.emp.branch||'']:[]),
         ...cols.map(([k,h,f])=> blank0(f(r), h)), ent.note||'']});
     });
-    body.push({type:'tot', cells:['','الإجمالي', ...(brCol?['']:[]), ...cols.map(([k,h,f])=> blank0(rows.reduce((a,r)=>a+f(r),0), h)), '']});
+    body.push({type:'tot', cells:['','الإجمالي', ...(jobCol?['']:[]), ...(brCol?['']:[]), ...cols.map(([k,h,f])=> blank0(rows.reduce((a,r)=>a+f(r),0), h)), '']});
     return {title: payPeriodLabel(payMonth,payHalf)+(payExportBranch?' — فرع '+payExportBranch:''),
-            header:['م','الموظف',...(brCol?['الفرع']:[]),...cols.map(c=>c[1]),'ملاحظات'], body, rows, send:true};
+            header:['م','الموظف',...(jobCol?['الوظيفة']:[]),...(brCol?['الفرع']:[]),...cols.map(c=>c[1]),'ملاحظات'], body, rows, send:true};
   }
   const branches=[...new Set(rows.map(r=>r.emp.branch||'بدون فرع'))]; let idx=0;
   branches.forEach(b=>{
     const br=rows.filter(r=>(r.emp.branch||'بدون فرع')===b);
     if(branches.length>1) body.push({type:'branch',label:b});
-    br.forEach(r=>{ idx++; body.push({type:'row',cells:[idx,r.emp.name,...(brCol?[r.emp.branch||'']:[]),...cols.map(([k,h,f])=>f(r))]}); });
-    if(branches.length>1) body.push({type:'sub',cells:['','إجمالي '+b,...(brCol?['']:[]),...sums(br)]});
+    br.forEach(r=>{ idx++; body.push({type:'row',cells:[idx,r.emp.name,...jb(r),...(brCol?[r.emp.branch||'']:[]),...cols.map(([k,h,f])=>f(r))]}); });
+    if(branches.length>1) body.push({type:'sub',cells:['','إجمالي '+b,...(jobCol?['']:[]),...(brCol?['']:[]),...sums(br)]});
   });
-  body.push({type:'tot',cells:['','الإجمالي العام',...(brCol?['']:[]),...sums(rows)]});
+  body.push({type:'tot',cells:['','الإجمالي العام',...(jobCol?['']:[]),...(brCol?['']:[]),...sums(rows)]});
   return {title:'كشف المرتبات — '+payLabel(payMonth,payHalf)+(payExportBranch?' — فرع '+payExportBranch:''),
-    header:['م','الموظف',...(brCol?['الفرع']:[]),...cols.map(c=>c[1])], body, rows};
+    header:['م','الموظف',...(jobCol?['الوظيفة']:[]),...(brCol?['الفرع']:[]),...cols.map(c=>c[1])], body, rows};
 }
 function payDocBody(){
   const md=payModel();
@@ -5934,7 +5943,7 @@ function renderPayOutput(c){
     ${branches.map(b=>{
       const br=rows.filter(r=>(r.emp.branch||'بدون فرع')===b), k='pout:'+b, open=openGroups.has(k), bt=payTotals(br);
       return `<div class="grp ${open?'open':''}"><div class="grp-h" onclick="toggleGroup(${jsArg(k)})"><span>${esc(b)} <span class="cnt">(${br.length})</span></span><span><b>${fmtN(bt.net)}</b> ج <span class="arrow">▾</span></span></div>
-        <div class="grp-body">${br.map(r=>`<div class="card"><div class="info"><div class="name" style="font-size:13.5px">${esc(r.emp.name)}</div>
+        <div class="grp-body">${br.map(r=>`<div class="card"><div class="info"><div class="name" style="font-size:13.5px">${esc(r.emp.name)}${r.emp.job? ' <span style="font-weight:400;color:var(--muted);font-size:11.5px">— '+esc(r.emp.job)+'</span>' : ''}</div>
           <div class="sub">مستحق ${fmtN(r.due)} · خصومات ${fmtN(r.ded)}${r.otAmt?' · إضافي '+fmtN(r.otAmt):''}${r.mamAmt?' · ماموريات '+fmtN(r.mamAmt):''}${r.bonus?' · حوافز '+fmtN(r.bonus):''}</div></div><b style="font-size:15px">${fmtN(r.net)}</b></div>`).join('')}</div></div>`;
     }).join('')}
     <div style="font-size:12px;color:var(--muted);margin:12px 0 6px">نوع الكشف للتصدير:</div>
@@ -7111,8 +7120,8 @@ function searchResults(qs){
       go:`navTo('items',{_itemsTab_:0},null,${jsArg(i.name)})`}; }));
   grp('العملاء', customers.filter(c=> hit(c.name)).map(c=>({ic:'👤', t1:c.name, t2:c.cls||'غير مصنّف',
     go:`navTo('sales',{_salesTab_:1},null,${jsArg(c.name)})`})));
-  grp('الموظفين', employees.filter(e=> hit(e.name) || hit(e.branch||'')).map(e=>({ic:'🧑‍💼', t1:e.name,
-    t2:(e.branch||'')+' · '+fmtN(nz(e.salary))+' ج', go:`navTo('payroll',{_payTab_:0});editEmployee('${e.id}')`})));
+  grp('الموظفين', employees.filter(e=> hit(e.name) || hit(e.branch||'') || hit(e.job||'')).map(e=>({ic:'🧑‍💼', t1:e.name,
+    t2:(e.branch||'')+(e.job? ' · '+e.job : '')+' · '+fmtN(nz(e.salary))+' ج', go:`navTo('payroll',{_payTab_:0});editEmployee('${e.id}')`})));
   grp('المخازن', warehouses.filter(w=> hit(w.name)).map(w=>({ic:'🏭', t1:w.name, t2:fmtN(Object.keys(whStock[w.id]||{}).length)+' رصيد',
     go:`navTo('warehouses',{_whTab_:'${w.id}'})`})));
   grp('أكواد جيفز', gvcodes.filter(g=> hit(g.name) || hit(g.code||'')).map(g=>({ic:'🔖', t1:g.name, t2:g.code||'',
