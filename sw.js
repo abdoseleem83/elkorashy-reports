@@ -2,7 +2,8 @@
    - index.html: النت الأول (عشان التحديثات توصل)، ولو النت وقع بياخد النسخة المحفوظة.
    - lib/ والأيقونات: المحفوظ الأول (ثابتة).
    - أي طلب لموقع تاني (المزامنة / Apps Script) ما بيتلمسش خالص. */
-const CACHE = 'elkorashy-reports-v1';
+const CACHE = 'elkorashy-reports-v2';
+const OWN_CACHE_PREFIX = 'elkorashy-reports-';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
   './lib/xlsx.bundle.js', './lib/html2canvas.min.js', './lib/jspdf.umd.min.js', './lib/exceljs.min.js',
   './lib/fonts/cairo-arabic-wght-normal.woff2', './lib/fonts/cairo-latin-wght-normal.woff2'];
@@ -10,7 +11,7 @@ self.addEventListener('install', e=>{
   e.waitUntil(caches.open(CACHE).then(c=> Promise.all(CORE.map(u=> c.add(u).catch(()=>{})))).then(()=> self.skipWaiting()));
 });
 self.addEventListener('activate', e=>{
-  e.waitUntil(caches.keys().then(ks=> Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=> self.clients.claim()));
+  e.waitUntil(caches.keys().then(ks=> Promise.all(ks.filter(k=>k.startsWith(OWN_CACHE_PREFIX) && k!==CACHE).map(k=>caches.delete(k)))).then(()=> self.clients.claim()));
 });
 self.addEventListener('fetch', e=>{
   const req=e.request, url=new URL(req.url);

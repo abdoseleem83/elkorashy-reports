@@ -478,7 +478,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.10</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.11</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<div id="saveStateBar" role="status" aria-live="polite" style="padding:5px 14px;font-size:12px;line-height:1.8;background:var(--card);color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0">جاري التحقق من المزامنة</div>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
 <div id="bnav"></div>
@@ -538,23 +539,45 @@ function pruneBackups(keepNewest){
   }
   return n;
 }
+// Keep unsaved edits in memory until storage accepts them; never mark them synced.
+const failedLocalWrites = new Map();
+function localWriteWarning(){
+  let el = document.getElementById('localWriteWarning');
+  if(!el){
+    el = document.createElement('div'); el.id='localWriteWarning';
+    el.setAttribute('role','alert');
+    el.style.cssText='background:#7f1d1d;color:#fff;padding:10px 14px;font-size:13px;line-height:1.8;flex-shrink:0';
+    el.innerHTML='<span>لم يتم الحفظ على الجهاز. التعديل موجود في الصفحة فقط، والمزامنة متوقفة لحمايته. ما تقفلش الصفحة قبل إعادة الحفظ.</span> <button type="button" onclick="retryLocalWrites(true)" style="padding:8px 12px;margin:4px;border-radius:8px;border:1px solid #fff;background:transparent;color:inherit;font:inherit;cursor:pointer">إعادة محاولة الحفظ</button>';
+    const h=document.querySelector('header'); if(h) h.insertAdjacentElement('afterend',el); else document.body.prepend(el);
+  }
+  el.hidden = failedLocalWrites.size === 0;
+}
+function retryLocalWrites(notify){
+  for(const [k, str] of [...failedLocalWrites]) save(k,JSON.parse(str));
+  localWriteWarning();
+  if(notify && !failedLocalWrites.size){ toast('اتحفظت التعديلات على الجهاز'); syncSoon(); }
+  return failedLocalWrites.size === 0;
+}
+window.addEventListener('beforeunload', e=>{ if(failedLocalWrites.size){ e.preventDefault(); e.returnValue=''; } });
 function save(k,v){
   const str = JSON.stringify(v);
-  try{ localStorage.setItem(k, str); }
+  let saved = false, freed = {n:0,bytes:0};
+  try{ localStorage.setItem(k, str); saved = true; }
   catch(e){
-    // المساحة اتملت — ننضف اللي مش لازم ونعيد المحاولة قبل ما نفشّل
-    const freed = cleanOldAppStorage();
-    let saved = false;
+    freed = cleanOldAppStorage();
     try{ localStorage.setItem(k, str); saved = true; }catch(e2){}
     if(!saved){ pruneBackups(2); try{ localStorage.setItem(k, str); saved = true; }catch(e3){} }
-    if(!saved){
-      toast('مساحة المتصفح اتملت — افتح ⚙️ ودوس «نضّف مساحة الجهاز»');
-    } else if(freed.n){
-      toast('اتحفظ · اتفضى ' + fmtKB(freed.bytes) + ' من التطبيق القديم');
-    }
   }
-  // أي مفتاح بيانات بياخد ختم جديد عشان المزامنة تعرف إنه اتغيّر عندنا
+  if(!saved){
+    try{ if(SYNC_KEYS.indexOf(k)>=0) failedLocalWrites.set(k,str); }catch(e){}
+    if(failedLocalWrites.size){ localWriteWarning(); try{ syncStatus('لم يتم الحفظ', 'err'); }catch(e){} }
+    toast('مساحة المتصفح اتملت — افتح ⚙️ ودوس «نضّف مساحة الجهاز»');
+    return false;
+  }
+  if(failedLocalWrites.delete(k)) localWriteWarning();
+  if(freed.n) toast('اتحفظ · اتفضى ' + fmtKB(freed.bytes) + ' من التطبيق القديم');
   try{ if(typeof bumpRev === 'function' && SYNC_KEYS.indexOf(k) >= 0) bumpRev(k); }catch(e){}
+  return true;
 }
 // تنضيفة واحدة أول ما التطبيق يفتح بعد التحديث
 (function(){
@@ -1030,6 +1053,7 @@ function bumpRev(key){
   const last = Math.max(syncRevs[key] || 0, syncPulled[key] || 0);
   syncRevs[key] = Math.max(now, last + 1);
   save('_syncRevs_', syncRevs);
+  saveStateStatus(syncCfg().url ? 'محفوظ على الجهاز · في انتظار المزامنة' : 'محفوظ على الجهاز · المزامنة مقفولة', 'local');
   syncSoon();
 }
 function syncSoon(){
@@ -1056,7 +1080,7 @@ async function syncApi(payload, isGet){
       if(!r.ok) throw new Error('HTTP ' + r.status);
       const d = await r.json();
       // «unknown action» = الـPOST اتحوّل GET وضاع جسمه · «busy» = كتابة شغّالة
-      if(d && d.ok === false && /unknown action|busy/i.test(d.error || '')) throw new Error(d.error);
+      if(d && d.ok === false) throw new Error(d.error || 'السيرفر رفض العملية');
       return d;
     }catch(e){
       last = (e && e.name === 'AbortError')
@@ -1067,11 +1091,25 @@ async function syncApi(payload, isGet){
   }
   throw last;
 }
-function syncStatus(txt, cls){
-  const el = $('#syncPill'); if(!el) return;
-  el.textContent = txt; el.dataset.cls = cls || '';
-  el.style.background = cls === 'err' ? 'rgba(220,38,38,.9)' : (cls === 'ok' ? 'rgba(22,163,74,.9)' : 'rgba(255,255,255,.18)');
+function saveStateStatus(text, kind){
+  const bar=$('#saveStateBar'); if(!bar) return;
+  bar.textContent=text; bar.dataset.state=kind || '';
+  bar.style.color=kind==='error'?'#fff':'var(--muted)';
+  bar.style.background=kind==='error'?'#9f2430':'var(--card)';
 }
+function syncStatus(txt, cls){
+  const el = $('#syncPill');
+  if(el){
+    el.textContent = txt; el.dataset.cls = cls || '';
+    el.style.background = cls === 'err' ? 'rgba(220,38,38,.9)' : (cls === 'ok' ? 'rgba(22,163,74,.9)' : 'rgba(255,255,255,.18)');
+  }
+  if(failedLocalWrites.size) saveStateStatus('فشل الحفظ على الجهاز · المزامنة متوقفة لحماية التعديل', 'error');
+  else if(cls==='err') saveStateStatus('لم تكتمل المزامنة · راجع الاتصال وأعد المحاولة', 'error');
+  else if(cls==='ok') saveStateStatus('محفوظ على الجهاز · تم تأكيد المزامنة مع السيرفر', 'synced');
+  else if(!syncCfg().url) saveStateStatus('المزامنة مقفولة · الحفظ على الجهاز فقط', 'local');
+  else saveStateStatus('جاري المزامنة · ما تقفلش التطبيق لحد ما تكتمل', 'pending');
+}
+
 const SYNC_VARS = {
   items_v1: v=>{ items = v; reindexItems(); },
   gvcodes_v1: v=>{ gvcodes = v; }, units_v1: v=>{ units = v; },
@@ -1155,6 +1193,11 @@ function readBase(k){ try{ const v = localStorage.getItem(baseKey(k)); return v 
 function writeBase(k, v){ try{ localStorage.setItem(baseKey(k), JSON.stringify(v)); }catch(e){} }
 
 async function syncNow(quiet){
+  if(failedLocalWrites.size && !retryLocalWrites(false)){
+    syncStatus('لم يتم الحفظ', 'err');
+    if(!quiet) toast('المزامنة متوقفة لحد ما التعديلات تتحفظ على الجهاز');
+    return;
+  }
   const c = syncCfg();
   if(!c.url){ if(!quiet) toast('اظبط رابط المزامنة من ⚙️ الأول'); return; }
   // لو فيه مزامنة شغّالة دلوقتي، ما نرميش الطلب — نعيده بعدها على طول
@@ -1190,7 +1233,7 @@ async function syncNow(quiet){
       const iChanged = mine > base, theyChanged = theirs > base;
       // بنكتب من غير save() عشان ما يبقاش «تعديل جديد» يترفع تاني
       const setLocal = (val)=>{
-        try{ localStorage.setItem(k, JSON.stringify(val)); }catch(e){}
+        try{ localStorage.setItem(k, JSON.stringify(val)); }catch(e){ throw new Error('تعذّر حفظ البيانات المنزّلة على الجهاز؛ المزامنة لم تكتمل'); }
         if(SYNC_VARS[k]) SYNC_VARS[k](val);
         writeBase(k, val);                    // لقطة الأساس للدمج الجاي
       };
@@ -1209,12 +1252,14 @@ async function syncNow(quiet){
         return true;
       };
       const pushVal = async (val, rev)=>{
-        await syncApi({action:'set', key:SYNC_PREFIX + k, value: JSON.stringify(val)});
+        const written = await syncApi({action:'set', key:SYNC_PREFIX + k, value: JSON.stringify(val)});
+        if(!written || written.ok !== true) throw new Error('لم يصل تأكيد حفظ البيانات من السيرفر');
         idx[k] = rev;
         /* الفهرس بيتكتب بعد كل حاجة مش في الآخر. لو اتكتبت القيمة والفهرس لأ،
            الأجهزة التانية عمرها ما هتعرف إنها موجودة، وإحنا هنعتبرها مرفوعة
            وما نرفعهاش تاني — يعني تضيع على السيرفر من غير ما حد يشوفها. */
-        await syncApi({action:'set', key:SYNC_INDEX, value: JSON.stringify(idx)});
+        const indexed = await syncApi({action:'set', key:SYNC_INDEX, value: JSON.stringify(idx)});
+        if(!indexed || indexed.ok !== true) throw new Error('لم يصل تأكيد فهرس المزامنة من السيرفر');
         syncPulled[k] = rev; up.push(k);
         saveProgress();
       };
@@ -1238,6 +1283,7 @@ async function syncNow(quiet){
         }
       }
     }
+    if(failedLocalWrites.size) throw new Error('في تعديلات لسه ما اتحفظتش على الجهاز؛ المزامنة لم تكتمل');
     saveProgress();
     try{ if(autoCleanDupWarehouses()) merged.push('warehouses_v1'); }catch(e){}
     save('_syncAt_', Date.now()); save('_syncErr_', '');
