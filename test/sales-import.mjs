@@ -4,7 +4,10 @@ import { existsSync } from 'node:fs';
 let pass=0, fail=0;
 const check=(n,ok,x='')=>{ console.log((ok?'✅':'❌')+' '+n+(x?'  — '+x:'')); ok?pass++:fail++; };
 const FIX = new URL('./fixtures/sales-sample.xls', import.meta.url).pathname;
-if(!existsSync(FIX)){ console.log('⏭️  ملف العينة مش موجود — تخطّي'); process.exit(0); }
+const EXPF = new URL('./fixtures/sales-sample.expected.json', import.meta.url).pathname;
+// ملف المبيعات الحقيقي وأرقامه المتوقعة محليين ومتجاهلين في .gitignore — الريبو عام فمايترفعش عليه بيانات العملاء
+if(!existsSync(FIX) || !existsSync(EXPF)){ console.log('⏭️  ملف العينة أو ملف الأرقام المتوقعة مش موجود محليًا — تخطّي'); process.exit(0); }
+const E = JSON.parse((await import('node:fs')).readFileSync(EXPF,'utf8'));
 const b = await chromium.launch();
 const APP = process.env.APP_URL;
 const errs=[];
@@ -23,18 +26,18 @@ await pg.setInputFiles('#impSales', FIX);
 await pg.waitForTimeout(7000);
 const sheet = await pg.evaluate(()=>document.querySelector('#sheet')?.innerText||'');
 check('شاشة التأكيد فتحت (صف العناوين اتلقى)', /تأكيد المبيعات/.test(sheet), sheet.slice(0,80));
-check('قرا كل العملاء', /147/.test(sheet), (sheet.match(/عملاء: \d+/)||[''])[0]);
-check('الإجمالي صح', /REDACTED/.test(sheet), (sheet.match(/إجمالي: [\d,]+/)||[''])[0]);
+check('قرا كل العملاء', sheet.includes(String(E.customers)), (sheet.match(/عملاء: \d+/)||[''])[0]);
+check('الإجمالي صح', sheet.includes(E.totalFmt), (sheet.match(/إجمالي: [\d,]+/)||[''])[0]);
 check('لقى أصناف أبواب', /أبواب: \d+ عميل/.test(sheet), (sheet.match(/أبواب: \d+ عميل/)||[''])[0]);
 check('مقالش إن مفيش عمود كمية', !/مفيهوش عمود كمية/.test(sheet));
 
 await pg.selectOption('#s_mo','01'); await pg.selectOption('#s_yr','2026');
 await pg.evaluate(()=>commitSalesImport()); await pg.waitForTimeout(2500);
 check('الشهر اتحفظ', (await pg.evaluate(()=>Object.keys(monthlySales)))[0]==='2026-01');
-check('العملاء اتضافوا لوحدهم', (await pg.evaluate(()=>customers.length))===147,
+check('العملاء اتضافوا لوحدهم', (await pg.evaluate(()=>customers.length))===E.customers,
   String(await pg.evaluate(()=>customers.length)));
 const tot = await pg.evaluate(()=>Math.round(Object.values(monthlySales['2026-01']).reduce((a,b)=>a+b,0)));
-check('إجمالي المبيعات المحفوظ = REDACTED', tot===REDACTED, String(tot));
+check('إجمالي المبيعات المحفوظ = المتوقع', tot===E.total, String(tot));
 
 const d = await pg.evaluate(()=>{ const dd=monthlyDoors['2026-01']||{}; let q=0,v=0; const names=new Set(), codes=new Set();
   Object.values(dd).forEach(bi=> Object.entries(bi).forEach(([n,x])=>{ q+=x.qty; v+=x.val; names.add(n); if(x.code) codes.add(x.code); }));

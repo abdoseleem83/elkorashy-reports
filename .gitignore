@@ -1,0 +1,5 @@
+
+# بيانات الشركة الحقيقية للاختبارات — محلية بس، الريبو عام
+test/fixtures/*.xls
+test/fixtures/*.xlsx
+test/fixtures/*.expected.json

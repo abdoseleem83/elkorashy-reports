@@ -2,6 +2,12 @@
 import {chromium} from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import {fileURLToPath} from 'url'; import {dirname, join} from 'path';
 const here=dirname(fileURLToPath(import.meta.url));
+import {existsSync, readFileSync} from 'fs';
+// الميزان الحقيقي والأرقام المتوقعة ملفات محلية (متجاهلة في .gitignore) — الريبو عام فمايترفعش عليه بيانات الشركة
+const TB_FILE=TB_FILE;
+const EXP_FILE=join(here,'fixtures','trial-balance.expected.json');
+if(!existsSync(TB_FILE) || !existsSync(EXP_FILE)){ console.log('⏭️  ميزان المراجعة الحقيقي أو ملف الأرقام المتوقعة مش موجود محليًا — تخطّي'); process.exit(0); }
+const E=JSON.parse(readFileSync(EXP_FILE,'utf8'));
 let bad=0; const ck=(n,ok,x='')=>{ console.log((ok?'✅':'❌')+' '+n+(x?'  — '+x:'')); if(!ok) bad++; };
 const b=await chromium.launch(); const pg=await b.newPage({viewport:{width:412,height:880}});
 pg.on('pageerror',e=>{bad++;console.log('❌ JS:',e.message)});
@@ -12,7 +18,7 @@ if(await pg.evaluate(()=> typeof XLSX === 'undefined')){
   await b.close(); process.exit(0);
 }
 await pg.evaluate(()=>{ switchModule('fin'); finUnlocked=true; setFinView('tb'); }); await pg.waitForTimeout(400);
-await pg.setInputFiles('#impTB', join(here,'fixtures','trial-balance.xls'));
+await pg.setInputFiles('#impTB', TB_FILE);
 await pg.waitForTimeout(1500);
 const conf=await pg.evaluate(()=>document.body.innerText);
 ck('شاشة التأكيد ظهرت', /تأكيد ميزان المراجعة/.test(conf));
@@ -32,7 +38,7 @@ ck('٢٣٩ حساب طرفي — الحساب الأب مش بيتحسب مرت�
 const T=await pg.evaluate(()=>{
   const md=trialBalModel('2026-01'); const t=md.body[md.body.length-1].cells;
   return {d:t[2], c:t[3], leaves:md.lf.length}; });
-ck('إجمالي الميزان متوازن REDACTED', T.d===REDACTED && T.c===REDACTED, JSON.stringify(T));
+ck('إجمالي الميزان متوازن', T.d===E.tbTotal && T.c===E.tbTotal, JSON.stringify(T));
 ck('محسوب على ٢٣٩ حساب طرفي', T.leaves===239, String(T.leaves));
 const scr=await pg.evaluate(()=>document.body.innerText);
 ck('الشاشة بتقول متوازن مش العكس', /✅ متوازن/.test(scr) && !/مش متوازن/.test(scr), '');
@@ -41,20 +47,20 @@ ck('الحسابات الأب سطورها رمادية (٣٣ حساب)', parent
 
 const V=await pg.evaluate(()=> finStatement('2026-01','isco').V);
 const r=x=>Math.round(x);
-ck('المبيعات REDACTED', r(V.sales)===REDACTED, String(r(V.sales)));
-ck('مردود المبيعات REDACTED', r(V.ret)===REDACTED, String(r(V.ret)));
-ck('صافي المبيعات REDACTED', r(V.net)===REDACTED, String(r(V.net)));
-ck('تكلفة البضاعة REDACTED', r(V.cogs)===REDACTED, String(r(V.cogs)));
-ck('مجمل الربح REDACTED', r(V.gross)===REDACTED, String(r(V.gross)));
-ck('إيرادات أخرى REDACTED', r(V.oth)===REDACTED, String(r(V.oth)));
-ck('المصروفات العمومية REDACTED', r(V.exp)===REDACTED, String(r(V.exp)));
-ck('صافي الربح REDACTED', r(V.profit)===REDACTED, String(r(V.profit)));
+ck('المبيعات', r(V.sales)===E.sales, String(r(V.sales)));
+ck('مردود المبيعات', r(V.ret)===E.ret, String(r(V.ret)));
+ck('صافي المبيعات', r(V.net)===E.net, String(r(V.net)));
+ck('تكلفة البضاعة', r(V.cogs)===E.cogs, String(r(V.cogs)));
+ck('مجمل الربح', r(V.gross)===E.gross, String(r(V.gross)));
+ck('إيرادات أخرى', r(V.oth)===E.oth, String(r(V.oth)));
+ck('المصروفات العمومية', r(V.exp)===E.exp, String(r(V.exp)));
+ck('صافي الربح', r(V.profit)===E.profit, String(r(V.profit)));
 
 const B=await pg.evaluate(()=> finStatement('2026-01','bs').V);
-ck('الأصول الثابتة REDACTED', r(B.fixed)===REDACTED, String(r(B.fixed)));
-ck('الأصول المتداولة REDACTED', r(B.cur)===REDACTED, String(r(B.cur)));
-ck('إجمالي الأصول REDACTED', r(B.assets)===REDACTED, String(r(B.assets)));
-ck('رأس المال REDACTED', r(B.cap)===REDACTED, String(r(B.cap)));
+ck('الأصول الثابتة', r(B.fixed)===E.fixed, String(r(B.fixed)));
+ck('الأصول المتداولة', r(B.cur)===E.cur, String(r(B.cur)));
+ck('إجمالي الأصول', r(B.assets)===E.assets, String(r(B.assets)));
+ck('رأس المال', r(B.cap)===E.cap, String(r(B.cap)));
 ck('المركز متوازن بالظبط', r(B.assets)===r(B.total), r(B.assets)+' / '+r(B.total));
 await pg.evaluate(()=>{ setFinView('bs'); }); await pg.waitForTimeout(400);
 ck('الشاشة بتقول متوازن', /متوازن/.test(await pg.evaluate(()=>document.body.innerText)));
@@ -75,10 +81,10 @@ ck('عمولات البنك وفودافون وانستاباي والنقل م�
 
 // قائمة PVC = كل المبيعات لأن كل الفروع PVC
 const P=await pg.evaluate(()=> finStatement('2026-01','ispvc').V);
-ck('مبيعات PVC = كل المبيعات REDACTED', r(P.sales)===REDACTED, String(r(P.sales)));
-ck('تكلفة PVC = كل التكلفة', r(P.cogs)===REDACTED, String(r(P.cogs)));
-ck('مصروفات PVC REDACTED (من غير عمولات البنك ٣٥٠)',
-  r(P.exp)===REDACTED, String(r(P.exp)));
+ck('مبيعات PVC = كل المبيعات', r(P.sales)===E.sales, String(r(P.sales)));
+ck('تكلفة PVC = كل التكلفة', r(P.cogs)===E.cogs, String(r(P.cogs)));
+ck('مصروفات PVC (من غير عمولات البنك)',
+  r(P.exp)===E.pvcExp, String(r(P.exp)));
 ck('مجمل ربح PVC زي الشركة', r(P.gross)===r(V.gross), r(P.gross)+' / '+r(V.gross));
 
 await pg.evaluate(()=>{ setFinView('ispvc'); }); await pg.waitForTimeout(400);
@@ -92,9 +98,9 @@ ck('شاشة التوزيع بتوري كل الحسابات الأب',
 // نحوّل اكسا للمصنع بضغطة
 await pg.evaluate(()=> segPick('4103','fac')); await pg.waitForTimeout(400);
 const F=await pg.evaluate(()=> finStatement('2026-01','isfac').V);
-ck('مبيعات المصنع بقت REDACTED', r(F.sales)===REDACTED, String(r(F.sales)));
+ck('مبيعات المصنع بعد التحويل', r(F.sales)===E.facSales, String(r(F.sales)));
 const P2=await pg.evaluate(()=> finStatement('2026-01','ispvc').V);
-ck('ومبيعات PVC نقصت بنفس الرقم', r(P2.sales)===REDACTED-REDACTED, String(r(P2.sales)));
+ck('ومبيعات PVC نقصت بنفس الرقم', r(P2.sales)===E.sales-E.facSales, String(r(P2.sales)));
 // الحساب الطرفي بيرث من الأب
 ck('الحساب الطرفي بيرث قطاع الأب',
   (await pg.evaluate(()=> finSegOf('31770001')))==='pvc');
