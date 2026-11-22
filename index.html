@@ -9,8 +9,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#1d4ed8">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<!-- المكتبة محلية (lib/) عشان الإكسل يشتغل من غير نت؛ لو الملف مش موجود بنرجع للـCDN -->
-<script src="lib/xlsx.bundle.js" onerror="document.write('<script src=&quot;'+'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js'+'&quot;><\/script>')"></script>
+<!-- المكتبة محلية (lib/) عشان الإكسل يشتغل من غير نت. اتشال الرجوع للـCDN الخارجي: سكريبت من برّه من غير integrity ممكن ينفّذ كود على بيانات الشركة -->
+<script src="lib/xlsx.bundle.js"></script>
 <style>
 /* خط Cairo (عربي + لاتيني) محفوظ جوه المشروع — بيشتغل بدون نت */
 @font-face{font-family:'Cairo';font-style:normal;font-weight:200 1000;font-display:swap;
