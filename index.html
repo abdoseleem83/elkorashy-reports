@@ -479,7 +479,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.11</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.12</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
 <div id="saveStateBar" role="status" aria-live="polite" style="padding:5px 14px;font-size:12px;line-height:1.8;background:var(--card);color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0">جاري التحقق من المزامنة</div>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
@@ -2491,12 +2491,16 @@ function exportCompareExcel(){
 function buildColorTable(){
   const norm=s=>String(s).trim();
   const src=items.filter(i=>i.baseName && norm(i.baseName) && i.color && norm(i.color) && (!colMain.size || colMain.has(i.mainGroup)));
-  const groups={};
+  const groups={}, noRoll=new Set();
   src.forEach(it=>{
     const mg=it.mainGroup, bn=norm(it.baseName), c=norm(it.color);
     groups[mg]=groups[mg]||{}; groups[mg][bn]=groups[mg][bn]||{};
     const cells=groups[mg][bn][c]=groups[mg][bn][c]||warehouses.map(()=>0);
-    warehouses.forEach((w,i)=>{ cells[i]+=qtyOf(w.id,it.name); });
+    /* قطاعات (كرافت/نيو لاين): بالفف كاملة بس. كل صنف على تعبئته هو (rollQty)،
+       الكسر بيتشال لكل صنف ولكل فرع قبل الجمع. صنف من غير تعبئة بيتعدّ ومبيتحولش بتخمين. */
+    const isRoll=isProfileGroup(mg), rq=Number(it.rollQty)||0;
+    if(isRoll && !(rq>0)){ noRoll.add(it.name); return; }
+    warehouses.forEach((w,i)=>{ const q=qtyOf(w.id,it.name); cells[i]+= isRoll ? Math.trunc(q/rq) : q; });
   });
   const colorSum={};
   Object.values(groups).forEach(bs=>Object.values(bs).forEach(cs=>Object.entries(cs).forEach(([c,cells])=>{ colorSum[c]=(colorSum[c]||0)+cells.reduce((a,b)=>a+b,0); })));
@@ -2515,7 +2519,7 @@ function buildColorTable(){
     });
     if(list.length){ rows.push({type:'main',label:mg}); rows.push(...list); }
   });
-  return {colors, rows, W};
+  return {colors, rows, W, noRoll:[...noRoll]};
 }
 
 // ========== SALES ==========
@@ -3993,7 +3997,7 @@ function colorsTableHtml(cls){
       : `<tr class="z"><td>${esc(r.label)}</td>${r.flat.map((v,i)=>`<td style="background:${info[Math.floor(i/W)].cell};color:#111;${gb(i)}">${cell(v)}</td>`).join('')}<td><b>${fmtN(r.total)}</b></td></tr>`).join('')}
   </table>`;
 }
-function colorsDocBody(){ return `<div class="dx"><h2>مقارنة الأرصدة بالألوان</h2><div class="sub">${todayStr()}</div>${colorsTableHtml('')}</div>`; }
+function colorsDocBody(){ const nr=buildColorTable().noRoll; return `<div class="dx"><h2>مقارنة الأرصدة بالألوان</h2><div class="sub">${todayStr()} — المقارنة باللفف الكاملة (القطاعات)</div>${nr.length?`<div class="sub" style="color:#b00020">⚠️ ${nr.length} صنف قطاعات من غير محتوى لفة غير داخلين في الأرقام</div>`:''}${colorsTableHtml('')}</div>`; }
 /* أزرار سريعة تحت مقارنة الألوان: كل واحد بيفلتر على مجموعته على طول
    بدل ما تفتح القايمة وتختار. الضغط تاني بيرجّع الكل. */
 const COLOR_QUICK = [
@@ -4029,8 +4033,10 @@ function colorQuickHtml(){
 function renderWhColors(m){
   if(noStockMsg()){ m.innerHTML=`<div class="empty">لا توجد بيانات أرصدة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
   const allMain=[...new Set(items.filter(i=>i.baseName&&i.color).map(i=>i.mainGroup).filter(Boolean))];
-  const {rows}=buildColorTable();
-  m.innerHTML = stockWarnHtml() + colorQuickHtml() + `
+  const {rows,noRoll}=buildColorTable();
+  const unitNote = `<div style="font-size:12.5px;margin:2px 0 8px;opacity:.85">المقارنة باللفف الكاملة (القطاعات) — الأقل من لفة لا يظهر</div>`;
+  const rollNote = noRoll.length ? `<div class="warn">⚠️ ${noRoll.length} صنف قطاعات من غير «محتوى اللفة» — مش داخلين في المقارنة لحد ما تتسجل تعبئتهم</div>` : '';
+  m.innerHTML = unitNote + rollNote + stockWarnHtml() + colorQuickHtml() + `
     ${ddRowMain('col',allMain,colMain)}
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:6px 0 10px"><input type="checkbox" ${colZero?'checked':''} onchange="colZero=this.checked;render()"> إظهار الأصناف الصفرية</label>
     ${rows.length? `<div style="overflow-x:auto">${colorsTableHtml('rep stk')}</div>` : `<div class="empty">لا توجد بيانات مطابقة</div>`}
@@ -4040,7 +4046,7 @@ function renderWhColors(m){
 function exportColorsPdf(){ if(!buildColorTable().rows.length){ toast('لا توجد بيانات'); return; } exportDocPdf(colorsDocBody(),'مقارنة_بالألوان_'+todayStr(),true); }
 function exportColorsImage(){ if(!buildColorTable().rows.length){ toast('لا توجد بيانات'); return; } exportDocImage(colorsDocBody(),'مقارنة_بالألوان_'+todayStr(),true); }
 async function exportColorsExcel(){
-  const {colors,rows,W}=buildColorTable(); if(!rows.length){ toast('لا توجد بيانات'); return; }
+  const {colors,rows,W,noRoll}=buildColorTable(); if(!rows.length){ toast('لا توجد بيانات'); return; }
   try{
     await loadLib('exceljs',()=>window.ExcelJS);
     const wb=new window.ExcelJS.Workbook(), ws=wb.addWorksheet('مقارنة بالألوان',{views:[{rightToLeft:true}]});
@@ -4048,7 +4054,7 @@ async function exportColorsExcel(){
     const fill=(c,h)=>{ c.fill={type:'pattern',pattern:'solid',fgColor:{argb:argb(h)}}; };
     const thin={style:'thin',color:{argb:'FF999999'}}, box=c=>{ c.border={top:thin,left:thin,bottom:thin,right:thin}; c.alignment={horizontal:'center',vertical:'middle'}; };
     const NC=2+colors.length*W;
-    ws.addRow(['مقارنة الأرصدة بالألوان — '+todayStr()]); ws.mergeCells(1,1,1,NC); ws.getCell(1,1).font={bold:true,size:14}; ws.getCell(1,1).alignment={horizontal:'center'};
+    ws.addRow(['مقارنة الأرصدة بالألوان — '+todayStr()+' — المقارنة باللفف الكاملة (القطاعات)'+(noRoll.length?' — ⚠️ '+noRoll.length+' صنف قطاعات من غير محتوى لفة غير داخلين في الأرقام':'')]); ws.mergeCells(1,1,1,NC); ws.getCell(1,1).font={bold:true,size:14}; ws.getCell(1,1).alignment={horizontal:'center',wrapText:true}; { const tl=String(ws.getCell(1,1).value).length, wc=40+10*(NC-1); ws.getRow(1).height=Math.max(22, 22*Math.ceil(tl*1.5/wc)+4); }
     const r2=ws.addRow(['الصنف']), r3=ws.addRow(['']);
     colors.forEach((c,i)=>{ const c0=2+i*W; ws.mergeCells(2,c0,2,c0+W-1); const cell=ws.getCell(2,c0); cell.value=c; fill(cell,info[i].head); cell.font={bold:true,color:{argb:argb(info[i].text)}}; box(cell);
       warehouses.forEach((w,j)=>{ const x=ws.getCell(3,c0+j); x.value=w.name; fill(x,info[i].cell); x.font={bold:true}; box(x); }); });
