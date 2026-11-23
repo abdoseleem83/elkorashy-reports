@@ -479,7 +479,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.12</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.13</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
 <div id="saveStateBar" role="status" aria-live="polite" style="padding:5px 14px;font-size:12px;line-height:1.8;background:var(--card);color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0">جاري التحقق من المزامنة</div>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
@@ -1066,6 +1066,7 @@ function syncSoon(){
    للأبد ومش بتشتغل تاني أبدًا. المهلة بتكبر مع حجم اللي بنبعته. */
 async function syncApi(payload, isGet){
   const c = syncCfg();
+  if(location.origin!=='https://abdoseleem83.github.io' && c.url===SYNC_DEFAULT_URL) throw new Error('المزامنة الحقيقية مقفولة في نسخة المعاينة');
   const url = c.url + (isGet ? ('?' + new URLSearchParams(Object.assign({token:c.token}, payload))) : '');
   const body = isGet ? '' : JSON.stringify(Object.assign({token:c.token}, payload));
   const opt = isGet ? {} : {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body};
@@ -1193,12 +1194,66 @@ const baseKey = k=> '_base_' + k;
 function readBase(k){ try{ const v = localStorage.getItem(baseKey(k)); return v ? JSON.parse(v) : undefined; }catch(e){ return undefined; } }
 function writeBase(k, v){ try{ localStorage.setItem(baseKey(k), JSON.stringify(v)); }catch(e){} }
 
+/* Scoped recovery of the Nov 23 preview incident. Exact object fingerprints only. */
+const PREVIEW_RECOVERY = {"warehouses_v1": [{"id": "t", "name": "طنطا"}, {"id": "a", "name": "الاسكندرية"}], "whStock_v1": {"t": {"حلق مفصلي بدون بار كرافت": {"balance": 1400}, "حلق مفصلي بدون بار كرافت بيج": {"balance": 2010}, "حلق مفصلي بدون بار كرافت خشبي": {"balance": 40}, "حلق مفصلي بار 5 كرافت": {"balance": 8400}, "حلق مفصلي بار 5 كرافت بيج": {"balance": 130}, "ضلفه شباك كرافت": {"balance": 11660}, "ضلفه شباك كرافت بيج": {"balance": 3870}, "صنف بدون تعبئة": {"balance": 900}}, "a": {"حلق مفصلي بدون بار كرافت": {"balance": 740}, "حلق مفصلي بدون بار كرافت بيج": {"balance": 760}, "حلق مفصلي بدون بار كرافت خشبي": {"balance": 49}, "حلق مفصلي بار 5 كرافت": {"balance": 3700}, "حلق مفصلي بار 5 كرافت بيج": {"balance": 175}, "ضلفه شباك كرافت": {"balance": 10640}, "ضلفه شباك كرافت بيج": {"balance": 3000}, "صنف بدون تعبئة": {"balance": 300}}}, "items_v1": [{"id": "0", "name": "حلق مفصلي بدون بار كرافت", "mainGroup": "قطاعات كرافت لاين", "subGroup": "", "baseName": "حلق مفصلي بدون بار", "color": "ابيض", "rollQty": "50", "unit": "لفة"}, {"id": "1", "name": "حلق مفصلي بدون بار كرافت بيج", "mainGroup": "قطاعات كرافت لاين", "subGroup": "", "baseName": "حلق مفصلي بدون بار", "color": "بيج", "rollQty": "50", "unit": "لفة"}, {"id": "2", "name": "حلق مفصلي بدون بار كرافت خشبي", "mainGroup": "قطاعات كرافت لاين", "subGroup": "", "baseName": "حلق مفصلي بدون بار", "color": "خشبي", "rollQty": "50", "unit": "لفة"}, {"id": "3", "name": "حلق مفصلي بار 5 كرافت", "mainGroup": "قطاعات كرافت لاين", "subGroup": "", "baseName": "حلق مفصلي بار 5", "color": "ابيض", "rollQty": "30", "unit": "لفة"}, {"id": "4", "name": "حلق مفصلي بار 5 كرافت بيج", "mainGroup": "قطاعات كرافت لاين", "subGroup": "", "baseName": "حلق مفصلي بار 5", "color": "بيج", "rollQty": "60", "unit": "لفة"}, {"id": "5", "name": "ضلفه شباك كرافت", "mainGroup": "قطاعات كرافت لاين", "subGroup": "", "baseName": "ضلفه شباك", "color": "ابيض", "rollQty": "40", "unit": "لفة"}, {"id": "6", "name": "ضلفه شباك كرافت بيج", "mainGroup": "قطاعات كرافت لاين", "subGroup": "", "baseName": "ضلفه شباك", "color": "بيج", "rollQty": "40", "unit": "لفة"}, {"id": "7", "name": "صنف بدون تعبئة", "mainGroup": "قطاعات كرافت لاين", "subGroup": "", "baseName": "حلق مقلوب", "color": "ابيض", "rollQty": "", "unit": "لفة"}]};
+function recoveryEqual(a,b){
+  if(a===b) return true;
+  if(!a || !b || typeof a!=='object' || typeof b!=='object' || Array.isArray(a)!==Array.isArray(b)) return false;
+  const ka=Object.keys(a), kb=Object.keys(b);
+  return ka.length===kb.length && ka.every(k=>Object.prototype.hasOwnProperty.call(b,k) && recoveryEqual(a[k],b[k]));
+}
+function recoverPreviewValue(k,v){
+  const targets=PREVIEW_RECOVERY[k]; if(!targets || !v) return v;
+  const mismatch=()=>{throw new Error('بيانات التجربة اتعدلت: المزامنة متوقفة للمراجعة من غير حذف');};
+  if(k==='whStock_v1'){
+    const out={...v}; let changed=false;
+    for(const id of Object.keys(targets)) if(Object.prototype.hasOwnProperty.call(out,id)){
+      if(!recoveryEqual(out[id],targets[id])) mismatch();
+      delete out[id]; changed=true;
+    }
+    return changed?out:v;
+  }
+  if(!Array.isArray(v)) mismatch();
+  let changed=false;
+  const out=v.filter(x=>{
+    const t=targets.find(t=>t.id===x.id); if(!t) return true;
+    if(!recoveryEqual(x,t)) mismatch();
+    changed=true; return false;
+  });
+  return changed?out:v;
+}
+function previewRecoveryBackup(k,v){
+  const key='_previewRecovery_20261123_'+k;
+  const raw=JSON.stringify(v);
+  // Never proceed if the original cannot be kept. No quota cleanup here.
+  if(localStorage.getItem(key)===null){localStorage.setItem(key,raw);}
+}
+function recoverLocalPreview(){
+  const changes=[];
+  for(const k of Object.keys(PREVIEW_RECOVERY)){
+    const v=load(k,null), clean=recoverPreviewValue(k,v);
+    if(k==='warehouses_v1' && clean!==v){
+      for(const dep of ['whShortage_v1','invCounts_v1','invDraft_v1','whOrderDate_v1','whStockAt_v1']){
+        const refs=load(dep,{});
+        if(['t','a'].some(id=>refs && Object.prototype.hasOwnProperty.call(refs,id))) throw new Error('المخازن التجريبية مرتبطة ببيانات إضافية: مطلوب مراجعة بدون حذف');
+      }
+    }
+    if(clean!==v){ previewRecoveryBackup(k,v); changes.push([k,clean]); }
+  }
+  for(const [k,clean] of changes){
+    if(!save(k,clean)) throw new Error('تعذر حفظ تصحيح بيانات التجربة');
+    if(SYNC_VARS[k]) SYNC_VARS[k](clean);
+  }
+  return changes.length;
+}
+
 async function syncNow(quiet){
   if(failedLocalWrites.size && !retryLocalWrites(false)){
     syncStatus('لم يتم الحفظ', 'err');
     if(!quiet) toast('المزامنة متوقفة لحد ما التعديلات تتحفظ على الجهاز');
     return;
   }
+  try{ recoverLocalPreview(); }catch(e){ syncStatus('مطلوب مراجعة بيانات التجربة','err'); saveStateStatus(e.message,'error'); return; }
   const c = syncCfg();
   if(!c.url){ if(!quiet) toast('اظبط رابط المزامنة من ⚙️ الأول'); return; }
   // لو فيه مزامنة شغّالة دلوقتي، ما نرميش الطلب — نعيده بعدها على طول
@@ -1238,21 +1293,30 @@ async function syncNow(quiet){
         if(SYNC_VARS[k]) SYNC_VARS[k](val);
         writeBase(k, val);                    // لقطة الأساس للدمج الجاي
       };
+      let serverSanitized=false;
       const getServer = async ()=>{
         const r = await syncApi({action:'get', key:SYNC_PREFIX + k}, true);
         if(!r || !r.ok) return undefined;
         const v = JSON.parse(r.value || 'null');
-        return v === null ? undefined : v;
+        if(v===null) return undefined;
+        const clean=recoverPreviewValue(k,v);
+        serverSanitized=clean!==v;
+        if(serverSanitized) previewRecoveryBackup('server_'+k,v);
+        return clean;
       };
       const pull = async ()=>{
         const val = await getServer();
         if(val === undefined) return false;
         setLocal(val);
         syncRevs[k] = theirs; syncPulled[k] = theirs; down.push(k);
+        if(serverSanitized){ const rev=Math.max(mine,theirs)+1; syncRevs[k]=rev; await pushVal(val,rev); }
         saveProgress();
         return true;
       };
       const pushVal = async (val, rev)=>{
+        const clean=recoverPreviewValue(k,val);
+        if(clean!==val) previewRecoveryBackup(k,val);
+        val=clean;
         const written = await syncApi({action:'set', key:SYNC_PREFIX + k, value: JSON.stringify(val)});
         if(!written || written.ok !== true) throw new Error('لم يصل تأكيد حفظ البيانات من السيرفر');
         idx[k] = rev;
@@ -1274,7 +1338,7 @@ async function syncNow(quiet){
         const me = load(k, null);
         if(srv === undefined){ await pushVal(me, mine); writeBase(k, me); }
         else {
-          const r = merge3(me, srv, readBase(k), mine >= theirs);
+          const r = merge3(recoverPreviewValue(k,me), srv, recoverPreviewValue(k,readBase(k)), mine >= theirs);
           const rev = Math.max(mine, theirs) + 1;
           if(r.clash){ save('_backup_' + k + '_' + mine, me); clash.push(k); }
           setLocal(r.val);
@@ -1286,7 +1350,7 @@ async function syncNow(quiet){
     }
     if(failedLocalWrites.size) throw new Error('في تعديلات لسه ما اتحفظتش على الجهاز؛ المزامنة لم تكتمل');
     saveProgress();
-    try{ if(autoCleanDupWarehouses()) merged.push('warehouses_v1'); }catch(e){}
+    // No automatic deletion based on warehouse names.
     save('_syncAt_', Date.now()); save('_syncErr_', '');
     syncStatus('☁️ ' + new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}), 'ok');
     if(down.length || merged.length) syncRender();
@@ -1986,7 +2050,7 @@ function dupWhBar(){
       `<button class="mochip on" onclick="mergeDupWarehouse(${jsArg(g.name)})">🔗 دمج ${esc(g.name)} (${g.list.length})</button>`).join('')}</div></div>`;
 }
 function renderWarehouses(m){
-  try{ autoCleanDupWarehouses(); }catch(e){}
+  /* Automatic duplicate deletion paused: same names are not proof of duplicate data. */
   const whTab = load('_whTab_', null);
   /* المقارنات كانت مفروشة جنب المخازن في نفس الصف. دلوقتي تبويب واحد
      «مقارنات» وتحته التلاتة، فالصف فيه المخازن والمقارنات بس. */
@@ -7306,6 +7370,7 @@ function render(top){
 }
 
 $('#refreshBtn').addEventListener('click', ()=>{ location.reload(); });
+try{ recoverLocalPreview(); }catch(e){ saveStateStatus(e.message,'error'); }
 render();
 
 /* ═══════════ رقم سري لكل حذف ═══════════
@@ -7335,7 +7400,6 @@ function delPinOk(){
     window[n]=function(){ const a=arguments, self=this; askDelPin(()=>o.apply(self,a), LBL[n]); };
   });
 })();
-try{ autoCleanDupWarehouses(); }catch(e){}
 /* تشغيل من غير نت: الصفحة والمكتبات بتتحفظ بعد أول فتح (بيشتغل على https أو localhost بس) */
 if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
   window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
