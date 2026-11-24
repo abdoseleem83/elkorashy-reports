@@ -25,8 +25,9 @@ pg.on('pageerror', e=>errs.push(e.message));
 await pg.exposeFunction('__ord', async (url, body)=>{
   const u = new URL(url, 'https://x/');
   const a = body ? body.action : u.searchParams.get('action');
-  if(a==='manageLogin') return u.searchParams.get('pin')===ORD.MANAGE_PIN?{ok:true,token:'MT'}:{ok:false,reason:'wrong_pin'};
-  if(a==='adminLogin')  return u.searchParams.get('pin')===ORD.ADMIN_PIN ?{ok:true,token:'AT'}:{ok:false,reason:'wrong_pin'};
+  const pinIn = body ? body.pin : u.searchParams.get('pin');
+  if(a==='manageLogin') return pinIn===ORD.MANAGE_PIN?{ok:true,token:'MT'}:{ok:false,reason:'wrong_pin'};
+  if(a==='adminLogin')  return pinIn===ORD.ADMIN_PIN ?{ok:true,token:'AT'}:{ok:false,reason:'wrong_pin'};
   if(a==='catalog') return {items: ORD.catalog.map(n=>({name:n}))};
   if(a==='lookup'){ if(u.searchParams.get('token')!=='AT') return {ok:false,error:'unauthorized'}; return ORD.orders; }
   if(a==='manageUploadCatalog'){
