@@ -9,6 +9,7 @@
      القراءة والكتابة ما اتغيروش، اللي زاد هو خاصية s على الخلية. -->
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#1d4ed8">
+<link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <!-- المكتبة محلية (lib/) عشان الإكسل يشتغل من غير نت. اتشال الرجوع للـCDN الخارجي: سكريبت من برّه من غير integrity ممكن ينفّذ كود على بيانات الشركة -->
 <script src="lib/xlsx.bundle.js"></script>
@@ -472,6 +473,15 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 /* زرار 🔍 العايم: على اليمين (أزرار الصفوف على الشمال) وصغّرناه وبيستخبى وانت بتسكرول */
 .rsbtn{left:auto;right:12px;width:42px;height:42px;font-size:18px;opacity:.82;transition:opacity .2s;box-shadow:0 4px 12px rgba(0,0,0,.22)}
 .rsbtn.away{opacity:0;pointer-events:none}
+/* v9.17: مربعات وتبويبات أصغر وأضم على الموبايل بس (تعديل بسيط من غير تغيير الشكل) */
+@media (max-width:700px){
+  main{padding:8px 10px}
+  .stats{grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:5px;margin-bottom:6px}
+  .stat{border-radius:10px;padding:5px 3px 5px;box-shadow:0 3px 8px rgba(0,0,0,.22)}
+  .stat b{font-size:14px;line-height:1.2}
+  .stat span{font-size:9.5px;margin-top:1px;white-space:normal;line-height:1.2;overflow:visible}
+  .stab{padding:7px 10px;border-radius:11px;font-size:12.5px}
+}
 </style>
 <script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("theme_v1")==="light"?"light":"dark")}catch(e){}</script>
 <meta name="theme-color" content="#0d1733">
@@ -479,7 +489,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.15</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.19</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
 <div id="saveStateBar" role="status" aria-live="polite" style="padding:5px 14px;font-size:12px;line-height:1.8;background:var(--card);color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0">جاري التحقق من المزامنة</div>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
@@ -2054,7 +2064,7 @@ function renderWarehouses(m){
   const whTab = load('_whTab_', null);
   /* المقارنات كانت مفروشة جنب المخازن في نفس الصف. دلوقتي تبويب واحد
      «مقارنات» وتحته التلاتة، فالصف فيه المخازن والمقارنات بس. */
-  const tabs = [{id:'cmpx',name:'📊 مقارنات'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+w.name}))];
+  const tabs = [{id:'cmpx',name:'📊 مقارنات'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+esc(w.name)}))];
   m.innerHTML = moduleStats('warehouses') + tabStrip(tabs.map(t=>({k:t.id,name:t.name})), whTab, k=>`setWhTab('${k}')`, {cls:'tabs'})
     + `<div style="display:flex;gap:8px;margin:8px 0">
         <button onclick="editWarehouse('')" title="إضافة مخزن" style="flex:1;padding:9px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:800;font-size:13px;cursor:pointer">➕ إضافة مخزن</button>
@@ -2068,16 +2078,20 @@ function renderWarehouses(m){
    الاكسسوارات خارج الحساب. الصنف من غير محتوى لفة وعليه رصيد مش محسوب ومتنبّه عليه. */
 const WH_ROLL_SECS=['كرافت لاين','كومبن','نيو لاين'];
 function whRollsBySector(whId){
-  const out={}, noRoll=new Set(); WH_ROLL_SECS.forEach(k=>out[k]=0);
+  const out={}, noRoll=new Set(); let neg=0; WH_ROLL_SECS.forEach(k=>out[k]=0);
+  const seen=new Set();
   items.forEach(it=>{
-    if(!isProfileGroup(it.mainGroup)) return;
+    if(!isProfileGroup(it.mainGroup) || seen.has(it.name)) return; seen.add(it.name);
     const sec=secName(SECTOR_MAP[it.mainGroup]||it.mainGroup); if(!(sec in out)) return;
-    const q=qtyOf(whId,it.name), rq=Number(it.rollQty)||0;
+    const q=qtyOf(whId,it.name), rq=nz(it.rollQty);
+    if(q<0){ neg++; return; }          /* الرصيد السالب مش بيتحسب هنا — له تقرير لوحده (مقارنات ← أرصدة سالبة) */
     if(!(rq>0)){ if(q>0) noRoll.add(it.name); return; }
     out[sec]+=Math.trunc(q/rq);
   });
-  return {out, noRoll:noRoll.size, total:WH_ROLL_SECS.reduce((a,k)=>a+out[k],0)};
+  return {out, noRoll:noRoll.size, neg, total:WH_ROLL_SECS.reduce((a,k)=>a+out[k],0)};
 }
+/* إجمالي اللفف الكاملة (كرافت/كومبن/نيو) لكل المخازن مع بعض */
+function totalRolls(){ return warehouses.reduce((a,w)=>a+whRollsBySector(w.id).total,0); }
 function whOverview(){
   if(!warehouses.length) return `<div class="empty">اضغط على قسم فوق</div>`;
   const cols=warehouses.map(w=>({w, r:whRollsBySector(w.id), s:shortTotals(w.id).items}));
@@ -2088,12 +2102,13 @@ function whOverview(){
         ${WH_ROLL_SECS.map(k=>`<div style="display:flex;justify-content:space-between;gap:4px;font-size:12.5px;padding:3px 0"><span>${k}</span><b>${fmtN(c.r.out[k])} لفة</b></div>`).join('')}
         <div style="display:flex;justify-content:space-between;gap:4px;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-size:13px;font-weight:800"><span>الإجمالي</span><span>${fmtN(c.r.total)} لفة</span></div>
         ${c.r.noRoll?`<div style="margin-top:6px;font-size:11px;color:#b45309;font-weight:700">⚠️ ${c.r.noRoll} صنف بلا محتوى لفة (مش محسوب)</div>`:''}
+        ${c.r.neg?`<div style="margin-top:6px;font-size:11px;color:#b91c1c;font-weight:700" onclick="event.stopPropagation();navTo('warehouses',{_whTab_:'cmpx',_cmpView_:'neg'})">➖ ${c.r.neg} صنف برصيد سالب (مش محسوب) — اضغط للتقرير</div>`:''}
         ${c.s?`<em style="display:block;margin-top:4px;font-size:11px">🧾 ${c.s} صنف ناقص</em>`:''}</div>`).join('')
     + `</div></div><div class="empty" style="margin-top:10px">اضغط على مخزن من فوق أو من العمود</div>`;
 }
 function setWhTab(id){ const cur=load('_whTab_',null); save('_whTab_', cur===id?null:id); save('_whSub_',null); render(true); }
 // تبويب «مقارنات»: جواه التلات مقارنات
-const CMP_VIEWS = [{id:'compare',name:'⚖️ الفروع'},{id:'colors',name:'🎨 الألوان'},{id:'gvbox',name:'📦 جيفز بالكراتين'}];
+const CMP_VIEWS = [{id:'compare',name:'⚖️ الفروع'},{id:'colors',name:'🎨 الألوان'},{id:'gvbox',name:'📦 جيفز بالكراتين'},{id:'neg',name:'➖ أرصدة سالبة'}];
 function setCmpView(id){ const cur=load('_cmpView_',null); save('_cmpView_', cur===id?null:id); render(true); }
 function renderCompareHub(m){
   const v = load('_cmpView_', null);
@@ -2103,6 +2118,7 @@ function renderCompareHub(m){
   if(v==='compare') renderWhCompare(c);
   else if(v==='colors') renderWhColors(c);
   else if(v==='gvbox') renderGvCompare(c);
+  else if(v==='neg') renderWhNegative(c);
   else c.innerHTML = `<div class="empty">اختار نوع المقارنة من فوق</div>`;
 }
 
@@ -2112,11 +2128,11 @@ function normUnit(u){ return String(u||'').trim().replace(/ه$/,'ة'); }
 function pieceBreakdown(name, s){
   const it = itemsByName[name] || {};
   const unit = normUnit(it.unit) || '—';
-  const rq = Number(it.rollQty)||0;
+  const rq = nz(it.rollQty);
   const bigLbl = unit==='لفة'?'لفة':(unit==='كرتونة'?'كرتونة':'وحدة كبيرة');
   const smallLbl = unit==='لفة'?'عود':'قطعة';
   let big = nz(s.big), small = nz(s.small);
-  if(!big && !small && rq>1){ const b=nz(s.balance); big=Math.floor(b/rq); small=b%rq; }
+  if(!big && !small && rq>1){ const b=nz(s.balance); big=Math.trunc(b/rq); small=b%rq; }
   return {unit, bigLbl, smallLbl, big, small};
 }
 function balText(name, s){
@@ -2535,6 +2551,31 @@ function stockWarnHtml(){
     </div>`).join('')}
     ${o.length>40? `<div style="margin-top:6px;color:var(--muted)">…و${o.length-40} غيرهم</div>`:''}</div>`;
 }
+/* ═══ تقرير الأرصدة السالبة: أي صنف رصيده أقل من صفر في أي مخزن (مش داخل في إجماليات اللفف) ═══ */
+function negStockRows(){
+  const names=new Set(items.map(i=>i.name)); warehouses.forEach(w=>Object.keys(whStock[w.id]||{}).forEach(n=>names.add(n)));
+  const rows=[];
+  names.forEach(n=>{ const cells=warehouses.map(w=>qtyOf(w.id,n)); if(cells.some(q=>q<0)){
+    const it=itemsByName[n]||{}; rows.push({name:n, group:it.mainGroup||'غير مربوط بصنف في الأصناف', cells}); } });
+  rows.sort((a,b)=> a.group.localeCompare(b.group,'ar') || a.name.localeCompare(b.name,'ar'));
+  return rows;
+}
+function renderWhNegative(m){
+  const rows=negStockRows();
+  if(!rows.length){ m.innerHTML=`<div class="empty">✅ مفيش أي صنف برصيد سالب</div>`; return; }
+  const by={}; rows.forEach(r=>(by[r.group]=by[r.group]||[]).push(r));
+  m.innerHTML=`<div class="warn">➖ ${rows.length} صنف برصيد سالب في مخزن أو أكتر. الأرصدة دي مش داخلة في إجمالي اللفف.</div>`
+    + Object.entries(by).map(([g,list])=>`<div class="hsec" style="margin-top:10px">◆ ${esc(g)} (${list.length})</div>`
+      + list.map(r=>`<div class="card"><div class="info"><div class="name" style="font-size:13px">${esc(r.name)}</div></div>
+        <div class="qs" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">${warehouses.map((w,i)=>`<span style="${r.cells[i]<0?'color:#b91c1c;font-weight:800':'opacity:.7'}">${esc(w.name)}: ${esc(balText(r.name,{balance:r.cells[i]}))}</span>`).join('')}</div></div>`).join('')).join('')
+    + floatBar(`<button onclick="exportNegExcel()">📊 إكسل</button>`);
+}
+function exportNegExcel(){
+  const rows=negStockRows(); if(!rows.length){ toast('مفيش أرصدة سالبة'); return; }
+  const data=[['المجموعة','الصنف',...warehouses.map(w=>w.name)]];
+  rows.forEach(r=>data.push([r.group,r.name,...r.cells]));
+  saveAoaXlsx(data,'أرصدة سالبة','أرصدة_سالبة.xlsx',[28,46,...warehouses.map(()=>14)],{title:'الأصناف برصيد سالب'});
+}
 function renderWhCompare(m){
   if(noStockMsg()){ m.innerHTML=`<div class="empty">لا توجد بيانات أرصدة كافية للمقارنة — استورد شيت الأرصدة لكل مخزن أولاً</div>`; return; }
   const allMain=[...new Set(items.map(i=>i.mainGroup).filter(Boolean))];
@@ -2581,9 +2622,9 @@ function buildColorTable(){
     const cells=groups[mg][bn][c]=groups[mg][bn][c]||warehouses.map(()=>0);
     /* قطاعات (كرافت/نيو لاين): بالفف كاملة بس. كل صنف على تعبئته هو (rollQty)،
        الكسر بيتشال لكل صنف ولكل فرع قبل الجمع. صنف من غير تعبئة بيتعدّ ومبيتحولش بتخمين. */
-    const isRoll=isProfileGroup(mg), rq=Number(it.rollQty)||0;
+    const isRoll=isProfileGroup(mg), rq=nz(it.rollQty);
     if(isRoll && !(rq>0)){ noRoll.add(it.name); return; }
-    warehouses.forEach((w,i)=>{ const q=qtyOf(w.id,it.name); cells[i]+= isRoll ? Math.trunc(q/rq) : q; });
+    warehouses.forEach((w,i)=>{ const q=qtyOf(w.id,it.name); if(isRoll && q<0) return; cells[i]+= isRoll ? Math.trunc(q/rq) : q; });
   });
   const colorSum={};
   Object.values(groups).forEach(bs=>Object.values(bs).forEach(cs=>Object.entries(cs).forEach(([c,cells])=>{ colorSum[c]=(colorSum[c]||0)+cells.reduce((a,b)=>a+b,0); })));
@@ -3147,7 +3188,7 @@ function doorCodeRowHtml(r){
     `<div class="dcrow">
        <span class="dcn" title="${esc(n)}">${esc(n)}</span>
        <input id="dcx_${i}" value="${esc(doorCodeMap[n]||r.code)}" placeholder="بدون كود">
-       <button title="شيل الصنف من التقرير" onclick="doorHideItem(${JSON.stringify(n).replace(/"/g,'&quot;')})">🗑</button>
+       <button title="شيل الصنف من التقرير" onclick="doorHideItem(${jsArg(n)})">🗑</button>
      </div>`).join('')}
     <button class="dcsave" onclick="doorCodeSaveRow(${JSON.stringify(r.names).replace(/"/g,'&quot;')})">💾 حفظ الأكواد</button>
   </div>`;
@@ -3178,7 +3219,7 @@ function noCodeSheet(){
       `<div class="dcrow" style="padding:8px 0">
          <span class="dcn">${esc(r.name)}</span>
          <input id="nc_${i}" placeholder="كود">
-         <button onclick="doorHideItem(${JSON.stringify(r.name).replace(/"/g,'&quot;')})">🗑</button>
+         <button onclick="doorHideItem(${jsArg(r.name)})">🗑</button>
        </div>`).join('')}</div>`
     : `<div class="empty">مفيش — كل الأصناف عليها أكواد</div>`}
     <div class="f-actions"><button class="btn-cancel" onclick="closeSheet()">إلغاء</button>
@@ -3606,10 +3647,10 @@ function commitImport(){
 }
 
 // ===================== تصدير حقيقي (PDF يتنزّل + صورة) =====================
-const LIB_URLS={       // [المحلي أولاً، وبعده CDN لو الملف المحلي مش موجود]
-  html2canvas:['lib/html2canvas.min.js','https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'],
-  jspdf:['lib/jspdf.umd.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'],
-  exceljs:['lib/exceljs.min.js','https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js']
+const LIB_URLS={       // المكتبات محلية بس (من غير CDN خارجي: سكريبت من برّه من غير integrity ممكن ينفّذ كود على بيانات الشركة)
+  html2canvas:['lib/html2canvas.min.js'],
+  jspdf:['lib/jspdf.umd.min.js'],
+  exceljs:['lib/exceljs.min.js']
 };
 function loadLib(key, test){
   return new Promise((res,rej)=>{
@@ -4375,7 +4416,7 @@ let invDraft=load('invDraft_v1',{});
 function invDraftGet(whId){ if(!invDraft[whId]) invDraft[whId]={}; return invDraft[whId]; }
 function setInvDraft(whId,itemId,kind,val){
   const it=items.find(x=>x.id===itemId); if(!it) return;
-  const d=invDraftGet(whId), rq=Number(it.rollQty)||0, c=d[it.name]||{};
+  const d=invDraftGet(whId), rq=nz(it.rollQty), c=d[it.name]||{};
   if(kind==='q'){ if(val===''){ delete d[it.name]; } else { d[it.name]={actual:Number(val)}; } }
   else {
     if(val==='') delete c[kind]; else c[kind]=Number(val);
@@ -4388,7 +4429,7 @@ function invSave(whId,itemId,btn){
   const it=items.find(x=>x.id===itemId); if(!it) return;
   const card=btn.closest('.invc'), d=invDraftGet(whId), c=d[it.name];
   /* لو لسه ماخرجش من الخانة، onchange ممكن ما اتنفذش — نقرا القيم من الكارت مباشرة */
-  if(card){ const ins=[...card.querySelectorAll('input[type=number]')], rq=Number(it.rollQty)||0;
+  if(card){ const ins=[...card.querySelectorAll('input[type=number]')], rq=nz(it.rollQty);
     if(rq>1){ ins.forEach((el,i)=>setInvDraft(whId,itemId,i===0?'big':'small',el.value)); } else if(ins[0]) setInvDraft(whId,itemId,'q',ins[0].value); }
   const cc=invDraftGet(whId)[it.name];
   if(!cc || cc.actual===undefined){ toast('اكتب الكمية الأول'); return; }
@@ -4402,7 +4443,7 @@ function setInvDate(whId,v){ invGet(whId).date=v; save('invCounts_v1',invCounts)
 function invNew(whId){ if(!confirm('بدء جرد جديد؟ هيتمسح الجرد الحالي لهذا المخزن.')) return; invCounts[whId]={date:todayStr(),counts:{}}; invDraft[whId]={}; save('invCounts_v1',invCounts); save('invDraft_v1',invDraft); render(); }
 function setInvCount(whId,itemId,kind,val){
   const it=items.find(x=>x.id===itemId); if(!it) return;
-  const inv=invGet(whId), rq=Number(it.rollQty)||0, c=inv.counts[it.name]||{};
+  const inv=invGet(whId), rq=nz(it.rollQty), c=inv.counts[it.name]||{};
   if(kind==='q'){ if(val===''){ delete inv.counts[it.name]; } else { inv.counts[it.name]={actual:Number(val)}; } }
   else {
     if(val==='') delete c[kind]; else c[kind]=Number(val);
@@ -4426,7 +4467,7 @@ function invResult(whId){
 /* خانات إدخال الجرد: خانتين (لفة/عود) لو الصنف ليه محتوى لفة، وإلا خانة واحدة. fn = دالة الحفظ */
 function invInputsHtml(whId, it, c, fn){
   const inp='width:62px;padding:8px 4px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;text-align:center';
-  const rq=Number(it.rollQty)||0, b=pieceBreakdown(it.name,{balance:0});
+  const rq=nz(it.rollQty), b=pieceBreakdown(it.name,{balance:0});
   const call=k=>`${fn}('${whId}','${it.id}','${k}',this.value,this)`;
   return rq>1
     ? `<input type="number" inputmode="numeric" placeholder="${b.bigLbl}" value="${c.big??''}" style="${inp}" onchange="${call('big')}">
@@ -4720,7 +4761,7 @@ function ordRows(){
 function ordNewRow(name, r){
   const it = itemFind(name) || {};
   return {name, main: it.mainGroup || 'أخرى', sub: it.subGroup || '',
-    unit: Number(it.rollQty) || 1, product: it.baseName || name, color: it.color || '',
+    unit: nz(it.rollQty) || 1, product: it.baseName || name, color: it.color || '',
     price: '', stock: r ? r.stock : 0, disabled: false};
 }
 let ordOrders = null;        // آخر طلبات اتجابت
@@ -7199,7 +7240,7 @@ function moduleStats(id){
     {v:n(units.length), l:'وحدة', go:"navTo('items',{_itemsTab_:2})"}]);
   if(id==='warehouses'){ const S=homeStats(); return statStrip([
     {v:n(warehouses.length), l:'مخزن', go:"navTo('warehouses',{_whTab_:null})"},
-    {v:n(S.stockItems), l:'رصيد مرفوع', go:warehouses[0]? `navTo('warehouses',{_whTab_:'${warehouses[0].id}'})` : ''},
+    {v:n(totalRolls()), l:'لفة كاملة', go:warehouses[0]? `navTo('warehouses',{_whTab_:'${warehouses[0].id}'})` : ''},
     {v:S.short? n(S.short) : '✅', l:S.short? 'صنف نواقص' : 'مفيش نواقص', c:S.short?'#b91c1c':'#15803d',
       go:warehouses[0]? `navTo('warehouses',{_whTab_:'${warehouses[0].id}',_whSub_:1})` : ''},
     {v:'📊', l:'المقارنات', go:"navTo('warehouses',{_whTab_:'cmpx'})"}]); }
@@ -7303,7 +7344,7 @@ function renderHome(m){
   const hi = hh<12 ? 'صباح الخير' : (hh<18 ? 'مساء الخير' : 'مساء الخير');
   const sub={
     items:`${items.length} صنف`,
-    warehouses:`${warehouses.length} مخزن · ${S.stockItems} رصيد`,
+    warehouses:`${warehouses.length} مخزن · ${totalRolls()} لفة`,
     sales:`${customers.length} عميل · ${S.months} شهر`,
     gv:`${gvOrders.length} طلبية`,
     payroll:`${employees.length} موظف`,
