@@ -479,7 +479,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.14</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.15</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
 <div id="saveStateBar" role="status" aria-live="polite" style="padding:5px 14px;font-size:12px;line-height:1.8;background:var(--card);color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0">جاري التحقق من المزامنة</div>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
@@ -2064,13 +2064,32 @@ function renderWarehouses(m){
   else if(whTab==='cmpx') renderCompareHub($('#wh_content'));
   else renderWhDetail($('#wh_content'), whTab);
 }
+/* لفف كاملة لكل قطاع (كرافت/كومبن/نيو) لكل مخزن لوحده. الكسر بيتشال لكل صنف قبل الجمع.
+   الاكسسوارات خارج الحساب. الصنف من غير محتوى لفة وعليه رصيد مش محسوب ومتنبّه عليه. */
+const WH_ROLL_SECS=['كرافت لاين','كومبن','نيو لاين'];
+function whRollsBySector(whId){
+  const out={}, noRoll=new Set(); WH_ROLL_SECS.forEach(k=>out[k]=0);
+  items.forEach(it=>{
+    if(!isProfileGroup(it.mainGroup)) return;
+    const sec=secName(SECTOR_MAP[it.mainGroup]||it.mainGroup); if(!(sec in out)) return;
+    const q=qtyOf(whId,it.name), rq=Number(it.rollQty)||0;
+    if(!(rq>0)){ if(q>0) noRoll.add(it.name); return; }
+    out[sec]+=Math.trunc(q/rq);
+  });
+  return {out, noRoll:noRoll.size, total:WH_ROLL_SECS.reduce((a,k)=>a+out[k],0)};
+}
 function whOverview(){
   if(!warehouses.length) return `<div class="empty">اضغط على قسم فوق</div>`;
-  const rows=warehouses.map(w=>({w, n:Object.keys(whStock[w.id]||{}).length, s:shortTotals(w.id).items}));
-  const mx=Math.max(1,...rows.map(r=>r.n)), tot=rows.reduce((a,r)=>a+r.n,0);
-  return `<div class="hchart"><div class="hmeta"><b>${tot}</b><span>رصيد مرفوع حسب المخزن</span></div>`
-    + rows.map(r=>`<div class="wbar" onclick="setWhTab(${jsArg(r.w.id)})"><span class="wn">${esc(r.w.name)}</span><span class="wt"><i style="width:${(r.n/mx*100).toFixed(1)}%"></i></span><b>${r.n}</b>${r.s?`<em>🧾 ${r.s} صنف ناقص</em>`:''}</div>`).join('')
-    + `</div><div class="empty" style="margin-top:10px">اضغط على مخزن من فوق أو من الرسم</div>`;
+  const cols=warehouses.map(w=>({w, r:whRollsBySector(w.id), s:shortTotals(w.id).items}));
+  return `<div class="hchart"><div class="hmeta"><span>الرصيد باللفف الكاملة حسب المخزن</span></div>
+    <div class="whcols" style="display:grid;grid-template-columns:repeat(${Math.min(cols.length,2)},minmax(0,1fr));gap:8px">`
+    + cols.map(c=>`<div class="whcol" onclick="setWhTab(${jsArg(c.w.id)})" style="border:1px solid var(--border);background:var(--panel2);border-radius:12px;padding:10px 8px;cursor:pointer;min-width:0">
+        <div style="font-weight:800;text-align:center;margin-bottom:8px;font-size:14px">${esc(c.w.name)}</div>
+        ${WH_ROLL_SECS.map(k=>`<div style="display:flex;justify-content:space-between;gap:4px;font-size:12.5px;padding:3px 0"><span>${k}</span><b>${fmtN(c.r.out[k])} لفة</b></div>`).join('')}
+        <div style="display:flex;justify-content:space-between;gap:4px;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-size:13px;font-weight:800"><span>الإجمالي</span><span>${fmtN(c.r.total)} لفة</span></div>
+        ${c.r.noRoll?`<div style="margin-top:6px;font-size:11px;color:#b45309;font-weight:700">⚠️ ${c.r.noRoll} صنف بلا محتوى لفة (مش محسوب)</div>`:''}
+        ${c.s?`<em style="display:block;margin-top:4px;font-size:11px">🧾 ${c.s} صنف ناقص</em>`:''}</div>`).join('')
+    + `</div></div><div class="empty" style="margin-top:10px">اضغط على مخزن من فوق أو من العمود</div>`;
 }
 function setWhTab(id){ const cur=load('_whTab_',null); save('_whTab_', cur===id?null:id); save('_whSub_',null); render(true); }
 // تبويب «مقارنات»: جواه التلات مقارنات
