@@ -493,7 +493,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.25</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.26</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
 <div id="saveStateBar" role="status" aria-live="polite" style="padding:5px 14px;font-size:12px;line-height:1.8;background:var(--card);color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0">جاري التحقق من المزامنة</div>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
@@ -2313,9 +2313,11 @@ function renderWhShortage(m, whId){
   const showZero = load('_whShowZero_', true);
   const allMain = [...new Set(items.map(i=>i.mainGroup).filter(Boolean))];
   const allSub = shortMain.size? [...new Set(items.filter(i=>shortMain.has(i.mainGroup)).map(i=>i.subGroup).filter(Boolean))] : [];
-  let list = shortMain.size ? items.filter(i=>shortMain.has(i.mainGroup)) : [];
-  if(shortSub.size) list = list.filter(i=>shortSub.has(i.subGroup));
-  if(!showZero) list = list.filter(i=>qtyOf(whId, i.name) > 0);
+  const onlyWritten = load('_whShortOnly_', false);
+  const hasQty = n=>{ const r=shortRec(whId,n); return !!(r.q1||r.q2); };
+  let list = onlyWritten ? items.filter(i=>hasQty(i.name)) : (shortMain.size ? items.filter(i=>shortMain.has(i.mainGroup)) : []);
+  if(shortSub.size && !onlyWritten) list = list.filter(i=>shortSub.has(i.subGroup));
+  if(!showZero && !onlyWritten) list = list.filter(i=>qtyOf(whId, i.name) > 0);
   list.sort(byNameAr);   // أبجدي عبر كل القطاعات المختارة
   const dates = load('whOrderDate_v1',{});
   const today = todayStr();
@@ -2337,10 +2339,15 @@ function renderWhShortage(m, whId){
       <button onclick="exportShortImage('${whId}')" title="صورة" style="padding:5px 9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px;font-weight:700">صورة</button>
     </div>
     ${ddRow('sh',allMain,shortMain,allSub,shortSub)}
-    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-bottom:10px">
-      <input type="checkbox" ${showZero?'checked':''} onchange="save('_whShowZero_', this.checked); render();"> إظهار الأصناف رصيدها صفر
-    </label>
-    ${!shortMain.size? `<div class="empty">اختار مجموعة رئيسية واحدة أو أكتر من فوق عشان تبدأ تكتب طلب الوردر</div>` :
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
+        <input type="checkbox" ${showZero?'checked':''} onchange="save('_whShowZero_', this.checked); render();"> إظهار الأصناف رصيدها صفر
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--blue)">
+        <input type="checkbox" ${onlyWritten?'checked':''} onchange="save('_whShortOnly_', this.checked); render();"> المكتوب فقط
+      </label>
+    </div>
+    ${(!shortMain.size && !onlyWritten)? `<div class="empty">اختار مجموعة رئيسية واحدة أو أكتر من فوق عشان تبدأ تكتب طلب الوردر</div>` :
       list.length? list.map(it=>{
         const rec = shortRec(whId, it.name);
         const nm = it.name.replace(/'/g,"\\'");
@@ -2357,7 +2364,7 @@ function renderWhShortage(m, whId){
           ${(rec.q1||rec.q2)? `<button title="شيله من الطلب" onclick="unmarkShort('${whId}',${jsArg(it.name)})"
             style="padding:7px 9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--danger);cursor:pointer">🗑</button>`:''}
           </div>`;
-      }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
+      }).join('') : `<div class="empty">${onlyWritten?'مفيش أصناف مكتوب لها كمية في الطلب ده':'لا توجد أصناف مطابقة'}</div>`}
     <div style="height:60px"></div>
     <div style="position:sticky;bottom:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px))">
       <div style="display:flex;gap:6px">
