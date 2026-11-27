@@ -493,7 +493,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.24</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.25</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
 <div id="saveStateBar" role="status" aria-live="polite" style="padding:5px 14px;font-size:12px;line-height:1.8;background:var(--card);color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0">جاري التحقق من المزامنة</div>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
@@ -2315,13 +2315,19 @@ function renderWhShortage(m, whId){
   const allSub = shortMain.size? [...new Set(items.filter(i=>shortMain.has(i.mainGroup)).map(i=>i.subGroup).filter(Boolean))] : [];
   let list = shortMain.size ? items.filter(i=>shortMain.has(i.mainGroup)) : [];
   if(shortSub.size) list = list.filter(i=>shortSub.has(i.subGroup));
-  if(q) list = list.filter(i=>i.name.includes(q));
   if(!showZero) list = list.filter(i=>qtyOf(whId, i.name) > 0);
   list.sort(byNameAr);   // أبجدي عبر كل القطاعات المختارة
   const dates = load('whOrderDate_v1',{});
   const today = todayStr();
   const orderDate = dates[whId] || today;
   m.innerHTML = `
+    <div style="position:sticky;top:0;z-index:30;background:var(--bg);padding:2px 0 8px">
+      <div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:6px 10px;margin-bottom:0">
+        <div id="shTot" style="flex:1;font-size:12.5px;line-height:1.7">${shortTotalsHtml(shortTotals(whId))}</div>
+        <button onclick="resetShortage('${whId}')" title="صفّر الطلب وابدأ من الأول"
+          style="padding:7px 10px;border-radius:8px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-weight:700;cursor:pointer;white-space:nowrap;font-size:12.5px">تصفير</button>
+      </div>
+    </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
       <span style="font-size:13px;font-weight:700;white-space:nowrap">التاريخ</span>
       <input type="date" value="${orderDate}" onchange="setOrderDate('${whId}', this.value)" style="border:1px solid var(--border);border-radius:6px;padding:3px 6px;background:var(--panel);color:var(--text);font-size:12.5px">
@@ -2330,7 +2336,6 @@ function renderWhShortage(m, whId){
       <button onclick="exportShortExcel('${whId}')" title="إكسل" style="padding:5px 9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px;font-weight:700">إكسل</button>
       <button onclick="exportShortImage('${whId}')" title="صورة" style="padding:5px 9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px;font-weight:700">صورة</button>
     </div>
-    <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
     ${ddRow('sh',allMain,shortMain,allSub,shortSub)}
     <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-bottom:10px">
       <input type="checkbox" ${showZero?'checked':''} onchange="save('_whShowZero_', this.checked); render();"> إظهار الأصناف رصيدها صفر
@@ -2355,18 +2360,12 @@ function renderWhShortage(m, whId){
       }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
     <div style="height:60px"></div>
     <div style="position:sticky;bottom:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px))">
-      <div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:6px 10px;margin-bottom:6px">
-        <div id="shTot" style="flex:1;font-size:12.5px;line-height:1.7">${shortTotalsHtml(shortTotals(whId))}</div>
-        <button onclick="resetShortage('${whId}')" title="صفّر الطلب وابدأ من الأول"
-          style="padding:7px 10px;border-radius:8px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-weight:700;cursor:pointer;white-space:nowrap;font-size:12.5px">تصفير</button>
-      </div>
       <div style="display:flex;gap:6px">
         <button onclick="bkSheet()" title="إضافة عمود ونقل أصناف ليه" style="flex:0 0 auto;padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:700;font-size:13px">عمود</button>
         <button onclick="exportOrderSummary('${whId}')" style="flex:1;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">ملخّص الأوردر بالمجموعات (PDF)</button>
       </div>
     </div>
   `;
-  $('#q').oninput=e=>{ q=e.target.value; reRenderKeepQ(()=>renderWhShortage(m, whId)); };
 }
 function unmarkShort(whId,name){ if(!whShortage[whId]) return; delete whShortage[whId][name]; save('whShortage_v1',whShortage); render(); }
 function getOrderDate(whId){ const d=load('whOrderDate_v1',{}); return d[whId] || todayStr(); }
