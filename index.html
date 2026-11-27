@@ -489,7 +489,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.20</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.22</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
 <div id="saveStateBar" role="status" aria-live="polite" style="padding:5px 14px;font-size:12px;line-height:1.8;background:var(--card);color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0">جاري التحقق من المزامنة</div>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
@@ -2064,11 +2064,13 @@ function renderWarehouses(m){
   const whTab = load('_whTab_', null);
   /* المقارنات كانت مفروشة جنب المخازن في نفس الصف. دلوقتي تبويب واحد
      «مقارنات» وتحته التلاتة، فالصف فيه المخازن والمقارنات بس. */
-  const tabs = [{id:'cmpx',name:'📊 مقارنات'}, ...warehouses.map(w=>({id:w.id,name:'🏭 '+esc(w.name)}))];
+  const tabs = [{id:'cmpx',name:'مقارنات'}, ...warehouses.map(w=>({id:w.id,name:esc(w.name)}))];
   m.innerHTML = moduleStats('warehouses') + tabStrip(tabs.map(t=>({k:t.id,name:t.name})), whTab, k=>`setWhTab('${k}')`, {cls:'tabs'})
-    + `<div style="display:flex;gap:8px;margin:8px 0">
-        <button onclick="editWarehouse('')" title="إضافة مخزن" style="flex:1;padding:9px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:800;font-size:13px;cursor:pointer">➕ إضافة مخزن</button>
-        <button onclick="whRestoreSheet()" title="استرجاع مخزن محذوف" style="flex:1;padding:9px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:800;font-size:13px;cursor:pointer">♻️ استرجاع${whTrash.length?' ('+whTrash.length+')':''}</button></div>`
+    + `<div style="display:flex;gap:14px;justify-content:flex-end;align-items:center;margin:6px 2px 10px;font-size:12.5px">
+        ${(whTab && whTab!=='cmpx')?`<a onclick="editWarehouse('${whTab}')" style="color:var(--muted);cursor:pointer">تعديل</a><a onclick="delWarehouse('${whTab}')" style="color:var(--danger);cursor:pointer">حذف</a>`:''}
+        <a onclick="whRestoreSheet()" style="color:var(--muted);cursor:pointer">استرجاع${whTrash.length?' ('+whTrash.length+')':''}</a>
+        <a onclick="editWarehouse('')" style="color:var(--blue);font-weight:700;cursor:pointer">+ مخزن</a>
+      </div>`
     + dupWhBar() + `<div id="wh_content"></div>`;
   if(whTab===null) $('#wh_content').innerHTML=whOverview();
   else if(whTab==='cmpx') renderCompareHub($('#wh_content'));
@@ -2314,9 +2316,13 @@ function renderWhShortage(m, whId){
   const today = todayStr();
   const orderDate = dates[whId] || today;
   m.innerHTML = `
-    <div class="warn" style="background:var(--panel2);color:var(--text);border-color:var(--border)">
-      📦 طلبية نواقص <b>${esc(w.name)}</b> بتاريخ
-      <input type="date" value="${orderDate}" onchange="setOrderDate('${whId}', this.value)" style="border:1px solid var(--border);border-radius:6px;padding:2px 6px;background:var(--panel);color:var(--text)">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span style="font-size:13px;font-weight:700;white-space:nowrap">التاريخ</span>
+      <input type="date" value="${orderDate}" onchange="setOrderDate('${whId}', this.value)" style="border:1px solid var(--border);border-radius:6px;padding:3px 6px;background:var(--panel);color:var(--text);font-size:12.5px">
+      <span style="flex:1"></span>
+      <button onclick="exportShortPdf('${whId}')" title="PDF" style="padding:5px 9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px;font-weight:700">PDF</button>
+      <button onclick="exportShortExcel('${whId}')" title="إكسل" style="padding:5px 9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px;font-weight:700">إكسل</button>
+      <button onclick="exportShortImage('${whId}')" title="صورة" style="padding:5px 9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:12px;font-weight:700">صورة</button>
     </div>
     <div class="toolbar"><input class="search" id="q" placeholder="بحث..." value="${esc(q)}"></div>
     ${ddRow('sh',allMain,shortMain,allSub,shortSub)}
@@ -2341,21 +2347,16 @@ function renderWhShortage(m, whId){
             style="padding:7px 9px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--danger);cursor:pointer">🗑</button>`:''}
           </div>`;
       }).join('') : `<div class="empty">لا توجد أصناف مطابقة</div>`}
-    <div style="height:110px"></div>
+    <div style="height:60px"></div>
     <div style="position:sticky;bottom:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px))">
-      <div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:6px 10px;margin-bottom:6px">
         <div id="shTot" style="flex:1;font-size:12.5px;line-height:1.7">${shortTotalsHtml(shortTotals(whId))}</div>
         <button onclick="resetShortage('${whId}')" title="صفّر الطلب وابدأ من الأول"
-          style="padding:7px 10px;border-radius:8px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-weight:700;cursor:pointer;white-space:nowrap">🧹 صفّر</button>
-      </div>
-      <div class="impbar" style="margin:0 0 6px">
-        <button onclick="exportShortPdf('${whId}')">📄 PDF</button>
-        <button onclick="exportShortExcel('${whId}')">📊 إكسل</button>
-        <button onclick="exportShortImage('${whId}')">🖼️ صورة</button>
+          style="padding:7px 10px;border-radius:8px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-weight:700;cursor:pointer;white-space:nowrap;font-size:12.5px">تصفير</button>
       </div>
       <div style="display:flex;gap:6px">
-        <button onclick="bkSheet()" title="إضافة عمود ونقل أصناف ليه" style="flex:0 0 auto;padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:700;font-size:13px">🧩 عمود</button>
-        <button onclick="exportOrderSummary('${whId}')" style="flex:1;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">📄 ملخّص الأوردر بالمجموعات (PDF)</button>
+        <button onclick="bkSheet()" title="إضافة عمود ونقل أصناف ليه" style="flex:0 0 auto;padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-weight:700;font-size:13px">عمود</button>
+        <button onclick="exportOrderSummary('${whId}')" style="flex:1;padding:10px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-weight:700;font-size:13px">ملخّص الأوردر بالمجموعات (PDF)</button>
       </div>
     </div>
   `;
@@ -5003,12 +5004,7 @@ function renderWhDetail(m, whId){
   const b=(n,t)=>`<button class="stab${sub===n?' on':''}" style="flex:1 1 0;padding:10px 6px" onclick="setWhSub(${n})">${t}</button>`;
   // تعديل/حذف المخزن — الدوال كانت موجودة من غير أي زرار يوصّلها
   const isOrd = String(w.name||'').trim() === ORD_STORE;
-  m.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <b style="flex:1;font-size:14px">🏭 ${esc(w.name)}${w.location?` <span style="color:var(--muted);font-weight:400;font-size:12px">— ${esc(w.location)}</span>`:''}</b>
-      <button onclick="editWarehouse('${w.id}')" title="تعديل المخزن" style="padding:5px 10px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);color:var(--text);cursor:pointer">✏️</button>
-      <button onclick="delWarehouse('${w.id}')" title="حذف المخزن" style="padding:5px 10px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);color:var(--danger);cursor:pointer">🗑</button>
-    </div>
-    <div style="display:flex;gap:6px;margin-bottom:10px">${b(0,'📊 الأرصدة')}${b(1,'🧾 طلب النواقص')}${b(2,'📝 الجرد')}${isOrd?b(3,'🚚 الموزعين'):''}</div><div id="wh_sub"></div>`;
+  m.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:10px">${b(0,'الأرصدة')}${b(1,'طلب النواقص')}${b(2,'الجرد')}${isOrd?b(3,'الموزعين'):''}</div><div id="wh_sub"></div>`;
   const box=$('#wh_sub');
   if(sub===null) box.innerHTML=`<div class="empty">اضغط على قسم فوق</div>`;
   else if(sub===0) renderWhStock(box, whId);
