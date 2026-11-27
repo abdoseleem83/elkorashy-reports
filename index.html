@@ -493,7 +493,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue) !i
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.27</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
+<header><h1 onclick="goHome()"><button id="menuBtn" class="hdr-btn" title="القايمة" onclick="event.stopPropagation();toggleMenu()" style="margin-inline-end:10px;vertical-align:middle;width:34px;height:32px"></button><img id="hdrLogo" alt="ELKORASHI" style="height:26px;width:auto;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-inline-end:8px"><span class="ttl"> تقارير القرشي</span></h1><span style="display:flex;align-items:center;gap:8px"><span class="ver">v9.28</span><span id="syncPill" title="حالة المزامنة" onclick="syncNow(false)" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);cursor:pointer">☁️</span><button id="hdrSearch" class="hdr-btn" title="بحث في كل حاجة" onclick="openSearch()"></button><button id="syncBtn" class="hdr-btn" title="إعدادات المزامنة" onclick="openSyncSheet()"></button><button id="refreshBtn" class="hdr-btn" title="تحديث"></button></span></header>
 <div id="saveStateBar" role="status" aria-live="polite" style="padding:5px 14px;font-size:12px;line-height:1.8;background:var(--card);color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0">جاري التحقق من المزامنة</div>
 <div class="menu-bd" onclick="toggleMenu(false)"></div><nav id="nav"></nav>
 <main id="main"></main>
@@ -3759,7 +3759,7 @@ function canvasToBlob(c){ return new Promise(r=> c.toBlob(r, 'image/png')); }
    بتتبكسل لما تتكبّر. عشان كده بنطلّع صور «صفحات»: عرضها ~١٨٠٠ بكسل وطولها لحد ~٢٢٠٠،
    بتتقطع بين الجداول أو عند حدود الصفوف، وكل صفحة عليها رقمها. المستند القصير بيطلع صورة واحدة. */
 const IMG_W=1800, IMG_PAGE_H=2200;
-async function docImagePages(el, title){
+async function docImagePages(el, title, single){
   const W=Math.max(1,el.offsetWidth), sc=Math.max(1, Math.min(4, IMG_W/W));
   const canvas=await docToCanvas(el, sc, 16e6);
   const k=canvas.width/W, er=el.getBoundingClientRect();
@@ -3768,7 +3768,7 @@ async function docImagePages(el, title){
   const capAll=Math.round(IMG_PAGE_H*canvas.width/IMG_W);
   const slice=(y,h)=>{ const c=document.createElement('canvas'); c.width=canvas.width; c.height=h;
     const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,h); x.drawImage(canvas,0,y,canvas.width,h,0,0,canvas.width,h); return c; };
-  if(canvas.height <= capAll*1.12) return [canvas];
+  if(single || canvas.height <= capAll*1.12) return [canvas];
   const trs=[...el.querySelectorAll('tr')].filter(r=>!r.classList.contains('kn'));
   const bounds=trs.map(r=>Y(r,'bottom')), tEnds=[...el.querySelectorAll('table')].map(t=>Y(t,'bottom'));
   // شريط العنوان (اسم الطلبية + التاريخ) بيتكرر فوق الصفحات اللي بعد الأولى
@@ -3804,10 +3804,10 @@ async function shareOrDownloadMany(blobs, base, title){
   for(let i=0;i<files.length;i++){ downloadBlob(files[i], files[i].name); await new Promise(r=>setTimeout(r,350)); }
   return 'download';
 }
-async function exportDocImage(bodyHtml, filename, landscape, forceDownload){
+async function exportDocImage(bodyHtml, filename, landscape, forceDownload, single){
   toast('جاري تجهيز الصورة...'); const el=mkDoc(bodyHtml,landscape);
   try{
-    const pages=await docImagePages(el, filename);
+    const pages=await docImagePages(el, filename, single);
     const blobs=[]; for(const c of pages){ const b=await canvasToBlob(c); if(!b) throw new Error('no blob'); blobs.push(b); }
     let how;
     if(forceDownload){ blobs.forEach((b,i)=> downloadBlob(b, filename+(blobs.length>1?'_'+(i+1):'')+'.png')); how='download'; }
@@ -4114,7 +4114,7 @@ function shortDocBody(whId){
     <div class="sub">بتاريخ ${getOrderDate(whId)}</div>${tables}${grandBar}</div>`;
 }
 function exportShortPdf(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } doExportDocPdf(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),false,true); }
-function exportShortImage(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocImage(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),true); }
+function exportShortImage(whId){ const w=warehouses.find(x=>x.id===whId); if(!Object.keys(whShortage[whId]||{}).length){ toast('لا يوجد نواقص'); return; } exportDocImage(shortDocBody(whId),'نواقص_'+w.name+'_'+getOrderDate(whId),true,false,true); }
 function exportOrderSummary(whId){
   const w=warehouses.find(x=>x.id===whId), list=Object.entries(whShortage[whId]||{});
   if(!list.length){ toast('لا يوجد طلبات'); return; }
